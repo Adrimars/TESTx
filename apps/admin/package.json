@@ -1,0 +1,22 @@
+{
+  "name": "@testx/admin",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 3001",
+    "build": "next build",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@testx/shared": "workspace:*",
+    "@testx/ui": "workspace:*",
+    "next": "^16.0.10",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1"
+  },
+  "devDependencies": {
+    "@testx/config": "workspace:*"
+  }
+}

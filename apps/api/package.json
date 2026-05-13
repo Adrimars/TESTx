@@ -1,0 +1,27 @@
+{
+  "name": "@testx/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/cors": "^11.1.0",
+    "@fastify/multipart": "^9.3.0",
+    "@fastify/rate-limit": "^10.3.0",
+    "@testx/database": "workspace:*",
+    "@testx/shared": "workspace:*",
+    "fastify": "^5.6.2",
+    "fastify-plugin": "^5.1.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@testx/config": "workspace:*",
+    "tsx": "^4.20.6"
+  }
+}
