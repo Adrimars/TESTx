@@ -1,0 +1,25 @@
+{
+  "name": "@testx/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./constants": "./src/constants.ts",
+    "./rewards": "./src/rewards.ts",
+    "./validation/auth": "./src/validation/auth.ts",
+    "./validation/question": "./src/validation/question.ts",
+    "./validation/test": "./src/validation/test.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@testx/config": "workspace:*"
+  }
+}

@@ -1,0 +1,187 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  EVALUATOR
+  ADMIN
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+  UNDISCLOSED
+}
+
+enum TestStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  CLOSED
+}
+
+enum QuestionType {
+  SINGLE_SELECT
+  MULTI_SELECT
+  RATING
+  FREE_TEXT
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+  AUDIO
+  TEXT
+}
+
+enum MediaSourceType {
+  UPLOAD
+  GOOGLE_DRIVE
+}
+
+model User {
+  id               String            @id @default(uuid()) @db.Uuid
+  email            String            @unique
+  passwordHash     String?
+  googleId         String?           @unique
+  role             UserRole          @default(EVALUATOR)
+  isVerified       Boolean           @default(false)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  evaluatorProfile EvaluatorProfile?
+  responses        TestResponse[]
+
+  @@index([role])
+}
+
+model EvaluatorProfile {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @unique @db.Uuid
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dateOfBirth DateTime @db.Date
+  gender      Gender
+  country     String
+  city        String?
+  balance     Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Test {
+  id                 String         @id @default(uuid()) @db.Uuid
+  title              String
+  description        String?
+  status             TestStatus     @default(DRAFT)
+  responseCap        Int?
+  advisoryTimeMin    Int?
+  minTimePerQuestion Int            @default(60)
+  demographicFilters Json?
+  rewardPoints       Int            @default(0)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  questions          Question[]
+  responses          TestResponse[]
+
+  @@index([status])
+}
+
+model Question {
+  id               String           @id @default(uuid()) @db.Uuid
+  testId           String           @db.Uuid
+  test             Test             @relation(fields: [testId], references: [id], onDelete: Cascade)
+  type             QuestionType
+  prompt           String
+  mediaType        MediaType?
+  order            Int
+  config           Json             @default("{}")
+  isAttentionCheck Boolean          @default(false)
+  isTrapDuplicate  Boolean          @default(false)
+  trapSourceId     String?          @db.Uuid
+  trapSource       Question?        @relation("QuestionTrap", fields: [trapSourceId], references: [id])
+  trapDuplicates   Question[]       @relation("QuestionTrap")
+  createdAt        DateTime         @default(now())
+  options          QuestionOption[]
+  answers          Answer[]
+
+  @@unique([testId, order])
+  @@index([testId, order])
+}
+
+model QuestionOption {
+  id         String   @id @default(uuid()) @db.Uuid
+  questionId String   @db.Uuid
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  label      String?
+  mediaId    String?  @db.Uuid
+  media      Media?   @relation(fields: [mediaId], references: [id], onDelete: SetNull)
+  order      Int
+
+  @@unique([questionId, order])
+  @@index([questionId])
+}
+
+model Media {
+  id          String            @id @default(uuid()) @db.Uuid
+  fileName    String
+  fileType    MediaType
+  mimeType    String
+  fileSize    Int
+  sourceType  MediaSourceType
+  sourceUrl   String?
+  thumbnailUrl String?
+  tags        String[]          @default([])
+  uploadedAt  DateTime          @default(now())
+  options     QuestionOption[]
+
+  @@index([fileType])
+}
+
+model TestResponse {
+  id               String   @id @default(uuid()) @db.Uuid
+  testId           String   @db.Uuid
+  test             Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  userId           String   @db.Uuid
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isFlagged        Boolean  @default(false)
+  flagReasons      String[] @default([])
+  pointsEarned     Int      @default(0)
+  startedAt        DateTime
+  completedAt      DateTime
+  totalTimeSeconds Int
+  answers          Answer[]
+
+  @@unique([testId, userId])
+  @@index([testId])
+  @@index([userId])
+}
+
+model Answer {
+  id               String       @id @default(uuid()) @db.Uuid
+  responseId       String       @db.Uuid
+  response         TestResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  questionId       String       @db.Uuid
+  question         Question     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedOptions  String[]     @default([]) @db.Uuid
+  ratingValue      Int?
+  textValue        String?
+  timeSpentSeconds Int
+
+  @@unique([responseId, questionId])
+  @@index([questionId])
+}
+
+model Template {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique
+  description String?
+  structure   Json
+  isSystem    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
