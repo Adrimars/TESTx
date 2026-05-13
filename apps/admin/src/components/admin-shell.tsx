@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Avatar } from "@testx/ui";
 import { useAuth } from "./auth-provider";
 
@@ -14,6 +15,16 @@ const navigation = [
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const pathname = usePathname();
+  const isAuthPage = pathname === "/login";
+
+  if (isAuthPage) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        {children}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground lg:grid lg:grid-cols-[260px_1fr]">
@@ -27,7 +38,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
         </div>
         <nav className="flex gap-2 overflow-x-auto lg:flex-col lg:overflow-visible">
           {navigation.map((item) => (
-            <Link key={item.href} href={item.href} className="rounded-md px-3 py-2 text-sm font-medium hover:bg-muted">
+            <Link
+              key={item.href}
+              href={item.href}
+              className="rounded-md px-3 py-2 text-sm font-medium hover:bg-muted"
+            >
               {item.label}
             </Link>
           ))}
