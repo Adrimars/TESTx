@@ -1,11 +1,35 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { Avatar, Badge } from "@testx/ui";
 import { useAuth } from "./auth-provider";
 
 export function EvaluatorShell({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
   const balance = user?.evaluatorProfile?.balance ?? 0;
+  const isAuthPage = pathname === "/login" || pathname === "/register";
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (!user) return;
+    if (!user.evaluatorProfile && pathname !== "/onboarding") {
+      router.replace("/onboarding");
+    }
+    if (user.evaluatorProfile && pathname === "/onboarding") {
+      router.replace("/dashboard");
+    }
+  }, [user, isLoading, pathname, router]);
+
+  if (isAuthPage) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        {children}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
