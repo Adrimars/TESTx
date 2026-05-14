@@ -1,5 +1,8 @@
 import type { FastifyPluginAsync } from "fastify";
+import { serveMedia } from "../services/media.service";
 
 export const publicMediaRoutes: FastifyPluginAsync = async (app) => {
-  app.get("/:id/file", async (_request, reply) => reply.status(501).send({ error: "NOT_IMPLEMENTED" }));
+  app.get<{ Params: { id: string } }>("/:id/file", async (request, reply) => {
+    return serveMedia(app.prisma, request.params.id, reply);
+  });
 };
