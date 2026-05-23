@@ -73,6 +73,7 @@ export default function MediaPage() {
   const deleteDialogRef = useRef<HTMLDialogElement>(null);
   const [deleteTarget, setDeleteTarget] = useState<Media | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   // Debounce search
   useEffect(() => {
@@ -162,6 +163,7 @@ export default function MediaPage() {
   // Delete flow
   function openDeleteDialog(media: Media) {
     setDeleteTarget(media);
+    setDeleteError("");
     deleteDialogRef.current?.showModal();
   }
 
@@ -171,13 +173,12 @@ export default function MediaPage() {
     try {
       await apiFetch(`/admin/media/${deleteTarget.id}`, { method: "DELETE" });
       deleteDialogRef.current?.close();
+      setDeleteTarget(null);
       await fetchMedia();
-    } catch {
-      // silently close — rare failure
-      deleteDialogRef.current?.close();
+    } catch (err: unknown) {
+      setDeleteError(err instanceof Error ? err.message : "Delete failed");
     } finally {
       setDeleting(false);
-      setDeleteTarget(null);
     }
   }
 
@@ -341,8 +342,16 @@ export default function MediaPage() {
               &ldquo;{deleteTarget?.fileName}&rdquo; will be permanently removed.
             </p>
           </CardHeader>
+          {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => deleteDialogRef.current?.close()} disabled={deleting}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                deleteDialogRef.current?.close();
+                setDeleteTarget(null);
+              }}
+              disabled={deleting}
+            >
               Cancel
             </Button>
             <Button

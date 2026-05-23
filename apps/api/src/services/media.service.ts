@@ -8,7 +8,11 @@ import type { MultipartFile } from "@fastify/multipart";
 import type { FileMediaType } from "@testx/shared";
 import { driveService } from "./drive.service";
 
-const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
+const MAX_FILE_SIZE_BY_TYPE: Record<FileMediaType, number> = {
+  IMAGE: 25 * 1024 * 1024,
+  VIDEO: 500 * 1024 * 1024,
+  AUDIO: 500 * 1024 * 1024,
+};
 
 export function getUploadDir(): string {
   return path.resolve(process.env.UPLOAD_DIR ?? "./uploads");
@@ -42,6 +46,10 @@ function extFromMime(mimeType: string): string {
   return map[mimeType] ?? (mimeType.split("/")[1] ?? "bin");
 }
 
+function formatLimit(bytes: number): string {
+  return `${Math.round(bytes / 1024 / 1024)} MB`;
+}
+
 export async function uploadFile(prisma: PrismaClient, file: MultipartFile) {
   const fileType = mimeToFileType(file.mimetype);
   if (!fileType) {
@@ -50,6 +58,7 @@ export async function uploadFile(prisma: PrismaClient, file: MultipartFile) {
       statusCode: 400,
     });
   }
+  const maxFileSize = MAX_FILE_SIZE_BY_TYPE[fileType];
 
   const uploadDir = getUploadDir();
   await fsPromises.mkdir(uploadDir, { recursive: true });
@@ -66,9 +75,9 @@ export async function uploadFile(prisma: PrismaClient, file: MultipartFile) {
     for await (const chunk of file.file) {
       const buf = chunk as Buffer;
       fileSize += buf.length;
-      if (fileSize > MAX_FILE_SIZE) {
+      if (fileSize > maxFileSize) {
         fileStream.destroy();
-        throw Object.assign(new Error("File exceeds 100 MB size limit"), { statusCode: 413 });
+        throw Object.assign(new Error(`File exceeds ${formatLimit(maxFileSize)} size limit`), { statusCode: 413 });
       }
       if (!fileStream.write(buf)) {
         await new Promise<void>((resolve) => fileStream.once("drain", resolve));
