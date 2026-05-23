@@ -8,9 +8,9 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "db:generate": "prisma generate --schema prisma/schema.prisma",
-    "db:migrate": "prisma migrate dev --schema prisma/schema.prisma",
-    "db:seed": "tsx prisma/seed.ts",
+    "db:generate": "node --env-file=../../.env node_modules/prisma/build/index.js generate --schema prisma/schema.prisma",
+    "db:migrate": "node --env-file=../../.env node_modules/prisma/build/index.js migrate dev --schema prisma/schema.prisma",
+    "db:seed": "node --env-file=../../.env node_modules/tsx/dist/cli.mjs prisma/seed.ts",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
