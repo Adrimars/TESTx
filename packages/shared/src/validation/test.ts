@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DEFAULT_MIN_TIME_PER_QUESTION_SECONDS, GENDERS } from "../constants";
+import { GENDERS, TEST_STATUSES } from "../constants";
 
 export const demographicFiltersSchema = z.object({
   ageMin: z.number().int().min(0).optional(),
@@ -19,9 +19,19 @@ export const updateTestSchema = z.object({
   description: z.string().nullable().optional(),
   responseCap: z.number().int().positive().nullable().optional(),
   advisoryTimeMin: z.number().int().positive().nullable().optional(),
-  minTimePerQuestion: z.number().int().min(0).default(DEFAULT_MIN_TIME_PER_QUESTION_SECONDS),
+  minTimePerQuestion: z.number().int().min(0).optional(),
   demographicFilters: demographicFiltersSchema.nullable().optional(),
+});
+
+export const updateTestStatusSchema = z.object({
+  status: z.enum(TEST_STATUSES),
+});
+
+export const reorderQuestionsSchema = z.object({
+  questionIds: z.array(z.string().uuid()).min(1),
 });
 
 export type CreateTestInput = z.infer<typeof createTestSchema>;
 export type UpdateTestInput = z.infer<typeof updateTestSchema>;
+export type UpdateTestStatusInput = z.infer<typeof updateTestStatusSchema>;
+export type ReorderQuestionsInput = z.infer<typeof reorderQuestionsSchema>;
