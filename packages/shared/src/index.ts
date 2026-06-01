@@ -7,4 +7,5 @@ export * from "./types/test";
 export * from "./types/user";
 export * from "./validation/auth";
 export * from "./validation/question";
+export * from "./validation/response";
 export * from "./validation/test";
