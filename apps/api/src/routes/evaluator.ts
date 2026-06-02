@@ -53,8 +53,8 @@ function serializeOption(option: OptionForTaking) {
 const SAFE_CONFIG_KEYS = [
   "minSelections",
   "maxSelections",
-  "minValue",
-  "maxValue",
+  "min",
+  "max",
   "minLabel",
   "maxLabel",
   "minChars",
@@ -243,8 +243,8 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
             });
           }
           const config = (question.config ?? {}) as Record<string, unknown>;
-          const min = typeof config.minValue === "number" ? config.minValue : 1;
-          const max = typeof config.maxValue === "number" ? config.maxValue : 5;
+          const min = typeof config.min === "number" ? config.min : 1;
+          const max = typeof config.max === "number" ? config.max : 5;
           if (answer.ratingValue < min || answer.ratingValue > max) {
             return reply.status(400).send({
               error: "INVALID_ANSWER",
