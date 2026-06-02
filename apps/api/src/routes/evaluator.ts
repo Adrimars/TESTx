@@ -50,6 +50,27 @@ function serializeOption(option: OptionForTaking) {
   };
 }
 
+const SAFE_CONFIG_KEYS = [
+  "minSelections",
+  "maxSelections",
+  "minValue",
+  "maxValue",
+  "minLabel",
+  "maxLabel",
+  "minChars",
+  "maxChars",
+] as const;
+
+function sanitizeConfig(config: unknown): Record<string, unknown> {
+  if (!config || typeof config !== "object") return {};
+  const src = config as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const key of SAFE_CONFIG_KEYS) {
+    if (key in src) out[key] = src[key];
+  }
+  return out;
+}
+
 function serializeQuestionForEvaluator(question: QuestionForTaking) {
   return {
     id: question.id,
@@ -58,7 +79,7 @@ function serializeQuestionForEvaluator(question: QuestionForTaking) {
     prompt: question.prompt,
     mediaType: question.mediaType,
     order: question.order,
-    config: question.config,
+    config: sanitizeConfig(question.config),
     options: question.options.map(serializeOption),
   };
 }
