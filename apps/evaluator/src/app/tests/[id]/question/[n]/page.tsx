@@ -54,9 +54,7 @@ export default function QuestionPage() {
   const remainingTime = useAdvisoryCountdown(session?.advisoryTimeMin ?? null, startedAt);
 
   const isLast = questionNumber === totalQuestions;
-  const canAdvance = question
-    ? question.type === "FREE_TEXT" || isAnswered(question, answer)
-    : false;
+  const canAdvance = question ? isAnswered(question, answer) : false;
 
   const handleNext = useCallback(() => {
     if (!question || !testId) return;

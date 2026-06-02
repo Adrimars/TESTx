@@ -9,6 +9,8 @@ export type QualityCheckInput = {
   questions: QuestionWithOptions[];
   answers: AnswerPayloadInput[];
   minTimePerQuestion: number;
+  elapsedSeconds: number;
+  requiredQuestionCount: number;
 };
 
 export type QualityCheckResult = {
@@ -52,29 +54,42 @@ function answersEqual(
   if (question.type === "FREE_TEXT") {
     return (source.textValue ?? "").trim() === (duplicate.textValue ?? "").trim();
   }
-  const sourceLabels = new Set(
-    (source.selectedOptionIds ?? [])
-      .map((optionId) => question.options.find((option) => option.id === optionId))
-      .map((option) => option?.label ?? null)
-      .filter((label): label is string => label !== null)
-  );
-  const duplicateOptions = duplicate.selectedOptionIds ?? [];
-  const duplicateLabels = duplicateOptions
-    .map((optionId) => question.options.find((option) => option.id === optionId))
-    .map((option) => option?.label ?? null);
+  const labelsFor = (answer: AnswerPayloadInput): Set<string> =>
+    new Set(
+      (answer.selectedOptionIds ?? [])
+        .map((optionId) => question.options.find((option) => option.id === optionId)?.label ?? null)
+        .filter((label): label is string => label !== null)
+    );
 
-  if (sourceLabels.size !== duplicateOptions.length) return false;
-  return duplicateLabels.every((label) => label !== null && sourceLabels.has(label));
+  const sourceLabels = labelsFor(source);
+  const duplicateLabels = labelsFor(duplicate);
+
+  if (sourceLabels.size !== duplicateLabels.size) return false;
+  for (const label of duplicateLabels) {
+    if (!sourceLabels.has(label)) return false;
+  }
+  return true;
 }
 
 export function runQualityChecks({
   questions,
   answers,
   minTimePerQuestion,
+  elapsedSeconds,
+  requiredQuestionCount,
 }: QualityCheckInput): QualityCheckResult {
   const reasons = new Set<FlagReason>();
 
   if (minTimePerQuestion > 0) {
+    // Server-authoritative gate: real wall-clock time cannot be faked by the client.
+    if (
+      requiredQuestionCount > 0 &&
+      elapsedSeconds < minTimePerQuestion * requiredQuestionCount
+    ) {
+      reasons.add("SPEED_TOO_FAST");
+    }
+
+    // Per-question client timings add granularity for honest submissions.
     for (const question of questions) {
       if (question.isAttentionCheck || question.isTrapDuplicate) continue;
       const answer = getAnswer(answers, question.id);

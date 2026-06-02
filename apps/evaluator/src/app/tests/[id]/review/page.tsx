@@ -21,7 +21,6 @@ import { apiFetch, resolveMediaUrl } from "@/lib/api";
 type SubmissionResponse = {
   id: string;
   isFlagged: boolean;
-  flagReasons: string[];
   pointsEarned: number;
 };
 

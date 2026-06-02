@@ -208,7 +208,10 @@ export function useTestSession() {
 
 export function isAnswered(question: TestQuestion, answer: AnswerState | undefined): boolean {
   if (!answer) return false;
-  if (question.type === "FREE_TEXT") return true;
+  if (question.type === "FREE_TEXT") {
+    const minChars = typeof question.config.minChars === "number" ? question.config.minChars : 0;
+    return answer.textValue.trim().length >= minChars;
+  }
   if (question.type === "RATING") return answer.ratingValue !== null;
   return answer.selectedOptionIds.length > 0;
 }

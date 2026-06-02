@@ -10,8 +10,36 @@ import {
   isEvaluatorEligibleForTest,
 } from "../services/test.service";
 import { runQualityChecks } from "../services/quality.service";
+import {
+  ResponseCapReachedError,
+  assertResponseCapAvailable,
+} from "../services/submission.service";
 
 const evaluatorAuth = { preHandler: [authenticateUser] };
+
+// Only render-relevant config keys may reach the evaluator. Keys such as
+// correctOptionOrder / correctOptionLabel are the answer key for attention
+// checks and must never be serialized to the client.
+const EVALUATOR_CONFIG_KEYS = [
+  "minSelections",
+  "maxSelections",
+  "minValue",
+  "maxValue",
+  "minLabel",
+  "maxLabel",
+  "minChars",
+  "maxChars",
+] as const;
+
+function sanitizeConfigForEvaluator(config: unknown): Record<string, unknown> {
+  if (!config || typeof config !== "object" || Array.isArray(config)) return {};
+  const source = config as Record<string, unknown>;
+  const safe: Record<string, unknown> = {};
+  for (const key of EVALUATOR_CONFIG_KEYS) {
+    if (key in source) safe[key] = source[key];
+  }
+  return safe;
+}
 
 const testTakingInclude = {
   questions: {
@@ -58,7 +86,7 @@ function serializeQuestionForEvaluator(question: QuestionForTaking) {
     prompt: question.prompt,
     mediaType: question.mediaType,
     order: question.order,
-    config: question.config,
+    config: sanitizeConfigForEvaluator(question.config),
     options: question.options.map(serializeOption),
   };
 }
@@ -193,6 +221,7 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
           return reply.status(400).send({
             error: "INVALID_ANSWER",
             message: "Answer references unknown question",
+            questionId: answer.questionId,
           });
         }
         if (question.type === "SINGLE_SELECT") {
@@ -200,6 +229,7 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
             return reply.status(400).send({
               error: "INVALID_ANSWER",
               message: "Single select questions require exactly one selection",
+              questionId: question.id,
             });
           }
         }
@@ -215,6 +245,7 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
             return reply.status(400).send({
               error: "INVALID_ANSWER",
               message: `Multi select requires between ${min} and ${max} selections`,
+              questionId: question.id,
             });
           }
         }
@@ -223,6 +254,7 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
             return reply.status(400).send({
               error: "INVALID_ANSWER",
               message: "Rating questions require a numeric value",
+              questionId: question.id,
             });
           }
           const config = (question.config ?? {}) as Record<string, unknown>;
@@ -232,6 +264,7 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
             return reply.status(400).send({
               error: "INVALID_ANSWER",
               message: `Rating must be between ${min} and ${max}`,
+              questionId: question.id,
             });
           }
         }
@@ -244,74 +277,97 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
             return reply.status(400).send({
               error: "INVALID_ANSWER",
               message: `Free-text answer length must be between ${minChars} and ${maxChars} characters`,
+              questionId: question.id,
             });
           }
         }
       }
 
+      const startedAt = new Date(body.startedAt);
+      const completedAt = new Date();
+      // Wall-clock elapsed is server-derived so it cannot be inflated by the
+      // client. Clamp to 0 to absorb clock skew / future startedAt values.
+      const elapsedSeconds = Math.max(
+        0,
+        Math.round((completedAt.getTime() - startedAt.getTime()) / 1000)
+      );
+
       const { flagReasons, isFlagged } = runQualityChecks({
         questions,
         answers: body.answers,
         minTimePerQuestion: test.minTimePerQuestion,
+        elapsedSeconds,
+        requiredQuestionCount: requiredQuestionIds.length,
       });
 
       const pointsEarned = isFlagged ? 0 : test.rewardPoints;
-      const startedAt = new Date(body.startedAt);
-      const completedAt = new Date();
-      const totalTimeSeconds = body.answers.reduce(
-        (sum, answer) => sum + answer.timeSpentSeconds,
-        0
-      );
+      const totalTimeSeconds = elapsedSeconds;
 
       try {
-        const response = await app.prisma.$transaction(async (tx) => {
-          const created = await tx.testResponse.create({
-            data: {
-              testId,
-              userId,
-              isFlagged,
-              flagReasons,
-              pointsEarned,
-              startedAt,
-              completedAt,
-              totalTimeSeconds,
-              answers: {
-                create: body.answers.map((answer) => ({
-                  questionId: answer.questionId,
-                  selectedOptions: answer.selectedOptionIds ?? [],
-                  ratingValue: answer.ratingValue ?? null,
-                  textValue: answer.textValue ?? null,
-                  timeSpentSeconds: answer.timeSpentSeconds,
-                })),
+        const response = await app.prisma.$transaction(
+          async (tx) => {
+            await assertResponseCapAvailable(tx, testId, test.responseCap);
+
+            const created = await tx.testResponse.create({
+              data: {
+                testId,
+                userId,
+                isFlagged,
+                flagReasons,
+                pointsEarned,
+                startedAt,
+                completedAt,
+                totalTimeSeconds,
+                answers: {
+                  create: body.answers.map((answer) => ({
+                    questionId: answer.questionId,
+                    selectedOptions: answer.selectedOptionIds ?? [],
+                    ratingValue: answer.ratingValue ?? null,
+                    textValue: answer.textValue ?? null,
+                    timeSpentSeconds: answer.timeSpentSeconds,
+                  })),
+                },
               },
-            },
-          });
-
-          if (pointsEarned > 0) {
-            await tx.evaluatorProfile.update({
-              where: { userId },
-              data: { balance: { increment: pointsEarned } },
             });
-          }
 
-          return created;
-        });
+            if (pointsEarned > 0) {
+              await tx.evaluatorProfile.update({
+                where: { userId },
+                data: { balance: { increment: pointsEarned } },
+              });
+            }
+
+            return created;
+          },
+          { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+        );
 
         return reply.status(201).send({
           id: response.id,
           isFlagged: response.isFlagged,
-          flagReasons: response.flagReasons,
           pointsEarned: response.pointsEarned,
         });
       } catch (error) {
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === "P2002"
-        ) {
+        if (error instanceof ResponseCapReachedError) {
           return reply.status(409).send({
-            error: "ALREADY_SUBMITTED",
-            message: "You have already completed this test",
+            error: "RESPONSE_CAP_REACHED",
+            message: "This test has reached its response cap",
           });
+        }
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          if (error.code === "P2002") {
+            return reply.status(409).send({
+              error: "ALREADY_SUBMITTED",
+              message: "You have already completed this test",
+            });
+          }
+          // Serialization failure from the Serializable isolation level.
+          if (error.code === "P2034") {
+            return reply.status(409).send({
+              error: "CONCURRENT_SUBMISSION",
+              message: "Submission conflicted with another request, please retry",
+            });
+          }
         }
         throw error;
       }
