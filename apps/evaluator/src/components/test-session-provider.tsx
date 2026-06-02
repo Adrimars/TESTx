@@ -208,7 +208,15 @@ export function useTestSession() {
 
 export function isAnswered(question: TestQuestion, answer: AnswerState | undefined): boolean {
   if (!answer) return false;
-  if (question.type === "FREE_TEXT") return true;
+  const config = question.config as Record<string, unknown>;
+  if (question.type === "FREE_TEXT") {
+    const minChars = typeof config.minChars === "number" ? config.minChars : 0;
+    return answer.textValue.trim().length >= minChars;
+  }
   if (question.type === "RATING") return answer.ratingValue !== null;
-  return answer.selectedOptionIds.length > 0;
+  const minSelections =
+    question.type === "MULTI_SELECT" && typeof config.minSelections === "number"
+      ? config.minSelections
+      : 1;
+  return answer.selectedOptionIds.length >= minSelections;
 }
