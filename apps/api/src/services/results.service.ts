@@ -1,12 +1,21 @@
 import type { Prisma, PrismaClient } from "@testx/database";
-import type { QuestionType } from "@testx/shared";
+import { AGE_GROUPS, ageGroup, calculateAge, type QuestionType } from "@testx/shared";
 
-const resultsInclude = {
-  questions: {
-    where: { isAttentionCheck: false, isTrapDuplicate: false },
-    orderBy: { order: "asc" },
-    include: { options: { orderBy: { order: "asc" } } },
-  },
+const scoredQuestionInclude = {
+  where: { isAttentionCheck: false, isTrapDuplicate: false },
+  orderBy: { order: "asc" },
+  include: { options: { orderBy: { order: "asc" } } },
+} satisfies Prisma.Test$questionsArgs;
+
+// Overall results never touch evaluator profiles, so they are excluded here to
+// avoid loading users/profiles for every response.
+const overallInclude = {
+  questions: scoredQuestionInclude,
+  responses: { include: { answers: true } },
+} satisfies Prisma.TestInclude;
+
+const demographicInclude = {
+  questions: scoredQuestionInclude,
   responses: {
     include: {
       answers: true,
@@ -15,10 +24,11 @@ const resultsInclude = {
   },
 } satisfies Prisma.TestInclude;
 
-type TestWithResults = Prisma.TestGetPayload<{ include: typeof resultsInclude }>;
-type ResultQuestion = TestWithResults["questions"][number];
-type ResultResponse = TestWithResults["responses"][number];
-type ResultAnswer = ResultResponse["answers"][number];
+type OverallTest = Prisma.TestGetPayload<{ include: typeof overallInclude }>;
+type DemographicTest = Prisma.TestGetPayload<{ include: typeof demographicInclude }>;
+type ResultQuestion = OverallTest["questions"][number];
+type ResultAnswer = Prisma.AnswerGetPayload<Record<string, never>>;
+type DemographicResponse = DemographicTest["responses"][number];
 
 export type OptionAggregation = {
   optionId: string;
@@ -49,27 +59,8 @@ export type QuestionResult = {
 
 export type SegmentBy = "gender" | "ageGroup" | "country";
 
-const AGE_GROUPS = ["18-24", "25-34", "35-44", "45-54", "55+"] as const;
-
 function round(value: number): number {
   return Math.round(value * 10) / 10;
-}
-
-function calculateAge(dob: Date, reference: Date = new Date()): number {
-  let age = reference.getFullYear() - dob.getFullYear();
-  const monthDiff = reference.getMonth() - dob.getMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && reference.getDate() < dob.getDate())) {
-    age -= 1;
-  }
-  return age;
-}
-
-function ageGroup(age: number): string {
-  if (age <= 24) return "18-24";
-  if (age <= 34) return "25-34";
-  if (age <= 44) return "35-44";
-  if (age <= 54) return "45-54";
-  return "55+";
 }
 
 function aggregateQuestion(question: ResultQuestion, answers: ResultAnswer[]): QuestionResult {
@@ -82,10 +73,17 @@ function aggregateQuestion(question: ResultQuestion, answers: ResultAnswer[]): Q
   };
 
   if (question.type === "SINGLE_SELECT" || question.type === "MULTI_SELECT") {
-    const totalSelections = answers.reduce((sum, answer) => sum + answer.selectedOptions.length, 0);
+    const counts = new Map<string, number>();
+    let totalSelections = 0;
+    for (const answer of answers) {
+      for (const optionId of answer.selectedOptions) {
+        counts.set(optionId, (counts.get(optionId) ?? 0) + 1);
+        totalSelections += 1;
+      }
+    }
+    const denominator = question.type === "MULTI_SELECT" ? totalSelections : answers.length;
     base.options = question.options.map((option) => {
-      const count = answers.filter((answer) => answer.selectedOptions.includes(option.id)).length;
-      const denominator = question.type === "MULTI_SELECT" ? totalSelections : answers.length;
+      const count = counts.get(option.id) ?? 0;
       return {
         optionId: option.id,
         label: option.label,
@@ -111,10 +109,19 @@ function aggregateQuestion(question: ResultQuestion, answers: ResultAnswer[]): Q
       distribution.push({ value, count: values.filter((item) => item === value).length });
     }
 
+    let sum = 0;
+    let min: number | null = null;
+    let max: number | null = null;
+    for (const value of values) {
+      sum += value;
+      if (min === null || value < min) min = value;
+      if (max === null || value > max) max = value;
+    }
+
     base.rating = {
-      average: values.length > 0 ? round(values.reduce((sum, value) => sum + value, 0) / values.length) : null,
-      min: values.length > 0 ? Math.min(...values) : null,
-      max: values.length > 0 ? Math.max(...values) : null,
+      average: values.length > 0 ? round(sum / values.length) : null,
+      min,
+      max,
       distribution,
     };
     return base;
@@ -126,18 +133,24 @@ function aggregateQuestion(question: ResultQuestion, answers: ResultAnswer[]): Q
   return base;
 }
 
-function aggregateQuestions(questions: ResultQuestion[], responses: ResultResponse[]): QuestionResult[] {
-  const answers = responses.flatMap((response) => response.answers);
+function aggregateQuestions(
+  questions: ResultQuestion[],
+  responses: Array<{ answers: ResultAnswer[] }>
+): QuestionResult[] {
   const answersByQuestion = new Map<string, ResultAnswer[]>();
-  for (const answer of answers) {
-    const bucket = answersByQuestion.get(answer.questionId);
-    if (bucket) bucket.push(answer);
-    else answersByQuestion.set(answer.questionId, [answer]);
+  for (const response of responses) {
+    for (const answer of response.answers) {
+      const bucket = answersByQuestion.get(answer.questionId);
+      if (bucket) bucket.push(answer);
+      else answersByQuestion.set(answer.questionId, [answer]);
+    }
   }
-  return questions.map((question) => aggregateQuestion(question, answersByQuestion.get(question.id) ?? []));
+  return questions.map((question) =>
+    aggregateQuestion(question, answersByQuestion.get(question.id) ?? [])
+  );
 }
 
-function segmentLabel(response: ResultResponse, segmentBy: SegmentBy): string | null {
+function segmentLabel(response: DemographicResponse, segmentBy: SegmentBy): string | null {
   const profile = response.user.evaluatorProfile;
   if (!profile) return null;
   if (segmentBy === "gender") return profile.gender;
@@ -153,7 +166,7 @@ function orderedSegmentLabels(segmentBy: SegmentBy, present: Set<string>): strin
 }
 
 export async function getTestResults(prisma: PrismaClient, testId: string) {
-  const test = await prisma.test.findUnique({ where: { id: testId }, include: resultsInclude });
+  const test = await prisma.test.findUnique({ where: { id: testId }, include: overallInclude });
   if (!test) return null;
 
   const validResponses = test.responses.filter((response) => !response.isFlagged);
@@ -181,11 +194,11 @@ export async function getTestResultsByDemographic(
   testId: string,
   segmentBy: SegmentBy
 ) {
-  const test = await prisma.test.findUnique({ where: { id: testId }, include: resultsInclude });
+  const test = await prisma.test.findUnique({ where: { id: testId }, include: demographicInclude });
   if (!test) return null;
 
   const validResponses = test.responses.filter((response) => !response.isFlagged);
-  const grouped = new Map<string, ResultResponse[]>();
+  const grouped = new Map<string, DemographicResponse[]>();
   for (const response of validResponses) {
     const label = segmentLabel(response, segmentBy);
     if (!label) continue;
