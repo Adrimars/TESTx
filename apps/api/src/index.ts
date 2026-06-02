@@ -4,6 +4,7 @@ import multipart from "@fastify/multipart";
 import Fastify from "fastify";
 import { adminDashboardRoutes } from "./routes/admin/dashboard";
 import { adminMediaRoutes } from "./routes/admin/media";
+import { adminResultsRoutes } from "./routes/admin/results";
 import { adminTestsRoutes } from "./routes/admin/tests";
 import { adminUsersRoutes } from "./routes/admin/users";
 import { authRoutes } from "./routes/auth";
@@ -42,6 +43,7 @@ await app.register(evaluatorRoutes, { prefix: "/evaluator" });
 await app.register(publicMediaRoutes, { prefix: "/media" });
 await app.register(adminDashboardRoutes, { prefix: "/admin" });
 await app.register(adminTestsRoutes, { prefix: "/admin" });
+await app.register(adminResultsRoutes, { prefix: "/admin" });
 await app.register(adminMediaRoutes, { prefix: "/admin" });
 await app.register(adminUsersRoutes, { prefix: "/admin" });
 
