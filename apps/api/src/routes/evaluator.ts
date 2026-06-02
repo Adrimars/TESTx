@@ -128,12 +128,10 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
     if (!test) {
       return reply.send({ test: null });
     }
+    // Count every question (including attention/trap) so this matches the
+    // progress bar the evaluator sees and keeps hidden checks disguised.
     const questionCount = await app.prisma.question.count({
-      where: {
-        testId: test.id,
-        isAttentionCheck: false,
-        isTrapDuplicate: false,
-      },
+      where: { testId: test.id },
     });
     return reply.send({
       test: {
@@ -164,11 +162,9 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
       include: testTakingInclude,
     });
 
-    const visibleQuestionCount = test.questions.filter(
-      (question) => !question.isAttentionCheck && !question.isTrapDuplicate
-    ).length;
-
-    return reply.send(serializeTestForEvaluator(test, { questionCount: visibleQuestionCount }));
+    return reply.send(
+      serializeTestForEvaluator(test, { questionCount: test.questions.length })
+    );
   });
 
   app.post<{ Params: { id: string } }>(
