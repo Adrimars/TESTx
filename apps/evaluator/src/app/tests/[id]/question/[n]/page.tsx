@@ -55,6 +55,9 @@ export default function QuestionPage() {
 
   const isLast = questionNumber === totalQuestions;
   const canAdvance = question ? isAnswered(question, answer) : false;
+  const allAnswered = session
+    ? session.questions.every((q) => isAnswered(q, getAnswer(q.id)))
+    : false;
 
   const handleNext = useCallback(() => {
     if (!question || !testId) return;
@@ -65,6 +68,12 @@ export default function QuestionPage() {
       router.push(`/tests/${testId}/question/${questionNumber + 1}`);
     }
   }, [consumeTime, isLast, question, questionNumber, router, testId]);
+
+  const handleBackToReview = useCallback(() => {
+    if (!question || !testId) return;
+    consumeTime(question.id);
+    router.push(`/tests/${testId}/review`);
+  }, [consumeTime, question, router, testId]);
 
   const handlePrev = useCallback(() => {
     if (!question || !testId || questionNumber <= 1) return;
@@ -115,9 +124,16 @@ export default function QuestionPage() {
             >
               Previous
             </Button>
-            <Button disabled={!canAdvance} onClick={handleNext}>
-              {isLast ? "Review & Submit" : "Next"}
-            </Button>
+            <div className="flex items-center gap-3">
+              {allAnswered && !isLast && (
+                <Button variant="secondary" onClick={handleBackToReview}>
+                  Back to review
+                </Button>
+              )}
+              <Button disabled={!canAdvance} onClick={handleNext}>
+                {isLast ? "Review & Submit" : "Next"}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
