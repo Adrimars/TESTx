@@ -1,14 +1,16 @@
 import type { FastifyPluginAsync } from "fastify";
 import { authenticateUser } from "../../middleware/authenticate";
 import { requireRole } from "../../middleware/requireRole";
+import { parsePageParams } from "../../lib/pagination";
 
 const adminAuth = { preHandler: [authenticateUser, requireRole("ADMIN")] };
 
 export const adminUsersRoutes: FastifyPluginAsync = async (app) => {
   app.get("/users", adminAuth, async (request) => {
-    const { page, limit } = request.query as { page?: string; limit?: string };
-    const currentPage = Math.max(1, page ? Number(page) : 1);
-    const pageSize = Math.min(100, Math.max(1, limit ? Number(limit) : 25));
+    const { page, limit, skip, take } = parsePageParams(
+      request.query as { page?: string; limit?: string },
+      25
+    );
 
     const [users, total] = await Promise.all([
       app.prisma.user.findMany({
@@ -18,8 +20,8 @@ export const adminUsersRoutes: FastifyPluginAsync = async (app) => {
           _count: { select: { responses: true } },
         },
         orderBy: { createdAt: "desc" },
-        skip: (currentPage - 1) * pageSize,
-        take: pageSize,
+        skip,
+        take,
       }),
       app.prisma.user.count({ where: { role: "EVALUATOR" } }),
     ]);
@@ -34,8 +36,8 @@ export const adminUsersRoutes: FastifyPluginAsync = async (app) => {
         totalPoints: user.evaluatorProfile?.balance ?? 0,
       })),
       total,
-      page: currentPage,
-      limit: pageSize,
+      page,
+      limit,
     };
   });
 };
