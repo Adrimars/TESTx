@@ -81,7 +81,7 @@ async function main() {
             prompt: "How clear is the product presentation?",
             mediaType: "IMAGE",
             order: 2,
-            config: { min: 1, max: 5, minLabel: "Unclear", maxLabel: "Very clear" },
+            config: { min: 1, max: 10, minLabel: "Unclear", maxLabel: "Very clear" },
           },
         ],
       },
