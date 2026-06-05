@@ -23,8 +23,8 @@ const evaluatorAuth = { preHandler: [authenticateUser] };
 const EVALUATOR_CONFIG_KEYS = [
   "minSelections",
   "maxSelections",
-  "minValue",
-  "maxValue",
+  "min",
+  "max",
   "minLabel",
   "maxLabel",
   "minChars",

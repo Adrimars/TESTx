@@ -98,8 +98,8 @@ function aggregateQuestion(question: ResultQuestion, answers: ResultAnswer[]): Q
 
   if (question.type === "RATING") {
     const config = (question.config ?? {}) as Record<string, unknown>;
-    const scaleMin = typeof config.minValue === "number" ? config.minValue : 1;
-    const scaleMax = typeof config.maxValue === "number" ? config.maxValue : 5;
+    const scaleMin = typeof config.min === "number" ? config.min : 1;
+    const scaleMax = typeof config.max === "number" ? config.max : 5;
     const values = answers
       .map((answer) => answer.ratingValue)
       .filter((value): value is number => typeof value === "number");
