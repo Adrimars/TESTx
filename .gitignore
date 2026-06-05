@@ -11,6 +11,9 @@ build/
 out/
 *.tsbuildinfo
 
+# Next.js generated
+next-env.d.ts
+
 # Environment files
 .env
 .env.local

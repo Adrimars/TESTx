@@ -102,13 +102,12 @@ export function runQualityChecks({
 
   for (const question of questions) {
     if (!question.isAttentionCheck) continue;
-    const answer = getAnswer(answers, question.id);
     const expected = correctOptionFromConfig(question);
-    if (!answer || !expected) {
-      reasons.add("ATTENTION_CHECK_FAILED");
-      continue;
-    }
-    const selected = answer.selectedOptionIds ?? [];
+    // No configured correct answer => misconfigured check; skip rather than
+    // penalize every evaluator with an unavoidable failure.
+    if (!expected) continue;
+    const answer = getAnswer(answers, question.id);
+    const selected = answer?.selectedOptionIds ?? [];
     if (selected.length !== 1 || selected[0] !== expected) {
       reasons.add("ATTENTION_CHECK_FAILED");
     }

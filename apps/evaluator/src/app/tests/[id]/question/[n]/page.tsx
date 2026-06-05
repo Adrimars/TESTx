@@ -55,6 +55,9 @@ export default function QuestionPage() {
 
   const isLast = questionNumber === totalQuestions;
   const canAdvance = question ? isAnswered(question, answer) : false;
+  const allAnswered = session
+    ? session.questions.every((q) => isAnswered(q, getAnswer(q.id)))
+    : false;
 
   const handleNext = useCallback(() => {
     if (!question || !testId) return;
@@ -65,6 +68,12 @@ export default function QuestionPage() {
       router.push(`/tests/${testId}/question/${questionNumber + 1}`);
     }
   }, [consumeTime, isLast, question, questionNumber, router, testId]);
+
+  const handleBackToReview = useCallback(() => {
+    if (!question || !testId) return;
+    consumeTime(question.id);
+    router.push(`/tests/${testId}/review`);
+  }, [consumeTime, question, router, testId]);
 
   const handlePrev = useCallback(() => {
     if (!question || !testId || questionNumber <= 1) return;
@@ -115,9 +124,16 @@ export default function QuestionPage() {
             >
               Previous
             </Button>
-            <Button disabled={!canAdvance} onClick={handleNext}>
-              {isLast ? "Review & Submit" : "Next"}
-            </Button>
+            <div className="flex items-center gap-3">
+              {allAnswered && !isLast && (
+                <Button variant="secondary" onClick={handleBackToReview}>
+                  Back to review
+                </Button>
+              )}
+              <Button disabled={!canAdvance} onClick={handleNext}>
+                {isLast ? "Review & Submit" : "Next"}
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -176,8 +192,8 @@ function QuestionBody({ question, answer, onSelectOptions, onRating, onText }: Q
   }
   if (question.type === "RATING") {
     const config = question.config as Record<string, unknown>;
-    const minValue = typeof config.minValue === "number" ? (config.minValue as number) : 1;
-    const maxValue = typeof config.maxValue === "number" ? (config.maxValue as number) : 5;
+    const minValue = typeof config.min === "number" ? (config.min as number) : 1;
+    const maxValue = typeof config.max === "number" ? (config.max as number) : 5;
     const minLabel = typeof config.minLabel === "string" ? (config.minLabel as string) : null;
     const maxLabel = typeof config.maxLabel === "string" ? (config.maxLabel as string) : null;
     const values = Array.from({ length: maxValue - minValue + 1 }, (_, i) => minValue + i);

@@ -41,6 +41,10 @@ export default function ReviewPage() {
   }, [session, testId, router, result]);
 
   const visibleQuestions = useMemo(() => session?.questions ?? [], [session]);
+  const incompleteCount = useMemo(
+    () => visibleQuestions.filter((question) => !isAnswered(question, answers.get(question.id))).length,
+    [visibleQuestions, answers]
+  );
 
   const handleSubmit = useCallback(async () => {
     if (!session || !testId || !startedAt) return;
@@ -112,6 +116,12 @@ export default function ReviewPage() {
             );
           })}
 
+          {incompleteCount > 0 && (
+            <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+              {incompleteCount} question{incompleteCount > 1 ? "s" : ""} still need a valid answer before you can submit.
+            </p>
+          )}
+
           {errorMessage && (
             <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
               {errorMessage}
@@ -122,7 +132,7 @@ export default function ReviewPage() {
             <Button variant="ghost" onClick={() => router.push(`/tests/${testId}/question/1`)}>
               Back to questions
             </Button>
-            <Button onClick={handleSubmit} disabled={isSubmitting}>
+            <Button onClick={handleSubmit} disabled={isSubmitting || incompleteCount > 0}>
               {isSubmitting ? "Submitting..." : "Submit"}
             </Button>
           </div>
