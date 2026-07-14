@@ -4,7 +4,6 @@ import multipart from "@fastify/multipart";
 import Fastify from "fastify";
 import { adminDashboardRoutes } from "./routes/admin/dashboard";
 import { adminMediaRoutes } from "./routes/admin/media";
-import { adminTemplatesRoutes } from "./routes/admin/templates";
 import { adminTestsRoutes } from "./routes/admin/tests";
 import { adminUsersRoutes } from "./routes/admin/users";
 import { authRoutes } from "./routes/auth";
@@ -20,6 +19,8 @@ const app = Fastify({
 
 await app.register(cors, {
   credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type"],
   origin: [
     process.env.EVALUATOR_APP_URL ?? "http://localhost:3000",
     process.env.ADMIN_APP_URL ?? "http://localhost:3001",
@@ -43,7 +44,6 @@ await app.register(adminDashboardRoutes, { prefix: "/admin" });
 await app.register(adminTestsRoutes, { prefix: "/admin" });
 await app.register(adminMediaRoutes, { prefix: "/admin" });
 await app.register(adminUsersRoutes, { prefix: "/admin" });
-await app.register(adminTemplatesRoutes, { prefix: "/admin" });
 
 const host = process.env.API_HOST ?? "0.0.0.0";
 const port = Number(process.env.API_PORT ?? 4000);

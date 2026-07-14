@@ -27,8 +27,8 @@ export default function OnboardingPage() {
       });
       await refreshUser();
       router.push("/dashboard");
-    } catch {
-      setError("Failed to save profile. Please try again.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to save profile. Please try again.");
     } finally {
       setIsPending(false);
     }
