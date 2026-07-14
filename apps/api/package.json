@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch --env-file ../../.env src/index.ts",
+    "dev": "tsx watch --env-file=../../.env --exclude ../../node_modules --exclude ./uploads --exclude ./cache --exclude ../../**/.next --exclude ../../**/dist src/index.ts",
     "build": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit"
