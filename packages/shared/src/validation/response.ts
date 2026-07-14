@@ -3,17 +3,17 @@ import { z } from "zod";
 export const answerPayloadSchema = z
   .object({
     questionId: z.string().uuid(),
-    selectedOptionIds: z.array(z.string().uuid()).optional(),
+    selectedOptionIds: z.array(z.string().uuid()).max(50).optional(),
     ratingValue: z.number().int().optional(),
-    textValue: z.string().optional(),
-    timeSpentSeconds: z.number().int().min(0),
+    textValue: z.string().max(10000).optional(),
+    timeSpentSeconds: z.number().int().min(0).max(86_400),
   })
   .strict();
 
 export const testSubmissionSchema = z
   .object({
     startedAt: z.string().datetime(),
-    answers: z.array(answerPayloadSchema).min(1),
+    answers: z.array(answerPayloadSchema).min(1).max(300),
   })
   .strict();
 

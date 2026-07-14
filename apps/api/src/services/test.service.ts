@@ -1,14 +1,5 @@
-import type { PrismaClient, EvaluatorProfile, Test } from "@testx/database";
-import type { DemographicFilters } from "@testx/shared";
-
-function calculateAge(dob: Date, reference: Date = new Date()): number {
-  let age = reference.getFullYear() - dob.getFullYear();
-  const m = reference.getMonth() - dob.getMonth();
-  if (m < 0 || (m === 0 && reference.getDate() < dob.getDate())) {
-    age -= 1;
-  }
-  return age;
-}
+import type { PrismaClient, EvaluatorProfile, Test, Prisma } from "@testx/database";
+import { calculateAge, type DemographicFilters } from "@testx/shared";
 
 function isFilterObject(value: unknown): value is DemographicFilters {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -53,26 +44,34 @@ export async function findEligibleTestForEvaluator(
     })
   ).map((row) => row.testId);
 
-  const candidates = await prisma.test.findMany({
-    where: {
-      status: "ACTIVE",
-      id: respondedTestIds.length > 0 ? { notIn: respondedTestIds } : undefined,
-    },
-    include: { _count: { select: { responses: true } } },
-    orderBy: { createdAt: "asc" },
-  });
+  const where: Prisma.TestWhereInput = {
+    status: "ACTIVE",
+    id: respondedTestIds.length > 0 ? { notIn: respondedTestIds } : undefined,
+  };
 
-  for (const test of candidates) {
-    if (test.responseCap !== null && test._count.responses >= test.responseCap) {
-      continue;
+  const BATCH_SIZE = 50;
+  for (let skip = 0; ; skip += BATCH_SIZE) {
+    const candidates = await prisma.test.findMany({
+      where,
+      include: { _count: { select: { responses: true } } },
+      orderBy: { createdAt: "asc" },
+      skip,
+      take: BATCH_SIZE,
+    });
+    if (candidates.length === 0) return null;
+
+    for (const test of candidates) {
+      if (test.responseCap !== null && test._count.responses >= test.responseCap) {
+        continue;
+      }
+      if (!matchesDemographics(test.demographicFilters, profile)) {
+        continue;
+      }
+      return test;
     }
-    if (!matchesDemographics(test.demographicFilters, profile)) {
-      continue;
-    }
-    return test;
+
+    if (candidates.length < BATCH_SIZE) return null;
   }
-
-  return null;
 }
 
 export async function isEvaluatorEligibleForTest(

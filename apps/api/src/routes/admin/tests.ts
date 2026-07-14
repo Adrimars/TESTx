@@ -11,6 +11,7 @@ import {
 import { Prisma } from "@testx/database";
 import { authenticateUser } from "../../middleware/authenticate";
 import { requireRole } from "../../middleware/requireRole";
+import { parsePageParams } from "../../lib/pagination";
 
 const adminAuth = { preHandler: [authenticateUser, requireRole("ADMIN")] };
 
@@ -274,9 +275,11 @@ function inputJson(value: Record<string, unknown>): Prisma.InputJsonValue {
 
 export const adminTestsRoutes: FastifyPluginAsync = async (app) => {
   app.get("/tests", adminAuth, async (request) => {
-    const { page, limit, status } = request.query as { page?: string; limit?: string; status?: TestStatus };
-    const currentPage = Math.max(1, page ? Number(page) : 1);
-    const pageSize = Math.min(100, Math.max(1, limit ? Number(limit) : 50));
+    const { status } = request.query as { status?: TestStatus };
+    const { page, limit, skip, take } = parsePageParams(
+      request.query as { page?: string; limit?: string },
+      50
+    );
     const where: Prisma.TestWhereInput = {};
     if (status && ["DRAFT", "ACTIVE", "PAUSED", "CLOSED"].includes(status)) {
       where.status = status;
@@ -287,13 +290,13 @@ export const adminTestsRoutes: FastifyPluginAsync = async (app) => {
         where,
         include: testListInclude,
         orderBy: { createdAt: "desc" },
-        skip: (currentPage - 1) * pageSize,
-        take: pageSize,
+        skip,
+        take,
       }),
       app.prisma.test.count({ where }),
     ]);
 
-    return { items: items.map(serializeTestListItem), total, page: currentPage, limit: pageSize };
+    return { items: items.map(serializeTestListItem), total, page, limit };
   });
 
   app.post("/tests", adminAuth, async (request, reply) => {

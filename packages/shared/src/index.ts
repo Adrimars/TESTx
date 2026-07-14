@@ -1,3 +1,4 @@
+export * from "./age";
 export * from "./constants";
 export * from "./rewards";
 export * from "./types/media";
