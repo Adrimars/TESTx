@@ -1,6 +1,12 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+let refreshPromise: Promise<void> | null = null;
+
+async function tryRefresh(): Promise<void> {
+  await fetch(`${API_URL}/auth/refresh`, { method: "POST", credentials: "include" });
+}
+
+export async function apiFetch<T>(path: string, init?: RequestInit, _retry = true): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
     credentials: "include",
@@ -10,8 +16,18 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     },
   });
 
+  if (response.status === 401 && _retry) {
+    if (!refreshPromise) {
+      refreshPromise = tryRefresh().finally(() => {
+        refreshPromise = null;
+      });
+    }
+    await refreshPromise;
+    return apiFetch<T>(path, init, false);
+  }
+
   if (!response.ok) {
-    const body = await response.json().catch(() => null) as { message?: string } | null;
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
     throw new Error(body?.message ?? `API request failed with ${response.status}`);
   }
 
