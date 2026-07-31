@@ -49,14 +49,14 @@ export default function ReviewPage() {
   }));
 
   async function handleSubmit() {
-    if (!test || !state.startedAt) return;
+    if (!test || !state.sessionToken) return;
     setSubmitting(true);
     setError(null);
     try {
       const res = await apiFetch<SubmitResult>(`/evaluator/tests/${test.id}/submit`, {
         method: "POST",
         body: JSON.stringify({
-          startedAt: state.startedAt.toISOString(),
+          sessionToken: state.sessionToken,
           answers,
         }),
       });

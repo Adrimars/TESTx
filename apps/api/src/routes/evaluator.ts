@@ -4,11 +4,12 @@ import { evaluatorProfileSchema } from "@testx/shared";
 import { authenticateUser } from "../middleware/authenticate";
 import { requireRole } from "../middleware/requireRole";
 import { qualityService } from "../services/quality.service";
+import { signTestSessionToken, verifyTestSessionToken } from "../lib/jwt";
 
 const authEval = { preHandler: [authenticateUser, requireRole("EVALUATOR")] };
 
 const submitSchema = z.object({
-  startedAt: z.string().datetime(),
+  sessionToken: z.string().min(1),
   answers: z
     .array(
       z.object({
@@ -29,6 +30,28 @@ const questionInclude = {
   },
 } as const;
 
+/**
+ * Question config is admin-authored and holds the grading key for attention checks
+ * (`correctOptionLabel` / `correctOptionOrder`). Only the keys the renderer actually
+ * needs are forwarded — anything not listed here stays server-side.
+ */
+const PUBLIC_CONFIG_KEYS: Record<string, readonly string[]> = {
+  SINGLE_SELECT: [],
+  MULTI_SELECT: ["minSelections", "maxSelections"],
+  RATING: ["min", "max", "minLabel", "maxLabel"],
+  FREE_TEXT: ["minChars", "maxChars"],
+};
+
+function publicConfig(type: string, raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const config = raw as Record<string, unknown>;
+  const result: Record<string, unknown> = {};
+  for (const key of PUBLIC_CONFIG_KEYS[type] ?? []) {
+    if (config[key] !== undefined) result[key] = config[key];
+  }
+  return result;
+}
+
 function serializeQuestion(question: {
   id: string;
   testId: string;
@@ -37,9 +60,6 @@ function serializeQuestion(question: {
   mediaType: string | null;
   order: number;
   config: unknown;
-  isAttentionCheck: boolean;
-  isTrapDuplicate: boolean;
-  trapSourceId: string | null;
   options: {
     id: string;
     questionId: string;
@@ -62,10 +82,7 @@ function serializeQuestion(question: {
     prompt: question.prompt,
     mediaType: question.mediaType,
     order: question.order,
-    config: question.config,
-    isAttentionCheck: question.isAttentionCheck,
-    isTrapDuplicate: question.isTrapDuplicate,
-    trapSourceId: question.trapSourceId,
+    config: publicConfig(question.type, question.config),
     options: question.options.map((opt) => ({
       id: opt.id,
       questionId: opt.questionId,
@@ -164,11 +181,9 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
         advisoryTimeMin: test.advisoryTimeMin,
         rewardPoints: test.rewardPoints,
         minTimePerQuestion: test.minTimePerQuestion,
-        questionCount: (
-          await app.prisma.question.count({
-            where: { testId: test.id, isAttentionCheck: false, isTrapDuplicate: false },
-          })
-        ),
+        // Attention checks and trap duplicates are indistinguishable to the evaluator and
+        // are stepped through like any other question, so they are part of the count.
+        questionCount: await app.prisma.question.count({ where: { testId: test.id } }),
       });
     }
 
@@ -211,7 +226,13 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
       advisoryTimeMin: test.advisoryTimeMin,
       minTimePerQuestion: test.minTimePerQuestion,
       rewardPoints: test.rewardPoints,
+      questionCount: test.questions.length,
       questions: test.questions.map(serializeQuestion),
+      sessionToken: signTestSessionToken({
+        testId: test.id,
+        userId: request.user!.id,
+        startedAt: new Date().toISOString(),
+      }),
     });
   });
 
@@ -253,6 +274,22 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
     const body = submitSchema.parse(request.body);
     const { answers } = body;
 
+    let session;
+    try {
+      session = verifyTestSessionToken(body.sessionToken);
+    } catch {
+      return reply.status(400).send({
+        error: "INVALID_SESSION",
+        message: "Your test session is invalid or has expired. Please start the test again.",
+      });
+    }
+    if (session.testId !== test.id || session.userId !== userId) {
+      return reply.status(403).send({
+        error: "INVALID_SESSION",
+        message: "This session token does not belong to this test",
+      });
+    }
+
     // Validate all required questions are answered
     const requiredQuestions = test.questions.filter((q) => !q.isAttentionCheck && !q.isTrapDuplicate);
     const answeredIds = new Set(answers.map((a) => a.questionId));
@@ -264,8 +301,25 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
       });
     }
 
+    const startedAt = new Date(session.startedAt);
+    const completedAt = new Date();
+    const totalTimeSeconds = Math.max(
+      0,
+      Math.round((completedAt.getTime() - startedAt.getTime()) / 1000)
+    );
+
+    // Per-question times cannot be verified individually, but their sum can never
+    // legitimately exceed the server-measured session duration. Scale them down
+    // proportionally when it does, so a rushed session cannot claim slow answers.
+    const reportedTotal = answers.reduce((sum, a) => sum + a.timeSpentSeconds, 0);
+    const scale = reportedTotal > totalTimeSeconds ? totalTimeSeconds / reportedTotal : 1;
+    const timedAnswers = answers.map((a) => ({
+      ...a,
+      timeSpentSeconds: Math.floor(a.timeSpentSeconds * scale),
+    }));
+
     const { isFlagged, flagReasons } = qualityService.runChecks(
-      answers,
+      timedAnswers,
       test.questions.map((q) => ({
         id: q.id,
         type: q.type,
@@ -278,9 +332,6 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
       test.minTimePerQuestion
     );
 
-    const startedAt = new Date(body.startedAt);
-    const completedAt = new Date();
-    const totalTimeSeconds = Math.round((completedAt.getTime() - startedAt.getTime()) / 1000);
     const pointsEarned = isFlagged ? 0 : test.rewardPoints;
 
     await app.prisma.$transaction(async (tx) => {
@@ -295,7 +346,7 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
           completedAt,
           totalTimeSeconds,
           answers: {
-            create: answers.map((a) => ({
+            create: timedAnswers.map((a) => ({
               questionId: a.questionId,
               selectedOptions: a.selectedOptionIds ?? [],
               ratingValue: a.ratingValue ?? null,

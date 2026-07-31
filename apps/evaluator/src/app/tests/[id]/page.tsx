@@ -60,10 +60,6 @@ export default function TestIntroPage() {
     );
   }
 
-  const visibleQuestionCount = test.questions.filter(
-    (q) => !q.isAttentionCheck && !q.isTrapDuplicate
-  ).length;
-
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <Card>
@@ -74,7 +70,7 @@ export default function TestIntroPage() {
         <CardContent className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="rounded-lg border border-border bg-card p-4 text-center">
-              <p className="text-2xl font-bold">{visibleQuestionCount}</p>
+              <p className="text-2xl font-bold">{test.questionCount}</p>
               <p className="text-sm text-muted-foreground">Questions</p>
             </div>
             <div className="rounded-lg border border-border bg-card p-4 text-center">

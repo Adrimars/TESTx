@@ -15,9 +15,6 @@ export type Question = {
   mediaType: string | null;
   order: number;
   config: Record<string, unknown>;
-  isAttentionCheck: boolean;
-  isTrapDuplicate: boolean;
-  trapSourceId: string | null;
   options: QuestionOption[];
 };
 
@@ -29,7 +26,10 @@ export type TestDetail = {
   advisoryTimeMin: number | null;
   minTimePerQuestion: number;
   rewardPoints: number;
+  questionCount: number;
   questions: Question[];
+  /** Opaque, server-signed. Carries the session start time; returned on submit. */
+  sessionToken: string;
 };
 
 export type NextTest = {

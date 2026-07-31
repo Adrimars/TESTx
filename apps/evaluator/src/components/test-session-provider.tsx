@@ -6,7 +6,8 @@ import type { AnswerData, TestDetail } from "@/lib/test-types";
 type TestSessionState = {
   test: TestDetail | null;
   answers: Map<string, AnswerData>;
-  startedAt: Date | null;
+  /** Server-signed token holding the authoritative session start time. */
+  sessionToken: string | null;
   questionTimers: Map<string, number>; // accumulated seconds per question
 };
 
@@ -32,7 +33,7 @@ export function TestSessionProvider({ children }: { children: React.ReactNode })
   const [state, setState] = useState<TestSessionState>({
     test: null,
     answers: new Map(),
-    startedAt: null,
+    sessionToken: null,
     questionTimers: new Map(),
   });
 
@@ -40,7 +41,7 @@ export function TestSessionProvider({ children }: { children: React.ReactNode })
     setState({
       test,
       answers: new Map(),
-      startedAt: new Date(),
+      sessionToken: test.sessionToken,
       questionTimers: new Map(),
     });
   }, []);
@@ -72,7 +73,7 @@ export function TestSessionProvider({ children }: { children: React.ReactNode })
   );
 
   const resetSession = useCallback(() => {
-    setState({ test: null, answers: new Map(), startedAt: null, questionTimers: new Map() });
+    setState({ test: null, answers: new Map(), sessionToken: null, questionTimers: new Map() });
   }, []);
 
   return (
