@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { evaluatorProfileSchema } from "@testx/shared";
+import { calculateAge, evaluatorProfileSchema } from "@testx/shared";
 import { authenticateUser } from "../middleware/authenticate";
 import { requireRole } from "../middleware/requireRole";
 import { qualityService } from "../services/quality.service";
@@ -94,14 +94,6 @@ function serializeQuestion(question: {
   };
 }
 
-function calculateAge(dateOfBirth: Date): number {
-  const today = new Date();
-  let age = today.getFullYear() - dateOfBirth.getFullYear();
-  const m = today.getMonth() - dateOfBirth.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < dateOfBirth.getDate())) age--;
-  return age;
-}
-
 function matchesDemographics(
   profile: { dateOfBirth: Date; gender: string; country: string; city: string | null },
   filters: unknown
@@ -119,8 +111,9 @@ function matchesDemographics(
   if (Array.isArray(f.countries) && f.countries.length > 0) {
     if (!f.countries.includes(profile.country)) return false;
   }
-  if (Array.isArray(f.cities) && f.cities.length > 0 && profile.city) {
-    if (!f.cities.includes(profile.city)) return false;
+  // Fail closed: a filtered city the evaluator hasn't set is a non-match, not a pass.
+  if (Array.isArray(f.cities) && f.cities.length > 0) {
+    if (!profile.city || !f.cities.includes(profile.city)) return false;
   }
 
   return true;
@@ -318,7 +311,7 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
       timeSpentSeconds: Math.floor(a.timeSpentSeconds * scale),
     }));
 
-    const { isFlagged, flagReasons } = qualityService.runChecks(
+    const { isFlagged, flagReasons, warnings } = qualityService.runChecks(
       timedAnswers,
       test.questions.map((q) => ({
         id: q.id,
@@ -331,6 +324,10 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
       })),
       test.minTimePerQuestion
     );
+
+    for (const warning of warnings) {
+      app.log.warn({ testId: test.id }, warning);
+    }
 
     const pointsEarned = isFlagged ? 0 : test.rewardPoints;
 

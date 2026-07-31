@@ -13,6 +13,8 @@ type QuestionRow = {
 type QualityResult = {
   isFlagged: boolean;
   flagReasons: string[];
+  /** Misconfigurations that silently disabled a check. Logged by the caller. */
+  warnings: string[];
 };
 
 function getConfig(raw: unknown): Record<string, unknown> {
@@ -29,6 +31,7 @@ export const qualityService = {
     minTimePerQuestion: number
   ): QualityResult {
     const flagReasons: string[] = [];
+    const warnings: string[] = [];
 
     // Speed check: any answer below minTimePerQuestion threshold
     if (minTimePerQuestion > 0) {
@@ -62,6 +65,12 @@ export const qualityService = {
               flagReasons.push("ATTENTION_CHECK_FAILED");
             }
           }
+        } else {
+          warnings.push(
+            `Attention check ${question.id} has no option matching its configured correct answer ` +
+              `(correctOptionLabel=${JSON.stringify(correctLabel)}, correctOptionOrder=${correctOrder}); ` +
+              `check skipped`
+          );
         }
       }
 
@@ -79,7 +88,7 @@ export const qualityService = {
           // We'll use the option orders to compare since labels/media are the same
           const trapSelectedOrders = (answer.selectedOptionIds ?? [])
             .map((id) => trapOptionOrderMap.get(id))
-            .filter(Boolean)
+            .filter((order) => order !== undefined)
             .sort()
             .join(",");
 
@@ -95,7 +104,7 @@ export const qualityService = {
             const sourceOptionOrderMap = new Map(sourceQuestion.options.map((o) => [o.id, o.order]));
             const sourceSelectedOrders = (sourceAnswer.selectedOptionIds ?? [])
               .map((id) => sourceOptionOrderMap.get(id))
-              .filter(Boolean)
+              .filter((order) => order !== undefined)
               .sort()
               .join(",");
 
@@ -116,6 +125,6 @@ export const qualityService = {
       }
     }
 
-    return { isFlagged: flagReasons.length > 0, flagReasons };
+    return { isFlagged: flagReasons.length > 0, flagReasons, warnings };
   },
 };

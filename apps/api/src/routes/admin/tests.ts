@@ -3,6 +3,7 @@ import type { MediaType, QuestionInput, QuestionType, TestStatus } from "@testx/
 import {
   calculateTestReward,
   createTestSchema,
+  getAgeGroup,
   questionSchema,
   reorderQuestionsSchema,
   updateTestSchema,
@@ -677,15 +678,6 @@ export const adminTestsRoutes: FastifyPluginAsync = async (app) => {
         orderBy: { order: "asc" },
         include: { options: { orderBy: { order: "asc" } } },
       });
-
-      function getAgeGroup(dob: Date): string {
-        const age = new Date().getFullYear() - dob.getFullYear();
-        if (age < 25) return "18-24";
-        if (age < 35) return "25-34";
-        if (age < 45) return "35-44";
-        if (age < 55) return "45-54";
-        return "55+";
-      }
 
       function getSegmentLabel(r: typeof responses[number]): string | null {
         const profile = r.user.evaluatorProfile;
