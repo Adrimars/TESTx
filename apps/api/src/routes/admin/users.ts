@@ -1,14 +1,18 @@
 import type { FastifyPluginAsync } from "fastify";
+import { z } from "zod";
 import { authenticateUser } from "../../middleware/authenticate";
 import { requireRole } from "../../middleware/requireRole";
 
 const adminAuth = { preHandler: [authenticateUser, requireRole("ADMIN")] };
 
+const listUsersQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+
 export const adminUsersRoutes: FastifyPluginAsync = async (app) => {
   app.get("/users", adminAuth, async (request) => {
-    const { page, limit } = request.query as { page?: string; limit?: string };
-    const currentPage = Math.max(1, page ? Number(page) : 1);
-    const pageSize = Math.min(100, Math.max(1, limit ? Number(limit) : 50));
+    const { page: currentPage, limit: pageSize } = listUsersQuerySchema.parse(request.query);
 
     const [users, total] = await Promise.all([
       app.prisma.user.findMany({
