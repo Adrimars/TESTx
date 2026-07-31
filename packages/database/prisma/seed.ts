@@ -1,20 +1,97 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import zlib from "node:zlib";
+import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
-const PLACEHOLDER_IMAGES = [
-  "https://picsum.photos/seed/product-a/400/300",
-  "https://picsum.photos/seed/product-b/400/300",
-  "https://picsum.photos/seed/product-c/400/300",
-  "https://picsum.photos/seed/product-d/400/300",
-  "https://picsum.photos/seed/product-e/400/300",
-  "https://picsum.photos/seed/product-f/400/300",
-  "https://picsum.photos/seed/lifestyle-1/400/300",
-  "https://picsum.photos/seed/lifestyle-2/400/300",
-  "https://picsum.photos/seed/lifestyle-3/400/300",
-  "https://picsum.photos/seed/packaging-1/400/300",
+// Distinct hues so the seeded images are visually tellable apart in preference tests.
+const PLACEHOLDER_COLORS: [number, number, number][] = [
+  [214, 87, 74],
+  [232, 149, 62],
+  [226, 195, 74],
+  [116, 176, 92],
+  [74, 160, 168],
+  [80, 122, 200],
+  [124, 96, 190],
+  [196, 92, 158],
+  [140, 122, 106],
+  [96, 106, 122],
 ];
+
+const IMAGE_WIDTH = 400;
+const IMAGE_HEIGHT = 300;
+
+/**
+ * The seed runs from packages/database, the API from apps/api, so a relative UPLOAD_DIR
+ * would resolve differently in each. Anchor it to the repo root; Media.sourceUrl stores
+ * the absolute path anyway, which is what serveMedia() reads.
+ */
+function getSeedUploadDir(): string {
+  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+  return path.resolve(repoRoot, process.env.UPLOAD_DIR ?? "./uploads", "seed");
+}
+
+function pngChunk(type: string, data: Buffer): Buffer {
+  const length = Buffer.alloc(4);
+  length.writeUInt32BE(data.length);
+  const typeAndData = Buffer.concat([Buffer.from(type, "ascii"), data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(zlib.crc32(typeAndData));
+  return Buffer.concat([length, typeAndData, crc]);
+}
+
+/** Minimal truecolour PNG encoder — avoids pulling an image library into the seed. */
+function encodePng(width: number, height: number, pixel: (x: number, y: number) => [number, number, number]): Buffer {
+  const raw = Buffer.alloc(height * (1 + width * 3));
+  let offset = 0;
+  for (let y = 0; y < height; y++) {
+    raw[offset++] = 0; // filter type: none
+    for (let x = 0; x < width; x++) {
+      const [r, g, b] = pixel(x, y);
+      raw[offset++] = r;
+      raw[offset++] = g;
+      raw[offset++] = b;
+    }
+  }
+
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // colour type: truecolour
+  ihdr[10] = 0; // compression
+  ihdr[11] = 0; // filter
+  ihdr[12] = 0; // interlace
+
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", zlib.deflateSync(raw)),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+/** Writes a placeholder image and returns its absolute path and byte size. */
+async function writePlaceholderImage(
+  dir: string,
+  fileName: string,
+  [r, g, b]: [number, number, number]
+): Promise<{ filePath: string; fileSize: number }> {
+  const png = encodePng(IMAGE_WIDTH, IMAGE_HEIGHT, (x, y) => {
+    // Soft diagonal gradient plus a lighter band, enough to look like distinct artwork.
+    const t = (x / IMAGE_WIDTH + y / IMAGE_HEIGHT) / 2;
+    const band = y > IMAGE_HEIGHT * 0.7 ? 40 : 0;
+    const shade = (c: number) => Math.max(0, Math.min(255, Math.round(c * (0.65 + t * 0.5) + band)));
+    return [shade(r), shade(g), shade(b)];
+  });
+
+  const filePath = path.join(dir, fileName);
+  await fs.writeFile(filePath, png);
+  return { filePath, fileSize: png.length };
+}
 
 async function main() {
   const passwordHash = await bcrypt.hash("Password123!", 10);
@@ -41,36 +118,47 @@ async function main() {
   ];
 
   const mediaNames = [
-    "product-a.jpg",
-    "product-b.jpg",
-    "product-c.jpg",
-    "product-d.jpg",
-    "product-e.jpg",
-    "product-f.jpg",
-    "lifestyle-1.jpg",
-    "lifestyle-2.jpg",
-    "lifestyle-3.jpg",
-    "packaging-1.jpg",
+    "product-a.png",
+    "product-b.png",
+    "product-c.png",
+    "product-d.png",
+    "product-e.png",
+    "product-f.png",
+    "lifestyle-1.png",
+    "lifestyle-2.png",
+    "lifestyle-3.png",
+    "packaging-1.png",
   ];
 
+  // Written to disk as real UPLOAD-backed files so /media/:id/file serves them without
+  // Google Drive credentials or network access.
+  const uploadDir = getSeedUploadDir();
+  await fs.mkdir(uploadDir, { recursive: true });
+
   const medias = await Promise.all(
-    mediaIds.map((id, i) =>
-      prisma.media.upsert({
+    mediaIds.map(async (id, i) => {
+      const { filePath, fileSize } = await writePlaceholderImage(
+        uploadDir,
+        mediaNames[i]!,
+        PLACEHOLDER_COLORS[i] ?? PLACEHOLDER_COLORS[0]!
+      );
+
+      return prisma.media.upsert({
         where: { id },
-        update: {},
+        update: { sourceType: "UPLOAD", sourceUrl: filePath, mimeType: "image/png", fileSize },
         create: {
           id,
           fileName: mediaNames[i]!,
           fileType: "IMAGE",
-          mimeType: "image/jpeg",
-          fileSize: 102400 + i * 10000,
-          sourceType: "GOOGLE_DRIVE",
-          sourceUrl: PLACEHOLDER_IMAGES[i] ?? PLACEHOLDER_IMAGES[0]!,
-          thumbnailUrl: PLACEHOLDER_IMAGES[i] ?? PLACEHOLDER_IMAGES[0]!,
+          mimeType: "image/png",
+          fileSize,
+          sourceType: "UPLOAD",
+          sourceUrl: filePath,
+          thumbnailUrl: `/media/${id}/file`,
           tags: ["sample", i < 6 ? "product" : "lifestyle"],
         },
-      })
-    )
+      });
+    })
   );
 
   // ── Sample evaluator accounts ────────────────────────────────────────────
