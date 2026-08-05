@@ -1,5 +1,12 @@
 import type { AnswerPayload } from "@testx/shared";
 
+type QuestionOptionRow = {
+  id: string;
+  order: number;
+  label: string | null;
+  mediaId: string | null;
+};
+
 type QuestionRow = {
   id: string;
   type: string;
@@ -7,7 +14,15 @@ type QuestionRow = {
   isTrapDuplicate: boolean;
   trapSourceId: string | null;
   config: unknown;
-  options: { id: string; order: number; label: string | null }[];
+  options: QuestionOptionRow[];
+};
+
+type QualityInput = {
+  answers: AnswerPayload[];
+  questions: QuestionRow[];
+  minTimePerQuestion: number;
+  /** Server-measured wall-clock duration of the session, from the signed session token. */
+  sessionSeconds: number;
 };
 
 type QualityResult = {
@@ -17,6 +32,17 @@ type QualityResult = {
   warnings: string[];
 };
 
+/** Only option-based answers can be compared for consistency; see the trap check below. */
+const COMPARABLE_TRAP_TYPES = new Set(["SINGLE_SELECT", "MULTI_SELECT"]);
+
+/**
+ * A session may legitimately run longer than the work it contains — an evaluator gets
+ * interrupted and comes back. Beyond this much unaccounted idle time we stop believing the
+ * self-reported per-question timings, because at that point the reported work is a small
+ * slice of a window the server cannot vouch for.
+ */
+const IDLE_GRACE_SECONDS = 15 * 60;
+
 function getConfig(raw: unknown): Record<string, unknown> {
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     return raw as Record<string, unknown>;
@@ -24,19 +50,55 @@ function getConfig(raw: unknown): Record<string, unknown> {
   return {};
 }
 
+/**
+ * Identifies an option by what it *is*, not where it sits. A trap duplicate is a separate
+ * question with its own option rows, so IDs never match between the two; positions do not
+ * match either once the options are reordered, which is the entire point of asking twice.
+ * Label is the identity an evaluator actually sees; media-only options fall back to the
+ * image they show.
+ */
+function optionKey(option: QuestionOptionRow): string {
+  const label = option.label?.trim().toLowerCase();
+  if (label) return `label:${label}`;
+  if (option.mediaId) return `media:${option.mediaId}`;
+  return `order:${option.order}`;
+}
+
+function selectionKey(selectedIds: string[], options: QuestionOptionRow[]): string {
+  const byId = new Map(options.map((option) => [option.id, option]));
+  return selectedIds
+    .map((id) => byId.get(id))
+    .filter((option): option is QuestionOptionRow => option !== undefined)
+    .map(optionKey)
+    .sort()
+    .join(",");
+}
+
+function sameOptionSet(a: QuestionOptionRow[], b: QuestionOptionRow[]): boolean {
+  const keysA = new Set(a.map(optionKey));
+  const keysB = new Set(b.map(optionKey));
+  return keysA.size === keysB.size && [...keysA].every((key) => keysB.has(key));
+}
+
 export const qualityService = {
-  runChecks(
-    answers: AnswerPayload[],
-    questions: QuestionRow[],
-    minTimePerQuestion: number
-  ): QualityResult {
-    const flagReasons: string[] = [];
+  runChecks({ answers, questions, minTimePerQuestion, sessionSeconds }: QualityInput): QualityResult {
+    const flagReasons = new Set<string>();
     const warnings: string[] = [];
 
     // Speed check: any answer below minTimePerQuestion threshold
     if (minTimePerQuestion > 0) {
       const tooFast = answers.some((a) => a.timeSpentSeconds < minTimePerQuestion);
-      if (tooFast) flagReasons.push("SPEED_TOO_FAST");
+      if (tooFast) flagReasons.add("SPEED_TOO_FAST");
+    }
+
+    // Idle check: the caller has already capped reported times so their sum cannot exceed the
+    // session, but that bound is one-sided — it does nothing about a session held open for
+    // hours and then answered in seconds. Unaccounted idle time is the signal for that.
+    const creditedSeconds = answers.reduce((sum, a) => sum + a.timeSpentSeconds, 0);
+    const idleSeconds = sessionSeconds - creditedSeconds;
+    const idleAllowance = Math.max(minTimePerQuestion * questions.length, IDLE_GRACE_SECONDS);
+    if (idleSeconds > idleAllowance) {
+      flagReasons.add("TIMING_UNVERIFIED");
     }
 
     const answerMap = new Map(answers.map((a) => [a.questionId, a]));
@@ -51,7 +113,6 @@ export const qualityService = {
         const correctLabel = config.correctOptionLabel as string | undefined;
         const correctOrder = config.correctOptionOrder as number | undefined;
 
-        // Find the correct option
         const correctOption = question.options.find((opt) => {
           if (correctLabel && opt.label === correctLabel) return true;
           if (correctOrder !== undefined && opt.order === correctOrder) return true;
@@ -61,9 +122,7 @@ export const qualityService = {
         if (correctOption) {
           const selected = answer.selectedOptionIds ?? [];
           if (!selected.includes(correctOption.id)) {
-            if (!flagReasons.includes("ATTENTION_CHECK_FAILED")) {
-              flagReasons.push("ATTENTION_CHECK_FAILED");
-            }
+            flagReasons.add("ATTENTION_CHECK_FAILED");
           }
         } else {
           warnings.push(
@@ -74,57 +133,45 @@ export const qualityService = {
         }
       }
 
-      // Consistency check: trap duplicate must match original question's answer
+      // Consistency check: the trap duplicate asks the same thing again, so the same choice
+      // must come back — compared by option identity, since the trap's options are expected
+      // to be in a different order.
       if (question.isTrapDuplicate && question.trapSourceId) {
+        const sourceQuestion = questions.find((q) => q.id === question.trapSourceId);
         const sourceAnswer = answerMap.get(question.trapSourceId);
-        if (sourceAnswer) {
-          const trapSelected = [...(answer.selectedOptionIds ?? [])].sort().join(",");
 
-          // Map trap question option orders to source question option orders for comparison
-          // Both questions share the same option structure (duplicated), so compare by matching order
-          const trapOptionOrderMap = new Map(question.options.map((o) => [o.id, o.order]));
-
-          // Find the source question to map option order → option id
-          // We'll use the option orders to compare since labels/media are the same
-          const trapSelectedOrders = (answer.selectedOptionIds ?? [])
-            .map((id) => trapOptionOrderMap.get(id))
-            .filter((order) => order !== undefined)
-            .sort()
-            .join(",");
-
-          // We need source question's options to map id → order
-          // The source question is not in this list directly, so we compare via the answer's selectedOptionIds
-          // by translating both to option orders
-          // For the source answer, we need source question options — but we only have the trap question here.
-          // Strategy: compare raw selectedOptionIds but normalize using option order mapping.
-          // Since the trap is a duplicate, options share the same order sequence.
-          // Get source question options from the questions array
-          const sourceQuestion = questions.find((q) => q.id === question.trapSourceId);
-          if (sourceQuestion) {
-            const sourceOptionOrderMap = new Map(sourceQuestion.options.map((o) => [o.id, o.order]));
-            const sourceSelectedOrders = (sourceAnswer.selectedOptionIds ?? [])
-              .map((id) => sourceOptionOrderMap.get(id))
-              .filter((order) => order !== undefined)
-              .sort()
-              .join(",");
-
-            if (trapSelectedOrders !== sourceSelectedOrders) {
-              if (!flagReasons.includes("CONSISTENCY_FAILED")) {
-                flagReasons.push("CONSISTENCY_FAILED");
-              }
-            }
-          } else {
-            // Fallback: direct ID comparison (same question options not duplicated)
-            if (trapSelected !== [...(sourceAnswer.selectedOptionIds ?? [])].sort().join(",")) {
-              if (!flagReasons.includes("CONSISTENCY_FAILED")) {
-                flagReasons.push("CONSISTENCY_FAILED");
-              }
-            }
+        if (!sourceQuestion || !sourceAnswer) {
+          warnings.push(
+            `Trap duplicate ${question.id} has no answered source question ${question.trapSourceId}; check skipped`
+          );
+        } else if (!COMPARABLE_TRAP_TYPES.has(question.type)) {
+          warnings.push(
+            `Trap duplicate ${question.id} is a ${question.type} question; only select questions ` +
+              `can be compared for consistency, check skipped`
+          );
+        } else if (!sameOptionSet(question.options, sourceQuestion.options)) {
+          // Not a real duplicate — comparing them would flag an evaluator for the author's mistake.
+          warnings.push(
+            `Trap duplicate ${question.id} does not offer the same options as its source ` +
+              `${sourceQuestion.id}; check skipped`
+          );
+        } else {
+          const trapSelection = selectionKey(answer.selectedOptionIds ?? [], question.options);
+          const sourceSelection = selectionKey(
+            sourceAnswer.selectedOptionIds ?? [],
+            sourceQuestion.options
+          );
+          if (trapSelection !== sourceSelection) {
+            flagReasons.add("CONSISTENCY_FAILED");
           }
         }
       }
     }
 
-    return { isFlagged: flagReasons.length > 0, flagReasons, warnings };
+    return {
+      isFlagged: flagReasons.size > 0,
+      flagReasons: Array.from(flagReasons),
+      warnings,
+    };
   },
 };

@@ -433,19 +433,25 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
       timeSpentSeconds: Math.floor(a.timeSpentSeconds * scale),
     }));
 
-    const { isFlagged, flagReasons, warnings } = qualityService.runChecks(
-      timedAnswers,
-      test.questions.map((q) => ({
+    const { isFlagged, flagReasons, warnings } = qualityService.runChecks({
+      answers: timedAnswers,
+      questions: test.questions.map((q) => ({
         id: q.id,
         type: q.type,
         isAttentionCheck: q.isAttentionCheck,
         isTrapDuplicate: q.isTrapDuplicate,
         trapSourceId: q.trapSourceId,
         config: q.config,
-        options: q.options.map((o) => ({ id: o.id, order: o.order, label: o.label })),
+        options: q.options.map((o) => ({
+          id: o.id,
+          order: o.order,
+          label: o.label,
+          mediaId: o.mediaId,
+        })),
       })),
-      test.minTimePerQuestion
-    );
+      minTimePerQuestion: test.minTimePerQuestion,
+      sessionSeconds: totalTimeSeconds,
+    });
 
     for (const warning of warnings) {
       app.log.warn({ testId: test.id }, warning);
