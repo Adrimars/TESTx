@@ -1,6 +1,12 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { calculateAge, evaluatorProfileSchema } from "@testx/shared";
+import {
+  calculateAge,
+  DEFAULT_FREE_TEXT_MAX_CHARS,
+  DEFAULT_RATING_MAX,
+  DEFAULT_RATING_MIN,
+  evaluatorProfileSchema,
+} from "@testx/shared";
 import { authenticateUser } from "../middleware/authenticate";
 import { requireRole } from "../middleware/requireRole";
 import { qualityService } from "../services/quality.service";
@@ -16,6 +22,7 @@ const submitSchema = z.object({
         questionId: z.string().uuid(),
         selectedOptionIds: z.array(z.string().uuid()).optional().default([]),
         ratingValue: z.number().int().optional(),
+        // Length is bounded per-question in validateAnswers, which knows the question's maxChars.
         textValue: z.string().optional(),
         timeSpentSeconds: z.number().int().min(0),
       })
@@ -42,14 +49,123 @@ const PUBLIC_CONFIG_KEYS: Record<string, readonly string[]> = {
   FREE_TEXT: ["minChars", "maxChars"],
 };
 
-function publicConfig(type: string, raw: unknown): Record<string, unknown> {
+function toConfig(raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const config = raw as Record<string, unknown>;
+  return raw as Record<string, unknown>;
+}
+
+function numberOr(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function publicConfig(type: string, raw: unknown): Record<string, unknown> {
+  const config = toConfig(raw);
   const result: Record<string, unknown> = {};
   for (const key of PUBLIC_CONFIG_KEYS[type] ?? []) {
     if (config[key] !== undefined) result[key] = config[key];
   }
   return result;
+}
+
+type SubmittedAnswer = z.infer<typeof submitSchema>["answers"][number];
+
+type ValidatedAnswer = {
+  questionId: string;
+  selectedOptionIds: string[];
+  ratingValue?: number;
+  textValue?: string;
+  timeSpentSeconds: number;
+};
+
+type QuestionForValidation = {
+  id: string;
+  type: string;
+  config: unknown;
+  options: { id: string }[];
+};
+
+/**
+ * Rejects what an honest client cannot produce — an answer to a question outside this test,
+ * two answers to the same question, an option belonging to a different question, more
+ * selections than the type allows, an out-of-range rating, text past the question's maxChars.
+ *
+ * Under-filled answers (nothing selected, empty text, no rating) are deliberately *not*
+ * rejected: they are reachable by an honest evaluator and are the quality service's call to
+ * make, not a reason to throw away a completed test at the last step.
+ *
+ * Returned answers are normalised to their question type, so a value that does not apply
+ * (text on a rating question, options on a free-text one) can never reach the database.
+ */
+function validateAnswers(
+  submitted: SubmittedAnswer[],
+  questions: QuestionForValidation[]
+): { answers: ValidatedAnswer[] } | { message: string } {
+  const byId = new Map(questions.map((q) => [q.id, q]));
+  const seen = new Set<string>();
+  const answers: ValidatedAnswer[] = [];
+
+  for (const submittedAnswer of submitted) {
+    const { questionId, timeSpentSeconds } = submittedAnswer;
+    const question = byId.get(questionId);
+    if (!question) {
+      return { message: `Question ${questionId} does not belong to this test` };
+    }
+    if (seen.has(questionId)) {
+      return { message: `Question ${questionId} was answered more than once` };
+    }
+    seen.add(questionId);
+
+    const config = toConfig(question.config);
+    const selected = submittedAnswer.selectedOptionIds ?? [];
+    const optionIds = new Set(question.options.map((o) => o.id));
+    for (const optionId of selected) {
+      if (!optionIds.has(optionId)) {
+        return { message: `Option ${optionId} does not belong to question ${questionId}` };
+      }
+    }
+    if (new Set(selected).size !== selected.length) {
+      return { message: `Question ${questionId} has the same option selected twice` };
+    }
+
+    const base = { questionId, timeSpentSeconds };
+
+    if (question.type === "SINGLE_SELECT") {
+      if (selected.length > 1) {
+        return { message: `Question ${questionId} accepts a single option` };
+      }
+      answers.push({ ...base, selectedOptionIds: selected });
+      continue;
+    }
+
+    if (question.type === "MULTI_SELECT") {
+      const maxSelections = numberOr(config.maxSelections, question.options.length);
+      if (selected.length > maxSelections) {
+        return { message: `Question ${questionId} accepts at most ${maxSelections} options` };
+      }
+      answers.push({ ...base, selectedOptionIds: selected });
+      continue;
+    }
+
+    if (question.type === "RATING") {
+      const min = numberOr(config.min, DEFAULT_RATING_MIN);
+      const max = numberOr(config.max, DEFAULT_RATING_MAX);
+      const { ratingValue } = submittedAnswer;
+      if (ratingValue !== undefined && (ratingValue < min || ratingValue > max)) {
+        return { message: `Rating for question ${questionId} must be between ${min} and ${max}` };
+      }
+      answers.push({ ...base, selectedOptionIds: [], ratingValue });
+      continue;
+    }
+
+    const maxChars = numberOr(config.maxChars, DEFAULT_FREE_TEXT_MAX_CHARS);
+    const { textValue } = submittedAnswer;
+    if (textValue !== undefined && textValue.length > maxChars) {
+      return { message: `Answer for question ${questionId} exceeds ${maxChars} characters` };
+    }
+    answers.push({ ...base, selectedOptionIds: [], textValue });
+  }
+
+  return { answers };
 }
 
 function serializeQuestion(question: {
@@ -265,7 +381,6 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const body = submitSchema.parse(request.body);
-    const { answers } = body;
 
     let session;
     try {
@@ -283,10 +398,17 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
       });
     }
 
-    // Validate all required questions are answered
-    const requiredQuestions = test.questions.filter((q) => !q.isAttentionCheck && !q.isTrapDuplicate);
+    const validation = validateAnswers(body.answers, test.questions);
+    if ("message" in validation) {
+      return reply.status(400).send({ error: "INVALID_ANSWER", message: validation.message });
+    }
+    const { answers } = validation;
+
+    // Every question must be answered, attention checks and trap duplicates included. They are
+    // stepped through like any other question, so a client that omits them is a client trying
+    // to skip the quality checks — those checks can only judge answers they were given.
     const answeredIds = new Set(answers.map((a) => a.questionId));
-    const missing = requiredQuestions.filter((q) => !answeredIds.has(q.id));
+    const missing = test.questions.filter((q) => !answeredIds.has(q.id));
     if (missing.length > 0) {
       return reply.status(400).send({
         error: "INCOMPLETE",
@@ -345,7 +467,7 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
           answers: {
             create: timedAnswers.map((a) => ({
               questionId: a.questionId,
-              selectedOptions: a.selectedOptionIds ?? [],
+              selectedOptions: a.selectedOptionIds,
               ratingValue: a.ratingValue ?? null,
               textValue: a.textValue ?? null,
               timeSpentSeconds: a.timeSpentSeconds,

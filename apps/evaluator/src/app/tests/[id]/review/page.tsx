@@ -40,13 +40,19 @@ export default function ReviewPage() {
 
   if (!test) return null;
 
-  const answers = Array.from(state.answers.entries()).map(([questionId, data]) => ({
-    questionId,
-    selectedOptionIds: data.selectedOptionIds,
-    ratingValue: data.ratingValue ?? undefined,
-    textValue: data.textValue || undefined,
-    timeSpentSeconds: data.timeSpentSeconds,
-  }));
+  // Driven off the question list rather than the answer map: the server requires exactly one
+  // entry per question, and a question the evaluator passed through without touching (a
+  // free-text one they left blank) has no map entry yet.
+  const answers = test.questions.map((question) => {
+    const data = state.answers.get(question.id);
+    return {
+      questionId: question.id,
+      selectedOptionIds: data?.selectedOptionIds ?? [],
+      ratingValue: data?.ratingValue ?? undefined,
+      textValue: data?.textValue || undefined,
+      timeSpentSeconds: data?.timeSpentSeconds ?? 0,
+    };
+  });
 
   async function handleSubmit() {
     if (!test || !state.sessionToken) return;
