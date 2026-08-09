@@ -1,372 +1,384 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import {
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  Progress,
-} from "@testx/ui";
-import {
-  isAnswered,
-  useTestSession,
-  type AnswerState,
-  type TestQuestion,
-  type TestQuestionOption,
-} from "@/components/test-session-provider";
+import { useEffect, useRef } from "react";
+import { useRouter, useParams } from "next/navigation";
+import { Button, Card, CardContent, CardHeader, CardTitle } from "@testx/ui";
+import { useTestSession } from "@/components/test-session-provider";
 import { resolveMediaUrl } from "@/lib/api";
+import type { Question, QuestionOption } from "@/lib/test-types";
 
-export default function QuestionPage() {
-  const router = useRouter();
-  const params = useParams<{ id: string; n: string }>();
-  const testId = params?.id;
-  const questionNumber = Math.max(1, Number(params?.n ?? "1"));
-  const {
-    session,
-    getAnswer,
-    setAnswer,
-    markQuestionVisited,
-    consumeTime,
-    startedAt,
-  } = useTestSession();
+/** An option's media can be an image, a video or a clip of audio; each needs its own element. */
+function OptionMedia({ option }: { option: QuestionOption }) {
+  const url = resolveMediaUrl(option.media?.url ?? option.mediaUrl);
+  if (!url) return null;
+  const kind = option.media?.fileType ?? "IMAGE";
+  const label = option.label ?? option.media?.fileName ?? "Option";
 
-  useEffect(() => {
-    if (!session && testId) {
-      router.replace(`/tests/${testId}`);
-    }
-  }, [session, testId, router]);
-
-  const question = session?.questions[questionNumber - 1];
-  const totalQuestions = session?.questions.length ?? 0;
-  const answer = question ? getAnswer(question.id) : undefined;
-
-  useEffect(() => {
-    if (!question) return;
-    markQuestionVisited(question.id);
-    return () => {
-      consumeTime(question.id);
-    };
-  }, [question, markQuestionVisited, consumeTime]);
-
-  const remainingTime = useAdvisoryCountdown(session?.advisoryTimeMin ?? null, startedAt);
-
-  const isLast = questionNumber === totalQuestions;
-  const canAdvance = question ? isAnswered(question, answer) : false;
-  const allAnswered = session
-    ? session.questions.every((q) => isAnswered(q, getAnswer(q.id)))
-    : false;
-
-  const handleNext = useCallback(() => {
-    if (!question || !testId) return;
-    consumeTime(question.id);
-    if (isLast) {
-      router.push(`/tests/${testId}/review`);
-    } else {
-      router.push(`/tests/${testId}/question/${questionNumber + 1}`);
-    }
-  }, [consumeTime, isLast, question, questionNumber, router, testId]);
-
-  const handleBackToReview = useCallback(() => {
-    if (!question || !testId) return;
-    consumeTime(question.id);
-    router.push(`/tests/${testId}/review`);
-  }, [consumeTime, question, router, testId]);
-
-  const handlePrev = useCallback(() => {
-    if (!question || !testId || questionNumber <= 1) return;
-    consumeTime(question.id);
-    router.push(`/tests/${testId}/question/${questionNumber - 1}`);
-  }, [consumeTime, question, questionNumber, router, testId]);
-
-  if (!session || !question || !answer) {
+  if (kind === "VIDEO") {
+    return <video src={url} controls className="w-full h-32 sm:h-40 object-cover rounded-md" />;
+  }
+  if (kind === "AUDIO") {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Preparing question...</CardTitle>
-        </CardHeader>
-      </Card>
+      <div className="flex w-full h-32 sm:h-40 items-center justify-center rounded-md bg-muted p-3">
+        <audio src={url} controls className="w-full" />
+      </div>
     );
   }
-
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>
-            Question {questionNumber} of {totalQuestions}
-          </span>
-          {remainingTime && <span>Time left (advisory): {remainingTime}</span>}
-        </div>
-        <Progress value={(questionNumber / totalQuestions) * 100} />
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-xl leading-tight">{question.prompt}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <QuestionBody
-            question={question}
-            answer={answer}
-            onSelectOptions={(ids) => setAnswer(question.id, { selectedOptionIds: ids })}
-            onRating={(value) => setAnswer(question.id, { ratingValue: value })}
-            onText={(value) => setAnswer(question.id, { textValue: value })}
-          />
-
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-            <Button
-              variant="ghost"
-              disabled={questionNumber === 1}
-              onClick={handlePrev}
-            >
-              Previous
-            </Button>
-            <div className="flex items-center gap-3">
-              {allAnswered && !isLast && (
-                <Button variant="secondary" onClick={handleBackToReview}>
-                  Back to review
-                </Button>
-              )}
-              <Button disabled={!canAdvance} onClick={handleNext}>
-                {isLast ? "Review & Submit" : "Next"}
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+    <img
+      src={url}
+      alt={label}
+      className="w-full h-32 sm:h-40 object-cover rounded-md"
+      loading="lazy"
+    />
   );
 }
 
-type QuestionBodyProps = {
-  question: TestQuestion;
-  answer: AnswerState;
-  onSelectOptions: (ids: string[]) => void;
-  onRating: (value: number) => void;
-  onText: (value: string) => void;
-};
-
-function QuestionBody({ question, answer, onSelectOptions, onRating, onText }: QuestionBodyProps) {
-  if (question.type === "SINGLE_SELECT") {
-    return (
-      <SelectGrid
-        question={question}
-        selected={answer.selectedOptionIds}
-        onChange={(id) => onSelectOptions([id])}
-        multi={false}
-      />
-    );
-  }
-  if (question.type === "MULTI_SELECT") {
-    const config = question.config as Record<string, unknown>;
-    const max =
-      typeof config.maxSelections === "number"
-        ? (config.maxSelections as number)
-        : question.options.length;
-    const min = typeof config.minSelections === "number" ? (config.minSelections as number) : 1;
-    return (
-      <div className="space-y-3">
-        <SelectGrid
-          question={question}
-          selected={answer.selectedOptionIds}
-          multi
-          maxSelections={max}
-          onChange={(id) => {
-            const current = new Set(answer.selectedOptionIds);
-            if (current.has(id)) {
-              current.delete(id);
-            } else if (current.size < max) {
-              current.add(id);
-            }
-            onSelectOptions(Array.from(current));
-          }}
-        />
-        <p className="text-sm text-muted-foreground">
-          {answer.selectedOptionIds.length} of {max} selected (min {min})
-        </p>
-      </div>
-    );
-  }
-  if (question.type === "RATING") {
-    const config = question.config as Record<string, unknown>;
-    const minValue = typeof config.min === "number" ? (config.min as number) : 1;
-    const maxValue = typeof config.max === "number" ? (config.max as number) : 5;
-    const minLabel = typeof config.minLabel === "string" ? (config.minLabel as string) : null;
-    const maxLabel = typeof config.maxLabel === "string" ? (config.maxLabel as string) : null;
-    const values = Array.from({ length: maxValue - minValue + 1 }, (_, i) => minValue + i);
-    return (
-      <div className="space-y-3">
-        <div className="flex flex-wrap gap-2">
-          {values.map((value) => {
-            const isSelected = answer.ratingValue === value;
-            return (
-              <button
-                key={value}
-                type="button"
-                onClick={() => onRating(value)}
-                className={`min-h-11 min-w-11 rounded-md border px-4 text-sm font-medium transition ${
-                  isSelected
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border bg-card hover:bg-muted"
-                }`}
-              >
-                {value}
-              </button>
-            );
-          })}
-        </div>
-        {(minLabel || maxLabel) && (
-          <div className="flex justify-between text-xs text-muted-foreground">
-            <span>{minLabel}</span>
-            <span>{maxLabel}</span>
-          </div>
-        )}
-      </div>
-    );
-  }
-  if (question.type === "FREE_TEXT") {
-    const config = question.config as Record<string, unknown>;
-    const minChars = typeof config.minChars === "number" ? (config.minChars as number) : 0;
-    const maxChars = typeof config.maxChars === "number" ? (config.maxChars as number) : 5000;
-    return (
-      <div className="space-y-2">
-        <textarea
-          value={answer.textValue}
-          onChange={(event) => onText(event.target.value.slice(0, maxChars))}
-          className="min-h-32 w-full rounded-md border border-border bg-card p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          placeholder="Type your answer here..."
-        />
-        <p className="text-xs text-muted-foreground">
-          {answer.textValue.length} / {maxChars} characters
-          {minChars > 0 ? ` (min ${minChars})` : ""}
-        </p>
-      </div>
-    );
-  }
-  return null;
-}
-
-function SelectGrid({
+function SingleSelectQuestion({
   question,
   selected,
-  multi,
-  maxSelections,
-  onChange,
+  onSelect,
 }: {
-  question: TestQuestion;
+  question: Question;
   selected: string[];
-  multi: boolean;
-  maxSelections?: number;
-  onChange: (id: string) => void;
+  onSelect: (ids: string[]) => void;
 }) {
-  const isText = question.mediaType === "TEXT" || question.options.every((option) => !option.mediaId);
+  const hasMedia = question.options.some((o) => o.mediaUrl);
 
-  if (isText) {
+  if (hasMedia) {
     return (
-      <div className="flex flex-col gap-2">
-        {question.options.map((option) => {
-          const isSelected = selected.includes(option.id);
-          const disabled =
-            multi &&
-            !isSelected &&
-            typeof maxSelections === "number" &&
-            selected.length >= maxSelections;
-          return (
-            <button
-              key={option.id}
-              type="button"
-              disabled={disabled}
-              onClick={() => onChange(option.id)}
-              className={`min-h-12 rounded-md border px-4 py-3 text-left text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                isSelected
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-border bg-card hover:bg-muted"
-              }`}
-            >
-              {option.label ?? "Untitled option"}
-            </button>
-          );
-        })}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {question.options.map((opt) => (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => onSelect([opt.id])}
+            className={`rounded-lg border-2 overflow-hidden text-left transition-all min-h-[44px] ${
+              selected.includes(opt.id)
+                ? "border-primary ring-2 ring-primary"
+                : "border-border hover:border-primary/50"
+            }`}
+          >
+            <OptionMedia option={opt} />
+            {opt.label && (
+              <p className="p-2 text-sm font-medium">{opt.label}</p>
+            )}
+          </button>
+        ))}
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {question.options.map((option) => (
-        <MediaOption
-          key={option.id}
-          option={option}
-          isSelected={selected.includes(option.id)}
-          onClick={() => onChange(option.id)}
-        />
+    <div className="space-y-2">
+      {question.options.map((opt) => (
+        <button
+          key={opt.id}
+          type="button"
+          onClick={() => onSelect([opt.id])}
+          className={`w-full rounded-lg border-2 px-4 py-3 text-left transition-all min-h-[44px] ${
+            selected.includes(opt.id)
+              ? "border-primary bg-primary/5"
+              : "border-border hover:border-primary/50"
+          }`}
+        >
+          {opt.label}
+        </button>
       ))}
     </div>
   );
 }
 
-function MediaOption({
-  option,
-  isSelected,
-  onClick,
+function MultiSelectQuestion({
+  question,
+  selected,
+  onSelect,
 }: {
-  option: TestQuestionOption;
-  isSelected: boolean;
-  onClick: () => void;
+  question: Question;
+  selected: string[];
+  onSelect: (ids: string[]) => void;
 }) {
-  const url = resolveMediaUrl(option.media?.url ?? option.mediaUrl);
-  const kind = option.media?.fileType ?? null;
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`group flex flex-col overflow-hidden rounded-lg border text-left transition ${
-        isSelected
-          ? "border-primary ring-2 ring-primary"
-          : "border-border hover:border-primary/60"
-      }`}
-    >
-      <div className="aspect-video w-full bg-muted">
-        {url && kind === "IMAGE" && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={url} alt={option.label ?? option.media?.fileName ?? ""} className="h-full w-full object-cover" />
-        )}
-        {url && kind === "VIDEO" && (
-          <video src={url} controls className="h-full w-full object-cover" />
-        )}
-        {url && kind === "AUDIO" && (
-          <div className="flex h-full w-full items-center justify-center p-3">
-            <audio src={url} controls className="w-full" />
-          </div>
-        )}
-      </div>
-      {option.label && (
-        <p className="border-t border-border bg-card px-3 py-2 text-sm font-medium">
-          {option.label}
+  const config = question.config as { maxSelections?: number; minSelections?: number };
+  const max = config.maxSelections ?? question.options.length;
+  const hasMedia = question.options.some((o) => o.mediaUrl);
+
+  function toggle(id: string) {
+    if (selected.includes(id)) {
+      onSelect(selected.filter((s) => s !== id));
+    } else if (selected.length < max) {
+      onSelect([...selected, id]);
+    }
+  }
+
+  if (hasMedia) {
+    return (
+      <div>
+        <p className="text-sm text-muted-foreground mb-3">
+          Select up to {max} ({selected.length} selected)
         </p>
-      )}
-    </button>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {question.options.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => toggle(opt.id)}
+              className={`rounded-lg border-2 overflow-hidden text-left transition-all min-h-[44px] ${
+                selected.includes(opt.id)
+                  ? "border-primary ring-2 ring-primary"
+                  : "border-border hover:border-primary/50"
+              }`}
+            >
+              <OptionMedia option={opt} />
+              {opt.label && <p className="p-2 text-sm font-medium">{opt.label}</p>}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <p className="text-sm text-muted-foreground mb-3">
+        Select up to {max} ({selected.length} selected)
+      </p>
+      <div className="space-y-2">
+        {question.options.map((opt) => (
+          <button
+            key={opt.id}
+            type="button"
+            onClick={() => toggle(opt.id)}
+            className={`w-full rounded-lg border-2 px-4 py-3 text-left transition-all min-h-[44px] ${
+              selected.includes(opt.id)
+                ? "border-primary bg-primary/5"
+                : "border-border hover:border-primary/50"
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
-function useAdvisoryCountdown(advisoryMin: number | null, startedAt: Date | null) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!advisoryMin || !startedAt) return;
-    const interval = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(interval);
-  }, [advisoryMin, startedAt]);
+function RatingQuestion({
+  question,
+  value,
+  onRate,
+}: {
+  question: Question;
+  value: number | null;
+  onRate: (v: number) => void;
+}) {
+  const config = question.config as { min?: number; max?: number; minLabel?: string; maxLabel?: string };
+  const min = config.min ?? 1;
+  const max = config.max ?? 5;
+  const values = Array.from({ length: max - min + 1 }, (_, i) => min + i);
 
-  return useMemo(() => {
-    if (!advisoryMin || !startedAt) return null;
-    const totalSeconds = advisoryMin * 60;
-    const elapsed = Math.floor((now - startedAt.getTime()) / 1000);
-    const remaining = Math.max(0, totalSeconds - elapsed);
-    const minutes = Math.floor(remaining / 60);
-    const seconds = remaining % 60;
-    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-  }, [advisoryMin, startedAt, now]);
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        {values.map((v) => (
+          <button
+            key={v}
+            type="button"
+            onClick={() => onRate(v)}
+            className={`min-w-[44px] min-h-[44px] rounded-lg border-2 font-bold transition-all ${
+              value === v
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-border hover:border-primary/50"
+            }`}
+          >
+            {v}
+          </button>
+        ))}
+      </div>
+      {(config.minLabel || config.maxLabel) && (
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <span>{config.minLabel ?? ""}</span>
+          <span>{config.maxLabel ?? ""}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FreeTextQuestion({
+  question,
+  value,
+  onChange,
+}: {
+  question: Question;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const config = question.config as { minChars?: number; maxChars?: number };
+  return (
+    <div className="space-y-2">
+      <textarea
+        className="w-full min-h-[120px] rounded-lg border border-border bg-background px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-primary"
+        placeholder="Your answer…"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        maxLength={config.maxChars}
+      />
+      {config.maxChars && (
+        <p className="text-xs text-muted-foreground text-right">
+          {value.length} / {config.maxChars}
+        </p>
+      )}
+    </div>
+  );
+}
+
+export default function QuestionPage() {
+  const params = useParams<{ id: string; n: string }>();
+  const router = useRouter();
+  const { state, setAnswer, getAnswer, recordTime } = useTestSession();
+  const questionIndex = Number(params.n) - 1;
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const tickRef = useRef(0);
+
+  const test = state.test;
+
+  useEffect(() => {
+    function handleUnload(e: BeforeUnloadEvent) {
+      e.preventDefault();
+    }
+    window.addEventListener("beforeunload", handleUnload);
+    return () => window.removeEventListener("beforeunload", handleUnload);
+  }, []);
+
+  // If no session loaded redirect to intro
+  useEffect(() => {
+    if (!test) {
+      router.replace(`/tests/${params.id}`);
+    }
+  }, [test, params.id, router]);
+
+  const question: Question | undefined = test?.questions[questionIndex];
+
+  // Per-question timer
+  useEffect(() => {
+    if (!question) return;
+    tickRef.current = 0;
+    timerRef.current = setInterval(() => {
+      tickRef.current += 1;
+    }, 1000);
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      if (tickRef.current > 0) {
+        recordTime(question.id, tickRef.current);
+      }
+    };
+  }, [question?.id]);
+
+  if (!test || !question) return null;
+
+  const answer = getAnswer(question.id);
+  const selected = answer?.selectedOptionIds ?? [];
+  const ratingValue = answer?.ratingValue ?? null;
+  const textValue = answer?.textValue ?? "";
+
+  const totalVisible = test.questions.length;
+  const isFirst = questionIndex === 0;
+  const isLast = questionIndex === totalVisible - 1;
+
+  function hasAnswer(): boolean {
+    if (question!.type === "SINGLE_SELECT") return selected.length === 1;
+    if (question!.type === "MULTI_SELECT") {
+      const config = question!.config as { minSelections?: number };
+      return selected.length >= (config.minSelections ?? 1);
+    }
+    if (question!.type === "RATING") return ratingValue !== null;
+    const config = question!.config as { minChars?: number };
+    return textValue.trim().length >= (config.minChars ?? 0);
+  }
+
+  function goNext() {
+    if (isLast) {
+      router.push(`/tests/${params.id}/review`);
+    } else {
+      router.push(`/tests/${params.id}/question/${questionIndex + 2}`);
+    }
+  }
+
+  function goPrev() {
+    router.push(`/tests/${params.id}/question/${questionIndex}`);
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6">
+      {/* Progress */}
+      <div className="space-y-1">
+        <div className="flex justify-between text-sm text-muted-foreground">
+          <span>Question {questionIndex + 1} of {totalVisible}</span>
+        </div>
+        <div className="h-2 rounded-full bg-border overflow-hidden">
+          <div
+            className="h-full bg-primary rounded-full transition-all"
+            style={{ width: `${((questionIndex + 1) / totalVisible) * 100}%` }}
+          />
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-lg leading-snug">{question.prompt}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {question.type === "SINGLE_SELECT" && (
+            <SingleSelectQuestion
+              question={question}
+              selected={selected}
+              onSelect={(ids) => setAnswer(question.id, { selectedOptionIds: ids })}
+            />
+          )}
+          {question.type === "MULTI_SELECT" && (
+            <MultiSelectQuestion
+              question={question}
+              selected={selected}
+              onSelect={(ids) => setAnswer(question.id, { selectedOptionIds: ids })}
+            />
+          )}
+          {question.type === "RATING" && (
+            <RatingQuestion
+              question={question}
+              value={ratingValue}
+              onRate={(v) => setAnswer(question.id, { ratingValue: v })}
+            />
+          )}
+          {question.type === "FREE_TEXT" && (
+            <FreeTextQuestion
+              question={question}
+              value={textValue}
+              onChange={(v) => setAnswer(question.id, { textValue: v })}
+            />
+          )}
+
+          <div className="flex justify-between pt-4">
+            <Button
+              variant="secondary"
+              onClick={goPrev}
+              disabled={isFirst}
+              className="min-h-[44px]"
+            >
+              Previous
+            </Button>
+            <Button
+              onClick={goNext}
+              disabled={!hasAnswer()}
+              className="min-h-[44px]"
+            >
+              {isLast ? "Review & Submit" : "Next"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
 }

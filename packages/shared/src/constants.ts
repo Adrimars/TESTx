@@ -13,6 +13,13 @@ export const MEDIA_SOURCE_TYPES = ["UPLOAD", "GOOGLE_DRIVE"] as const;
 
 export const DEFAULT_MIN_TIME_PER_QUESTION_SECONDS = 60;
 
+/** Rating scale assumed when a RATING question's config omits `min`/`max`. Matches the evaluator renderer. */
+export const DEFAULT_RATING_MIN = 1;
+export const DEFAULT_RATING_MAX = 5;
+
+/** Ceiling on a stored free-text answer when the question's config omits `maxChars`. */
+export const DEFAULT_FREE_TEXT_MAX_CHARS = 5000;
+
 export const QUESTION_REWARD_WEIGHTS: Record<QuestionType, number> = {
   SINGLE_SELECT: 2,
   MULTI_SELECT: 2,

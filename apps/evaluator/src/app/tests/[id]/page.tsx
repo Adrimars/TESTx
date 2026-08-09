@@ -1,123 +1,104 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import {
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@testx/ui";
+import { useEffect, useState } from "react";
+import { useRouter, useParams } from "next/navigation";
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@testx/ui";
 import { apiFetch } from "@/lib/api";
-import {
-  useTestSession,
-  type TestSessionData,
-} from "@/components/test-session-provider";
+import { useTestSession } from "@/components/test-session-provider";
+import type { TestDetail } from "@/lib/test-types";
 
 export default function TestIntroPage() {
-  const router = useRouter();
   const params = useParams<{ id: string }>();
-  const testId = params?.id;
+  const router = useRouter();
   const { startSession } = useTestSession();
-  const [test, setTest] = useState<TestSessionData | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [test, setTest] = useState<TestDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!testId) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const data = await apiFetch<TestSessionData>(`/evaluator/tests/${testId}`);
-        if (!cancelled) {
-          setTest(data);
-          setLoadError(null);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setLoadError(error instanceof Error ? error.message : "Failed to load test");
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [testId]);
+    apiFetch<TestDetail>(`/evaluator/tests/${params.id}`)
+      .then(setTest)
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load test"))
+      .finally(() => setLoading(false));
+  }, [params.id]);
 
-  const handleBegin = useCallback(() => {
+  useEffect(() => {
+    function handleUnload(e: BeforeUnloadEvent) {
+      e.preventDefault();
+    }
+    window.addEventListener("beforeunload", handleUnload);
+    return () => window.removeEventListener("beforeunload", handleUnload);
+  }, []);
+
+  function handleBegin() {
     if (!test) return;
+    setStarting(true);
     startSession(test);
     router.push(`/tests/${test.id}/question/1`);
-  }, [router, startSession, test]);
+  }
 
-  if (loadError) {
+  if (loading) {
     return (
-      <Card>
+      <div className="flex items-center justify-center min-h-[40vh]">
+        <p className="text-muted-foreground">Loading test…</p>
+      </div>
+    );
+  }
+
+  if (error || !test) {
+    return (
+      <Card className="max-w-lg mx-auto">
         <CardHeader>
-          <CardTitle>Unable to load test</CardTitle>
-          <CardDescription>{loadError}</CardDescription>
+          <CardTitle>Test unavailable</CardTitle>
+          <CardDescription>{error ?? "This test could not be loaded."}</CardDescription>
         </CardHeader>
         <CardContent>
-          <Button variant="secondary" onClick={() => router.push("/dashboard")}>
-            Back to dashboard
+          <Button onClick={() => router.push("/dashboard")}>Back to Dashboard</Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-2xl">{test.title}</CardTitle>
+          {test.description && <CardDescription className="text-base">{test.description}</CardDescription>}
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="rounded-lg border border-border bg-card p-4 text-center">
+              <p className="text-2xl font-bold">{test.questionCount}</p>
+              <p className="text-sm text-muted-foreground">Questions</p>
+            </div>
+            <div className="rounded-lg border border-border bg-card p-4 text-center">
+              <p className="text-2xl font-bold">
+                {test.advisoryTimeMin ? `~${test.advisoryTimeMin} min` : "Self-paced"}
+              </p>
+              <p className="text-sm text-muted-foreground">Est. time</p>
+            </div>
+            <div className="rounded-lg border border-border bg-card p-4 text-center">
+              <p className="text-2xl font-bold text-primary">{test.rewardPoints} pts</p>
+              <p className="text-sm text-muted-foreground">Reward</p>
+            </div>
+          </div>
+
+          <p className="text-sm text-muted-foreground">
+            Answer every question carefully. Responses are checked for consistency and speed.
+            Careless answers will not earn points.
+          </p>
+
+          <Button
+            className="w-full sm:w-auto min-h-[44px] px-8"
+            onClick={handleBegin}
+            disabled={starting}
+          >
+            {starting ? "Starting…" : "Begin Test"}
           </Button>
         </CardContent>
       </Card>
-    );
-  }
-
-  if (!test) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Loading test...</CardTitle>
-        </CardHeader>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>{test.title}</CardTitle>
-          {test.description && <CardDescription>{test.description}</CardDescription>}
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Info label="Questions" value={String(test.questionCount)} />
-            <Info
-              label="Estimated time"
-              value={test.advisoryTimeMin ? `${test.advisoryTimeMin} min` : "—"}
-            />
-            <Info label="Reward" value={`${test.rewardPoints} pts`} />
-          </div>
-          <div className="rounded-md border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-            <p className="font-medium text-foreground">Before you begin</p>
-            <ul className="mt-2 list-disc space-y-1 pl-5">
-              <li>Complete the test in one session — leaving discards your progress.</li>
-              <li>Take your time on each question to earn the reward.</li>
-              <li>You can revisit answers using the Previous button.</li>
-            </ul>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Button onClick={handleBegin}>Begin Test</Button>
-            <Button variant="ghost" onClick={() => router.push("/dashboard")}>
-              Cancel
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function Info({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border border-border bg-card p-3">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-      <p className="mt-1 text-lg font-semibold">{value}</p>
     </div>
   );
 }

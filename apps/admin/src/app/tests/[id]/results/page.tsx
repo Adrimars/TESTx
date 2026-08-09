@@ -50,7 +50,6 @@ function OptionBars({ result }: { result: QuestionResult }) {
           <div className="flex items-center justify-between gap-3 text-sm">
             <span className="flex items-center gap-2">
               {option.mediaId && (
-                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={`${API_URL}/media/${option.mediaId}/file`}
                   alt={optionLabel(option, index)}
