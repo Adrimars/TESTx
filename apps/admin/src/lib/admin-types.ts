@@ -81,3 +81,77 @@ export type Paginated<T> = {
   page: number;
   limit: number;
 };
+
+export type DashboardStats = {
+  totalEvaluators: number;
+  activeTests: number;
+  totalResponses: number;
+  flaggedResponses: number;
+  recentTests: Array<{
+    id: string;
+    title: string;
+    status: TestStatus;
+    responseCount: number;
+    createdAt: string;
+  }>;
+};
+
+export type OptionAggregation = {
+  optionId: string;
+  label: string | null;
+  mediaId: string | null;
+  mediaUrl: string | null;
+  count: number;
+  percentage: number;
+};
+
+export type RatingAggregation = {
+  average: number | null;
+  min: number | null;
+  max: number | null;
+  distribution: Array<{ value: number; count: number }>;
+};
+
+export type QuestionResult = {
+  questionId: string;
+  prompt: string;
+  type: QuestionType;
+  mediaType: MediaType | null;
+  answeredCount: number;
+  options?: OptionAggregation[];
+  rating?: RatingAggregation;
+  textResponses?: string[];
+};
+
+export type TestResults = {
+  testId: string;
+  title: string;
+  status: TestStatus;
+  totalResponses: number;
+  validResponses: number;
+  flaggedResponses: number;
+  averageCompletionTime: number | null;
+  questions: QuestionResult[];
+};
+
+export type SegmentBy = "gender" | "ageGroup" | "country";
+
+export type DemographicResults = {
+  testId: string;
+  title: string;
+  segmentBy: SegmentBy;
+  segments: Array<{
+    label: string;
+    responseCount: number;
+    questions: QuestionResult[];
+  }>;
+};
+
+export type EvaluatorListItem = {
+  id: string;
+  name: string | null;
+  email: string;
+  registeredAt: string;
+  testsCompleted: number;
+  totalPoints: number;
+};

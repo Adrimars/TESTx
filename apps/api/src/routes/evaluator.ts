@@ -10,6 +10,10 @@ import {
 import { authenticateUser } from "../middleware/authenticate";
 import { requireRole } from "../middleware/requireRole";
 import { qualityService } from "../services/quality.service";
+import {
+  ResponseCapReachedError,
+  assertResponseCapAvailable,
+} from "../services/submission.service";
 import { signTestSessionToken, verifyTestSessionToken } from "../lib/jwt";
 
 const authEval = { preHandler: [authenticateUser, requireRole("EVALUATOR")] };
@@ -472,38 +476,52 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
 
     const pointsEarned = isFlagged ? 0 : test.rewardPoints;
 
-    await app.prisma.$transaction(async (tx) => {
-      const response = await tx.testResponse.create({
-        data: {
-          testId: test.id,
-          userId,
-          isFlagged,
-          flagReasons,
-          pointsEarned,
-          startedAt,
-          completedAt,
-          totalTimeSeconds,
-          answers: {
-            create: timedAnswers.map((a) => ({
-              questionId: a.questionId,
-              selectedOptions: a.selectedOptionIds,
-              ratingValue: a.ratingValue ?? null,
-              textValue: a.textValue ?? null,
-              timeSpentSeconds: a.timeSpentSeconds,
-            })),
+    try {
+      await app.prisma.$transaction(async (tx) => {
+        // The cap was checked above against a count that is already stale by the time we
+        // write; re-check it inside the transaction so two concurrent submissions cannot
+        // both slip past it.
+        await assertResponseCapAvailable(tx, test.id, test.responseCap);
+
+        const response = await tx.testResponse.create({
+          data: {
+            testId: test.id,
+            userId,
+            isFlagged,
+            flagReasons,
+            pointsEarned,
+            startedAt,
+            completedAt,
+            totalTimeSeconds,
+            answers: {
+              create: timedAnswers.map((a) => ({
+                questionId: a.questionId,
+                selectedOptions: a.selectedOptionIds,
+                ratingValue: a.ratingValue ?? null,
+                textValue: a.textValue ?? null,
+                timeSpentSeconds: a.timeSpentSeconds,
+              })),
+            },
           },
-        },
-      });
-
-      if (!isFlagged && pointsEarned > 0) {
-        await tx.evaluatorProfile.update({
-          where: { userId },
-          data: { balance: { increment: pointsEarned } },
         });
-      }
 
-      return response;
-    });
+        if (!isFlagged && pointsEarned > 0) {
+          await tx.evaluatorProfile.update({
+            where: { userId },
+            data: { balance: { increment: pointsEarned } },
+          });
+        }
+
+        return response;
+      });
+    } catch (error) {
+      if (error instanceof ResponseCapReachedError) {
+        return reply
+          .status(403)
+          .send({ error: "CAPACITY_REACHED", message: "This test has reached its response cap" });
+      }
+      throw error;
+    }
 
     return reply.send({ pointsEarned, isFlagged, flagReasons });
   });

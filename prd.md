@@ -49,6 +49,11 @@ Deliver a fully functional demo showcasing the core evaluation loop: admin creat
 - Admin accounts are **seeded or created manually** (no public admin registration).
 - Admin login uses the same auth methods but routes to the admin app.
 
+### 3.5 Sign Out
+- Both the evaluator and admin apps expose a visible **Sign Out** control (in the navbar/sidebar user menu).
+- Signing out calls `POST /auth/logout`, clears the httpOnly access + refresh cookies, and redirects to the login page.
+- After sign out, protected routes are inaccessible until the user logs in again.
+
 ---
 
 ## 4. Demographic System
@@ -57,10 +62,10 @@ Deliver a fully functional demo showcasing the core evaluation loop: admin creat
 
 | Field | Type | Details |
 |-------|------|---------|
-| Date of Birth | Date | Used to compute age. Stored as DOB, age calculated dynamically. |
+| Age | Integer | Evaluator selects their **specific age as a number** from a searchable dropdown. Stored directly on the profile. Admin analytics bucket the number into age ranges. |
 | Gender | Enum | Male, Female, Other, Prefer not to say. |
-| Country | String | Dropdown from ISO 3166 country list. |
-| City | String | Free text or autocomplete based on selected country. |
+| Country | String | Searchable dropdown from the ISO 3166 country list. |
+| City | String | Searchable dropdown, filtered by the selected country. |
 
 ### 4.2 Future Extension
 - Education level, occupation, income bracket, interests, etc.
@@ -106,10 +111,7 @@ Deliver a fully functional demo showcasing the core evaluation loop: admin creat
 - Admin configures: scale range (e.g., 1–5, 1–10), label for endpoints (e.g., "Poor" to "Excellent").
 - UI: Star rating, slider, or numbered buttons.
 
-#### 5.3.4 Free Text
-- Evaluator types an open-ended response.
-- Admin configures: optional character limit (min/max).
-- UI: Text area.
+> **Note:** There is no free-text/open-ended question type. All questions are structured (single select, multi select, or rating) so responses can be aggregated. Select-type options may still use plain text as the option label.
 
 ### 5.4 Media per Question
 - All options within a single question must be the **same media type** (all photos, all videos, etc.).
@@ -124,6 +126,7 @@ Deliver a fully functional demo showcasing the core evaluation loop: admin creat
 - Central repository where Admin uploads/imports media before attaching to questions.
 - Media items have: file name, type, size, upload date, tags (optional), thumbnail (auto-generated for video/audio).
 - Admin can browse, search, filter, and select media from the library when building questions.
+- **Bulk upload:** Admin can add **multiple files at once** — via a multi-select file picker and via **drag-and-drop** onto the library. Files upload in a batch with per-file progress and validation.
 
 ### 6.2 Media Source — Google Drive (MVP)
 - Admin pastes a Google Drive folder URL.
@@ -175,6 +178,11 @@ Draft → Active → Paused → Active → Closed
 - **Active:** Accepting responses. Not editable (except pause/close). Visible to eligible evaluators.
 - **Paused:** Temporarily stopped. Not visible. Can be reactivated.
 - **Closed:** Final. No more responses. Results available. Cannot be reactivated.
+
+**Admin controls on an Active test:**
+- **Pause** ("Deactivate") — stops the test from being assigned to new evaluators; can be resumed by reactivating. "Deactivate" is a UI synonym for Pause; there is no separate status.
+- **Close** — ends the test permanently; results remain available and it cannot be reactivated.
+- Both actions are surfaced as explicit buttons on the test list and test detail views, each with a confirmation step.
 
 ---
 
@@ -238,7 +246,7 @@ Draft → Active → Paused → Active → Closed
 - Evaluators earn **points** for valid (non-flagged) test completions.
 - Reward amount is **auto-calculated** based on test characteristics:
   - Base formula: `points = (number_of_questions × question_weight) + time_bonus`
-  - `question_weight`: varies by type (e.g., media comparison = 2 pts, free text = 3 pts, rating = 1 pt).
+  - `question_weight`: varies by type (e.g., media comparison = 2 pts, rating = 1 pt).
   - `time_bonus`: additional points if estimated completion time > 5 minutes.
 - Points are displayed as a numeric balance on the evaluator dashboard.
 
@@ -262,12 +270,13 @@ Draft → Active → Paused → Active → Closed
 - **Total Responses:** Count of all submitted responses across all tests.
 - **Flagged Responses:** Count of quality-flagged responses.
 
-### 11.2 Test Results View
+### 11.2 Test Results / Report View
+- Available for both **Active tests (live)** and **Closed tests** — admins can watch option choices accumulate in real time, not only after a test closes.
 - Per-question result aggregation:
   - **Selection questions:** Bar/pie chart showing option distribution (e.g., "Photo A: 62%, Photo B: 38%").
   - **Rating questions:** Average score, distribution histogram.
-  - **Free text:** List of responses (paginated).
-- **Demographic breakdowns:** Filter/segment results by age group, gender, location.
+- **Option Choice Report:** For each question, shows which options were chosen and how many evaluators picked each one, filterable by demographic segment.
+- **Demographic breakdowns:** Filter/segment results by age range, gender, location.
   - Example: "Males 18–25: 70% chose Photo A. Females 26–35: 55% chose Photo B."
 - **Response metadata:** Total responses, valid responses, flagged count, average completion time.
 
@@ -342,12 +351,13 @@ testx/
 |--------|------|-------------|
 | GET | `/admin/dashboard` | Dashboard stats |
 | CRUD | `/admin/tests` | Create, read, update, delete tests |
-| PUT | `/admin/tests/:id/status` | Change test status (activate, pause, close) |
+| PUT | `/admin/tests/:id/status` | Change test status (activate, pause/deactivate, close) |
+| GET | `/admin/tests/:id/report` | Live option-choice report (available while Active and after Closed) |
 | GET | `/admin/tests/:id/preview` | Get test in preview mode |
 | GET | `/admin/tests/:id/results` | Get aggregated results |
 | GET | `/admin/tests/:id/results/demographics` | Results segmented by demographics |
 | GET | `/admin/media` | List media library |
-| POST | `/admin/media/upload` | Direct file upload |
+| POST | `/admin/media/upload` | Direct file upload — accepts **multiple files** in one request (multi-select or drag-and-drop) |
 | POST | `/admin/media/import-drive` | Import from Google Drive folder |
 | DELETE | `/admin/media/:id` | Remove media from library |
 | GET | `/admin/users` | List evaluators |
@@ -374,7 +384,7 @@ User {
 EvaluatorProfile {
   id          UUID PK
   userId      UUID FK → User
-  dateOfBirth Date
+  age         Integer (specific age selected by the evaluator)
   gender      Enum(MALE, FEMALE, OTHER, UNDISCLOSED)
   country     String
   city        String?
@@ -406,7 +416,7 @@ Test {
 Question {
   id            UUID PK
   testId        UUID FK → Test
-  type          Enum(SINGLE_SELECT, MULTI_SELECT, RATING, FREE_TEXT)
+  type          Enum(SINGLE_SELECT, MULTI_SELECT, RATING)
   prompt        String
   mediaType     Enum(IMAGE, VIDEO, AUDIO, TEXT)?
   order         Integer
@@ -468,7 +478,6 @@ Answer {
   questionId      UUID FK → Question
   selectedOptions UUID[] (FK → QuestionOption, for select types)
   ratingValue     Integer? (for rating type)
-  textValue       String? (for free text type)
   timeSpentSeconds Integer
 }
 ```
@@ -485,12 +494,15 @@ Answer {
 
 ### In Scope (MVP)
 - Evaluator self-registration (email + Google OAuth)
-- Mandatory demographic profile (age, gender, country/city)
+- Sign out for both evaluator and admin apps
+- Mandatory demographic profile (specific age via dropdown, gender, searchable country/city dropdowns)
 - Admin test creation with media library
 - Google Drive folder import
-- 4 question types: single select, multi select, rating, free text
+- Bulk media upload: multi-file select + drag-and-drop
+- 3 question types: single select, multi select, rating (no free-text/open-ended type)
 - System-provided templates (skeletons)
-- Test lifecycle: Draft → Active → Paused → Closed
+- Test lifecycle: Draft → Active → Paused → Closed, with explicit Pause/Deactivate and Close controls on active tests
+- Live option-choice report viewable while a test is Active and after it is Closed
 - Auto-assign next test to evaluator
 - One question per page, free navigation, must complete in one session
 - Anti-cheat: speed check, attention checks (auto + manual), duplicate trap questions

@@ -3,7 +3,6 @@ import type { MediaType, QuestionInput, QuestionType, TestStatus } from "@testx/
 import {
   calculateTestReward,
   createTestSchema,
-  getAgeGroup,
   questionSchema,
   reorderQuestionsSchema,
   updateTestSchema,
@@ -12,6 +11,7 @@ import {
 import { Prisma } from "@testx/database";
 import { authenticateUser } from "../../middleware/authenticate";
 import { requireRole } from "../../middleware/requireRole";
+import { parsePageParams } from "../../lib/pagination";
 
 const adminAuth = { preHandler: [authenticateUser, requireRole("ADMIN")] };
 
@@ -275,9 +275,11 @@ function inputJson(value: Record<string, unknown>): Prisma.InputJsonValue {
 
 export const adminTestsRoutes: FastifyPluginAsync = async (app) => {
   app.get("/tests", adminAuth, async (request) => {
-    const { page, limit, status } = request.query as { page?: string; limit?: string; status?: TestStatus };
-    const currentPage = Math.max(1, page ? Number(page) : 1);
-    const pageSize = Math.min(100, Math.max(1, limit ? Number(limit) : 50));
+    const { status } = request.query as { status?: TestStatus };
+    const { page, limit, skip, take } = parsePageParams(
+      request.query as { page?: string; limit?: string },
+      50
+    );
     const where: Prisma.TestWhereInput = {};
     if (status && ["DRAFT", "ACTIVE", "PAUSED", "CLOSED"].includes(status)) {
       where.status = status;
@@ -288,13 +290,13 @@ export const adminTestsRoutes: FastifyPluginAsync = async (app) => {
         where,
         include: testListInclude,
         orderBy: { createdAt: "desc" },
-        skip: (currentPage - 1) * pageSize,
-        take: pageSize,
+        skip,
+        take,
       }),
       app.prisma.test.count({ where }),
     ]);
 
-    return { items: items.map(serializeTestListItem), total, page: currentPage, limit: pageSize };
+    return { items: items.map(serializeTestListItem), total, page, limit };
   });
 
   app.post("/tests", adminAuth, async (request, reply) => {
@@ -554,197 +556,4 @@ export const adminTestsRoutes: FastifyPluginAsync = async (app) => {
     const updated = await app.prisma.test.findUniqueOrThrow({ where: { id: created.id }, include: testDetailInclude });
     return reply.status(201).send(serializeTest(updated));
   });
-
-  // ─── Results ─────────────────────────────────────────────────────────────
-
-  app.get<{ Params: { id: string } }>("/tests/:id/results", adminAuth, async (request, reply) => {
-    const test = await app.prisma.test.findUnique({ where: { id: request.params.id } });
-    if (!test) return reply.status(404).send({ error: "NOT_FOUND", message: "Test not found" });
-
-    const responses = await app.prisma.testResponse.findMany({
-      where: { testId: test.id },
-      include: { answers: true },
-    });
-
-    const validResponses = responses.filter((r) => !r.isFlagged);
-    const completionTimes = validResponses.map((r) => r.totalTimeSeconds);
-    const avgCompletionTime =
-      completionTimes.length > 0
-        ? Math.round(completionTimes.reduce((s, t) => s + t, 0) / completionTimes.length)
-        : 0;
-
-    const questions = await app.prisma.question.findMany({
-      where: { testId: test.id, isAttentionCheck: false, isTrapDuplicate: false },
-      orderBy: { order: "asc" },
-      include: { options: { orderBy: { order: "asc" } } },
-    });
-
-    const questionResults = questions.map((q) => {
-      const questionAnswers = validResponses.flatMap((r) =>
-        r.answers.filter((a) => a.questionId === q.id)
-      );
-
-      if (q.type === "SINGLE_SELECT" || q.type === "MULTI_SELECT") {
-        const totalVotes = questionAnswers.reduce((s, a) => s + a.selectedOptions.length, 0);
-        const optionCounts = new Map<string, { label: string | null; count: number }>();
-        for (const opt of q.options) optionCounts.set(opt.id, { label: opt.label, count: 0 });
-        for (const answer of questionAnswers) {
-          for (const optId of answer.selectedOptions) {
-            const entry = optionCounts.get(optId);
-            if (entry) entry.count++;
-          }
-        }
-        return {
-          questionId: q.id,
-          prompt: q.prompt,
-          type: q.type,
-          options: q.options.map((opt) => {
-            const entry = optionCounts.get(opt.id) ?? { label: opt.label, count: 0 };
-            return {
-              optionId: opt.id,
-              label: entry.label,
-              count: entry.count,
-              percentage: totalVotes > 0 ? Math.round((entry.count / totalVotes) * 100) : 0,
-            };
-          }),
-        };
-      }
-
-      if (q.type === "RATING") {
-        const values = questionAnswers.map((a) => a.ratingValue).filter((v): v is number => v !== null);
-        const avg = values.length > 0 ? values.reduce((s, v) => s + v, 0) / values.length : null;
-        const distribution: Record<number, number> = {};
-        for (const v of values) distribution[v] = (distribution[v] ?? 0) + 1;
-        return {
-          questionId: q.id,
-          prompt: q.prompt,
-          type: q.type,
-          average: avg !== null ? Math.round(avg * 100) / 100 : null,
-          min: values.length > 0 ? Math.min(...values) : null,
-          max: values.length > 0 ? Math.max(...values) : null,
-          distribution: Object.entries(distribution).map(([value, count]) => ({
-            value: Number(value),
-            count,
-          })),
-        };
-      }
-
-      // FREE_TEXT
-      const texts = questionAnswers
-        .map((a) => a.textValue)
-        .filter((v): v is string => v !== null && v.trim().length > 0);
-      return {
-        questionId: q.id,
-        prompt: q.prompt,
-        type: q.type,
-        responses: texts.slice(0, 100),
-        total: texts.length,
-      };
-    });
-
-    return reply.send({
-      testId: test.id,
-      title: test.title,
-      totalResponses: responses.length,
-      validResponses: validResponses.length,
-      flaggedResponses: responses.length - validResponses.length,
-      avgCompletionTimeSeconds: avgCompletionTime,
-      questions: questionResults,
-    });
-  });
-
-  app.get<{ Params: { id: string }; Querystring: { segmentBy?: string } }>(
-    "/tests/:id/results/demographics",
-    adminAuth,
-    async (request, reply) => {
-      const test = await app.prisma.test.findUnique({ where: { id: request.params.id } });
-      if (!test) return reply.status(404).send({ error: "NOT_FOUND", message: "Test not found" });
-
-      const segmentBy = (request.query.segmentBy ?? "gender") as "gender" | "ageGroup" | "country";
-      if (!["gender", "ageGroup", "country"].includes(segmentBy)) {
-        return reply.status(400).send({ error: "BAD_REQUEST", message: "segmentBy must be gender, ageGroup, or country" });
-      }
-
-      const responses = await app.prisma.testResponse.findMany({
-        where: { testId: test.id, isFlagged: false },
-        include: {
-          answers: true,
-          user: { include: { evaluatorProfile: true } },
-        },
-      });
-
-      const questions = await app.prisma.question.findMany({
-        where: { testId: test.id, isAttentionCheck: false, isTrapDuplicate: false },
-        orderBy: { order: "asc" },
-        include: { options: { orderBy: { order: "asc" } } },
-      });
-
-      function getSegmentLabel(r: typeof responses[number]): string | null {
-        const profile = r.user.evaluatorProfile;
-        if (!profile) return null;
-        if (segmentBy === "gender") return profile.gender;
-        if (segmentBy === "country") return profile.country;
-        return getAgeGroup(profile.dateOfBirth);
-      }
-
-      const segmentMap = new Map<string, typeof responses>();
-      for (const r of responses) {
-        const label = getSegmentLabel(r);
-        if (!label) continue;
-        const list = segmentMap.get(label) ?? [];
-        list.push(r);
-        segmentMap.set(label, list);
-      }
-
-      const segments = Array.from(segmentMap.entries()).map(([label, segResponses]) => {
-        const questionResults = questions.map((q) => {
-          const questionAnswers = segResponses.flatMap((r) =>
-            r.answers.filter((a) => a.questionId === q.id)
-          );
-
-          if (q.type === "SINGLE_SELECT" || q.type === "MULTI_SELECT") {
-            const totalVotes = questionAnswers.reduce((s, a) => s + a.selectedOptions.length, 0);
-            const optionCounts = new Map<string, number>();
-            for (const opt of q.options) optionCounts.set(opt.id, 0);
-            for (const answer of questionAnswers) {
-              for (const optId of answer.selectedOptions) {
-                optionCounts.set(optId, (optionCounts.get(optId) ?? 0) + 1);
-              }
-            }
-            return {
-              questionId: q.id,
-              prompt: q.prompt,
-              type: q.type,
-              options: q.options.map((opt) => ({
-                optionId: opt.id,
-                label: opt.label,
-                count: optionCounts.get(opt.id) ?? 0,
-                percentage:
-                  totalVotes > 0
-                    ? Math.round(((optionCounts.get(opt.id) ?? 0) / totalVotes) * 100)
-                    : 0,
-              })),
-            };
-          }
-
-          if (q.type === "RATING") {
-            const values = questionAnswers.map((a) => a.ratingValue).filter((v): v is number => v !== null);
-            const avg = values.length > 0 ? values.reduce((s, v) => s + v, 0) / values.length : null;
-            return {
-              questionId: q.id,
-              prompt: q.prompt,
-              type: q.type,
-              average: avg !== null ? Math.round(avg * 100) / 100 : null,
-            };
-          }
-
-          return { questionId: q.id, prompt: q.prompt, type: q.type, total: questionAnswers.length };
-        });
-
-        return { label, responseCount: segResponses.length, questions: questionResults };
-      });
-
-      return reply.send({ segmentBy, segments });
-    }
-  );
 };

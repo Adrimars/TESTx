@@ -37,7 +37,7 @@
   - `QuestionOption` (id, questionId, label, mediaId, order)
   - `Media` (id, fileName, fileType, mimeType, fileSize, sourceType, sourceUrl, thumbnailUrl, tags, uploadedAt)
   - `TestResponse` (id, testId, userId, isFlagged, flagReasons, pointsEarned, startedAt, completedAt, totalTimeSeconds)
-  - `Answer` (id, responseId, questionId, selectedOptions, ratingValue, textValue, timeSpentSeconds)
+  - `Answer` (id, responseId, questionId, selectedOptions, ratingValue, timeSpentSeconds)
   - `Template` (id, name, description, structure JSON, isSystem, timestamps)
 - Add indexes: `User.email`, `TestResponse(testId, userId)` unique, `Question.testId+order`, `Test.status`
 - Run `prisma migrate dev`
@@ -173,7 +173,7 @@ Before moving to Phase 3, all of the following must be true:
 - Implement in `packages/shared/src/rewards.ts`:
   ```
   function calculateTestReward(questions: Question[]): number {
-    const weights = { SINGLE_SELECT: 2, MULTI_SELECT: 2, RATING: 1, FREE_TEXT: 3 }
+    const weights = { SINGLE_SELECT: 2, MULTI_SELECT: 2, RATING: 1 }
     let points = questions
       .filter(q => !q.isAttentionCheck && !q.isTrapDuplicate)
       .reduce((sum, q) => sum + weights[q.type], 0)
@@ -213,7 +213,7 @@ Before moving to Phase 3, all of the following must be true:
     - Each question card shows: order number, type badge, prompt text, option count, attention/trap badge
     - "Add Question" button → Question editor modal/drawer
   - **Question Editor (modal or inline):**
-    - Type selector (single select, multi select, rating, free text)
+    - Type selector (single select, multi select, rating)
     - Prompt input (text)
     - Media type selector (for select types): Image, Video, Audio, Text
     - Options list (for select types):
@@ -223,7 +223,6 @@ Before moving to Phase 3, all of the following must be true:
     - Config section (type-specific):
       - Multi select: min selections, max selections
       - Rating: min value, max value, min label, max label
-      - Free text: min chars, max chars
     - Attention check toggle
     - Trap duplicate toggle + source question picker
   - Action buttons: Save Draft, Activate Test, Preview Test
@@ -242,7 +241,7 @@ Before moving to Phase 3, all of the following must be true:
 Before moving to Phase 4, all of the following must be true:
 
 - [ ] Admin can create a test from scratch (blank) and from a system template; both land in DRAFT status
-- [ ] All 4 question types (single select, multi select, rating, free text) can be added to a test with correct config saved
+- [ ] All 3 question types (single select, multi select, rating) can be added to a test with correct config saved
 - [ ] Media options on select-type questions are chosen from the media library and their thumbnails render in the question card
 - [ ] Question order can be changed via drag-to-reorder; new order persists after page refresh
 - [ ] Attention-check toggle and trap-duplicate toggle save correctly and display the right badge on the question card
@@ -275,7 +274,7 @@ Before moving to Phase 4, all of the following must be true:
   {
     "startedAt": "ISO timestamp",
     "answers": [
-      { "questionId": "uuid", "selectedOptionIds": ["uuid"], "ratingValue": 4, "textValue": "...", "timeSpentSeconds": 15 }
+      { "questionId": "uuid", "selectedOptionIds": ["uuid"], "ratingValue": 4, "timeSpentSeconds": 15 }
     ]
   }
   ```
@@ -318,8 +317,7 @@ Before moving to Phase 4, all of the following must be true:
   - **Single select:** Media grid (2–4 columns desktop, 1–2 mobile) or text radio list. Click to select, highlight selected.
   - **Multi select:** Same as single but checkbox/toggle style. Show selection count ("2 of 3 selected").
   - **Rating:** Star row or numbered button row. Click to set value.
-  - **Free text:** Textarea with character counter if limits configured.
-  - "Previous" button (disabled on first question) + "Next" button (disabled if no answer selected, except free text)
+  - "Previous" button (disabled on first question) + "Next" button (disabled if no answer selected)
   - On last question: "Next" becomes "Review & Submit"
   - Track `timeSpentSeconds` per question (JS timer starts when question renders, pauses on navigate away)
 
@@ -372,7 +370,6 @@ Before moving to Phase 5, all of the following must be true:
   - Per-question aggregation:
     - **Single/Multi select:** Count per option, percentage. Example: `[{ optionId, label, count, percentage }]`
     - **Rating:** Average value, min, max, distribution `[{ value: 1, count: 5 }, ...]`
-    - **Free text:** Array of text responses (paginated)
   - Skip attention checks and trap duplicates in results
 
 - `GET /admin/tests/:id/results/demographics` — Same aggregation but segmented:
@@ -400,7 +397,6 @@ Before moving to Phase 5, all of the following must be true:
   - **Per-question results cards:**
     - Selection questions: horizontal bar chart (shadcn/ui + recharts or simple CSS bars) showing option distribution with percentages
     - Rating questions: average score display + distribution bar chart
-    - Free text: scrollable list of responses
   - **Demographic segment selector:**
     - Dropdown: "Segment by: None | Gender | Age Group | Country"
     - When selected, each question card splits into segments (e.g., side-by-side bars for Male vs Female)
@@ -418,7 +414,7 @@ Before moving to Phase 6, all of the following must be true:
 
 - [ ] `GET /admin/dashboard` returns correct counts for total evaluators, active tests, total responses, and flagged responses
 - [ ] Admin dashboard UI renders the 4 stat cards and the recent-tests table with live data
-- [ ] `GET /admin/tests/:id/results` returns per-question aggregation: option distribution (%) for select questions, average + distribution for rating questions, response list for free text
+- [ ] `GET /admin/tests/:id/results` returns per-question aggregation: option distribution (%) for select questions, average + distribution for rating questions
 - [ ] Attention-check and trap-duplicate questions are excluded from the results aggregation
 - [ ] `GET /admin/tests/:id/results/demographics?segmentBy=gender` returns results correctly split by gender segment
 - [ ] `GET /admin/tests/:id/results/demographics?segmentBy=ageGroup` correctly groups evaluators into the defined age buckets (18–24, 25–34, etc.)
@@ -430,7 +426,74 @@ Before moving to Phase 6, all of the following must be true:
 
 ---
 
-## Phase 6: Polish, Anti-Cheat Refinement & Testing (Day 2 — Hours 7–10)
+## Phase 6: Enhancements — Accounts, Test Control, Structured Inputs & Media UX
+
+> Follow-up iteration after the initial MVP demo. Adds sign out, admin test-control actions, a live report, structured (dropdown) demographic inputs, removal of the free-text question type, and a bulk media upload experience.
+
+### 6.1 Sign Out (Admin + Evaluator)
+- Backend: `POST /auth/logout` already clears cookies — reuse as-is.
+- Frontend (both apps): add a visible **Sign Out** control in the navbar (evaluator) and sidebar/user menu (admin).
+  - On click: call `POST /auth/logout` via the API client, clear client auth state in the auth provider, redirect to `/login`.
+  - Ensure protected routes/layout guards reject access immediately after sign out (no stale cached session).
+
+### 6.2 Test Control — Pause/Deactivate & Close (Active Tests)
+- Backend: `PUT /admin/tests/:id/status` already supports ACTIVE→PAUSED and ACTIVE→CLOSED. Confirm transition validation and that PAUSED/CLOSED tests are excluded from `GET /evaluator/next-test`.
+- Frontend (admin):
+  - On the test list rows and the test detail/results view, add explicit **Pause** (labeled "Deactivate") and **Close** buttons for tests in ACTIVE status, plus **Reactivate** for PAUSED.
+  - Each action shows a confirmation dialog; Close warns that it is permanent.
+  - Reflect the new status badge immediately after the action succeeds.
+- Note: "Deactivate" is a UI synonym for Pause — no new status is introduced.
+
+### 6.3 Live Option-Choice Report (Active + Closed)
+- Backend: `GET /admin/tests/:id/report` — returns per-question option-choice distribution (which options were chosen and how many evaluators chose each). Reuses the results aggregation but is explicitly allowed while the test is **ACTIVE** (live), not only CLOSED. Excludes flagged responses, attention checks, and trap duplicates. Supports the same demographic `segmentBy` params as results.
+- Frontend (admin):
+  - Add a **Report** view (or a "Live Report" tab on the results page) reachable for Active and Closed tests.
+  - Show per-question option distribution (counts + percentages) with the demographic segment selector.
+  - For Active tests, surface a "live" indicator and a manual refresh (or lightweight polling).
+
+### 6.4 Structured Demographic Inputs — Searchable Dropdowns
+- **Data model change:** Replace `EvaluatorProfile.dateOfBirth (Date)` with `EvaluatorProfile.age (Integer)`. Add a Prisma migration; backfill existing rows (compute age from any existing DOB data, or set from seed).
+- **Age:** Onboarding/profile uses a **searchable dropdown of specific age numbers** (e.g. 13–100). Store the selected number directly. Remove the DOB date picker.
+- **Country:** Replace the plain select with a **searchable dropdown** backed by the ISO 3166 country list.
+- **City:** Replace the free-text city input with a **searchable dropdown** filtered by the selected country (static city dataset per country, or autocomplete source).
+- Update the `PUT /evaluator/profile` payload + Zod validation (`age: number`, remove `dateOfBirth`).
+- **Admin analytics:** Age-range bucketing now derives from the `age` integer directly (buckets 18–24, 25–34, 35–44, 45–54, 55+). Demographic filters on tests continue to use an age range.
+- Shared: add a reusable searchable-dropdown (combobox) component in `packages/ui`.
+
+### 6.5 Remove the Free-Text Question Type from the Codebase
+> Explicit cleanup: delete every remaining free-text/open-ended-response construct across the codebase so only single select, multi select, and rating remain.
+- `packages/shared`: remove `FREE_TEXT` from the question-type enum/constants; remove free-text Zod schemas and TypeScript types; remove the `FREE_TEXT` reward weight.
+- `packages/database`: remove `FREE_TEXT` from the Prisma `QuestionType` enum and remove `Answer.textValue`; add a migration (drop column + enum value; migrate/delete any existing free-text questions/answers in seed and data).
+- `apps/api`: remove free-text branches in submit validation, quality checks, and results aggregation (no more `textValue`, no free-text response list); update reward calculation.
+- `apps/admin`: remove the free-text option from the question-type selector and its config UI (char limits); remove the free-text response list from the results UI.
+- `apps/evaluator`: remove the free-text textarea rendering and its answer-state handling from the question page and review page.
+- Seed data: remove any free-text sample questions/answers.
+- Grep the whole repo for `FREE_TEXT` / `textValue` / free-text UI to confirm none remain.
+
+### 6.6 Media Library — Bulk Upload (Multi-File + Drag-and-Drop)
+- Backend: `POST /admin/media/upload` accepts **multiple files** in a single multipart request; validate each file's type/size independently and return a per-file result (created records + any per-file errors) rather than failing the whole batch.
+- Frontend (admin Media Library):
+  - File picker allows **multi-select** (`multiple` attribute).
+  - Add a **drag-and-drop** dropzone over the library grid; dropping files queues them for upload.
+  - Show a batch upload panel with per-file progress and success/error state; refresh the grid as files complete without a full page reload.
+
+### Phase 6 Exit Criteria
+
+Before moving to Phase 7, all of the following must be true:
+
+- [ ] Both apps show a Sign Out control; clicking it clears cookies, resets auth state, and redirects to `/login`; protected routes are then inaccessible
+- [ ] Admin can Pause ("Deactivate") and Close an Active test from the UI with confirmation; a paused test stops appearing in `GET /evaluator/next-test`; a paused test can be Reactivated
+- [ ] `GET /admin/tests/:id/report` returns per-option choice distribution for an **Active** test and for a Closed test, excluding flagged/attention/trap responses
+- [ ] The admin report view renders live option distributions and updates when segmented by gender / age range / country
+- [ ] Onboarding stores a specific `age` integer chosen from a searchable dropdown; `EvaluatorProfile.dateOfBirth` no longer exists and a migration handles existing rows
+- [ ] Country and City are searchable dropdowns; City options are filtered by the selected Country
+- [ ] Admin age-range segmentation and test age filters work correctly using the stored `age` integer
+- [ ] No `FREE_TEXT` question type, `textValue` field, or free-text UI remains anywhere in the repo (verified by grep); the 3 remaining types still work end-to-end
+- [ ] Media Library accepts multiple files via multi-select and via drag-and-drop, with per-file progress and per-file validation; the grid refreshes as uploads complete
+
+---
+
+## Phase 7: Polish, Anti-Cheat Refinement & Testing (Day 2 — Hours 7–10)
 
 ### 6.1 Anti-Cheat Refinements
 - Verify speed check logic works correctly with the 60-second default
@@ -467,7 +530,7 @@ Before moving to Phase 6, all of the following must be true:
 - Edge: no available tests → verify empty state
 - Edge: submit after response cap → verify rejection
 
-### Phase 6 Exit Criteria — Demo Ready ✓
+### Phase 7 Exit Criteria — Demo Ready ✓
 
 The MVP demo is shippable when all of the following pass:
 
@@ -604,14 +667,15 @@ Phase 0 (Scaffolding) ──→ Phase 1 (Auth) ──→ Phase 2 (Media) ──�
                                                                   ├──→ Phase 3 (Test Creation)
                                                                   │         │
                                                                   │         ▼
-                                                                  └──→ Phase 4 (Test Taking) ──→ Phase 5 (Results) ──→ Phase 6 (Polish)
+                                                                  └──→ Phase 4 (Test Taking) ──→ Phase 5 (Results) ──→ Phase 6 (Enhancements) ──→ Phase 7 (Polish)
 ```
 
 - Phases 2 and 1 can overlap slightly (media backend while auth frontend is finishing)
 - Phase 3 (test creation) depends on both auth (admin role) and media (library)
 - Phase 4 (test taking) depends on Phase 3 (tests must exist)
 - Phase 5 (results) depends on Phase 4 (responses must exist)
-- Phase 6 is pure polish and testing
+- Phase 6 (enhancements) is a follow-up iteration on the working MVP: sign out, test control, live report, structured demographic dropdowns, free-text removal, bulk media upload
+- Phase 7 is pure polish and testing
 
 ---
 
@@ -619,15 +683,18 @@ Phase 0 (Scaffolding) ──→ Phase 1 (Auth) ──→ Phase 2 (Media) ──�
 
 - [ ] Admin can log in and see the dashboard with stats
 - [ ] Admin can upload media files to the library
+- [ ] Admin can upload multiple media files at once via multi-select and drag-and-drop
 - [ ] Admin can import media from a Google Drive folder URL
 - [ ] Admin can create a test from scratch with multiple question types
 - [ ] Admin can create a test from a system template
 - [ ] Admin can set demographic filters on a test
 - [ ] Admin can preview a test in evaluator view
-- [ ] Admin can activate, pause, and close a test
+- [ ] Admin can activate, pause/deactivate, and close a test from explicit UI controls
+- [ ] Admin can view the live option-choice report while a test is Active and after it is Closed
+- [ ] Admin and evaluator can sign out
 - [ ] Evaluator can register with email/password
 - [ ] Evaluator can register with Google OAuth
-- [ ] Evaluator completes demographic onboarding
+- [ ] Evaluator completes demographic onboarding (specific age + searchable country/city dropdowns)
 - [ ] Evaluator sees "Start Next Test" and gets auto-assigned an eligible test
 - [ ] Evaluator can navigate forward/backward through questions
 - [ ] Evaluator can submit a test and see points earned
