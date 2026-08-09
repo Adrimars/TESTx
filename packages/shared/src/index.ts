@@ -1,3 +1,4 @@
+export * from "./age";
 export * from "./constants";
 export * from "./rewards";
 export * from "./types/media";
@@ -7,5 +8,4 @@ export * from "./types/test";
 export * from "./types/user";
 export * from "./validation/auth";
 export * from "./validation/question";
-export * from "./validation/response";
 export * from "./validation/test";
