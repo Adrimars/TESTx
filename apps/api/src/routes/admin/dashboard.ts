@@ -13,8 +13,8 @@ export const adminDashboardRoutes: FastifyPluginAsync = async (app) => {
         app.prisma.testResponse.count(),
         app.prisma.testResponse.count({ where: { isFlagged: true } }),
         app.prisma.test.findMany({
-          take: 5,
           orderBy: { createdAt: "desc" },
+          take: 5,
           include: { _count: { select: { responses: true } } },
         }),
       ]);
@@ -24,12 +24,12 @@ export const adminDashboardRoutes: FastifyPluginAsync = async (app) => {
       activeTests,
       totalResponses,
       flaggedResponses,
-      recentTests: recentTests.map((t) => ({
-        id: t.id,
-        title: t.title,
-        status: t.status,
-        responseCount: t._count.responses,
-        createdAt: t.createdAt.toISOString(),
+      recentTests: recentTests.map((test) => ({
+        id: test.id,
+        title: test.title,
+        status: test.status,
+        responseCount: test._count.responses,
+        createdAt: test.createdAt.toISOString(),
       })),
     };
   });
