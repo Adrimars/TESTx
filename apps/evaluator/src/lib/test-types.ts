@@ -5,6 +5,14 @@ export type QuestionOption = {
   mediaId: string | null;
   order: number;
   mediaUrl: string | null;
+  media: {
+    id: string;
+    fileName: string;
+    fileType: "IMAGE" | "VIDEO" | "AUDIO";
+    mimeType: string;
+    thumbnailUrl: string | null;
+    url: string;
+  } | null;
 };
 
 export type Question = {

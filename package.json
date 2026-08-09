@@ -5,6 +5,9 @@
   "packageManager": "pnpm@10.33.0",
   "scripts": {
     "dev": "turbo dev",
+    "dev:api": "pnpm --filter @testx/api dev",
+    "dev:evaluator": "pnpm --filter @testx/api dev & pnpm --filter @testx/evaluator dev",
+    "dev:admin": "pnpm --filter @testx/api dev & pnpm --filter @testx/admin dev",
     "build": "turbo build",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",

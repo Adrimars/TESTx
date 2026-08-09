@@ -148,22 +148,26 @@ export const driveService = {
     const tempPath = `${cachePath}.tmp`;
     const cacheWriteStream = fs.createWriteStream(tempPath);
     const passThrough = new PassThrough();
-
     const driveStream = driveResponse.data as NodeJS.ReadableStream;
 
-    driveStream.on("data", (chunk: Buffer) => {
-      cacheWriteStream.write(chunk);
-      passThrough.push(chunk);
-    });
-    driveStream.on("end", () => {
-      cacheWriteStream.end();
-      passThrough.push(null);
+    const cleanup = () => {
+      driveStream.removeAllListeners();
+      if (!cacheWriteStream.destroyed) cacheWriteStream.destroy();
+      if (!passThrough.destroyed) passThrough.destroy();
+      fs.unlink(tempPath, () => {});
+    };
+
+    driveStream.pipe(cacheWriteStream, { end: true });
+    driveStream.pipe(passThrough, { end: true });
+
+    cacheWriteStream.on("finish", () => {
       fs.rename(tempPath, cachePath, () => {});
     });
-    driveStream.on("error", () => {
-      cacheWriteStream.destroy();
-      passThrough.destroy();
-      fs.unlink(tempPath, () => {});
+    driveStream.on("error", cleanup);
+    cacheWriteStream.on("error", cleanup);
+    passThrough.on("error", cleanup);
+    reply.raw.on("close", () => {
+      if (!reply.raw.writableEnded) cleanup();
     });
 
     return reply.send(passThrough);

@@ -188,6 +188,7 @@ function serializeQuestion(question: {
       fileType: string;
       mimeType: string;
       fileSize: number;
+      thumbnailUrl: string | null;
     } | null;
   }[];
 }) {
@@ -206,6 +207,18 @@ function serializeQuestion(question: {
       mediaId: opt.mediaId,
       order: opt.order,
       mediaUrl: opt.mediaId ? `/media/${opt.mediaId}/file` : null,
+      // fileType drives which element the renderer uses; an <img> for a video option
+      // is a broken tile, and mediaUrl alone cannot tell them apart.
+      media: opt.media
+        ? {
+            id: opt.media.id,
+            fileName: opt.media.fileName,
+            fileType: opt.media.fileType,
+            mimeType: opt.media.mimeType,
+            thumbnailUrl: opt.media.thumbnailUrl,
+            url: `/media/${opt.media.id}/file`,
+          }
+        : null,
     })),
   };
 }

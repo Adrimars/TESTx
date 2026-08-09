@@ -1,18 +1,33 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { Button, Card, CardContent, CardHeader, CardTitle } from "@testx/ui";
 import { useTestSession } from "@/components/test-session-provider";
+import { resolveMediaUrl } from "@/lib/api";
 import type { Question, QuestionOption } from "@/lib/test-types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+/** An option's media can be an image, a video or a clip of audio; each needs its own element. */
+function OptionMedia({ option }: { option: QuestionOption }) {
+  const url = resolveMediaUrl(option.media?.url ?? option.mediaUrl);
+  if (!url) return null;
+  const kind = option.media?.fileType ?? "IMAGE";
+  const label = option.label ?? option.media?.fileName ?? "Option";
 
-function MediaImage({ url, label }: { url: string; label: string | null }) {
+  if (kind === "VIDEO") {
+    return <video src={url} controls className="w-full h-32 sm:h-40 object-cover rounded-md" />;
+  }
+  if (kind === "AUDIO") {
+    return (
+      <div className="flex w-full h-32 sm:h-40 items-center justify-center rounded-md bg-muted p-3">
+        <audio src={url} controls className="w-full" />
+      </div>
+    );
+  }
   return (
     <img
-      src={`${API_URL}${url}`}
-      alt={label ?? "Option"}
+      src={url}
+      alt={label}
       className="w-full h-32 sm:h-40 object-cover rounded-md"
       loading="lazy"
     />
@@ -44,7 +59,7 @@ function SingleSelectQuestion({
                 : "border-border hover:border-primary/50"
             }`}
           >
-            {opt.mediaUrl && <MediaImage url={opt.mediaUrl} label={opt.label} />}
+            <OptionMedia option={opt} />
             {opt.label && (
               <p className="p-2 text-sm font-medium">{opt.label}</p>
             )}
@@ -113,7 +128,7 @@ function MultiSelectQuestion({
                   : "border-border hover:border-primary/50"
               }`}
             >
-              {opt.mediaUrl && <MediaImage url={opt.mediaUrl} label={opt.label} />}
+              <OptionMedia option={opt} />
               {opt.label && <p className="p-2 text-sm font-medium">{opt.label}</p>}
             </button>
           ))}
@@ -280,7 +295,8 @@ export default function QuestionPage() {
       return selected.length >= (config.minSelections ?? 1);
     }
     if (question!.type === "RATING") return ratingValue !== null;
-    return true; // free text always allows next
+    const config = question!.config as { minChars?: number };
+    return textValue.trim().length >= (config.minChars ?? 0);
   }
 
   function goNext() {

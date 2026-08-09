@@ -8,6 +8,14 @@ const nextConfig = {
   turbopack: {
     root: resolve(__dirname, "../.."),
   },
+  outputFileTracingRoot: resolve(__dirname, "../.."),
+  webpack: (config) => {
+    config.watchOptions = {
+      ...config.watchOptions,
+      ignored: ["**/node_modules", "**/.next", "**/dist", "**/uploads", "**/cache"],
+    };
+    return config;
+  },
 };
 
 export default nextConfig;
