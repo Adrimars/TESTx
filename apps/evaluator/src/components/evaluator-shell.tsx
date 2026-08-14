@@ -2,11 +2,11 @@
 
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { Avatar, Badge } from "@testx/ui";
+import { Avatar, Badge, Button } from "@testx/ui";
 import { useAuth } from "./auth-provider";
 
 export function EvaluatorShell({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const balance = user?.evaluatorProfile?.balance ?? 0;
@@ -42,6 +42,9 @@ export function EvaluatorShell({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-3">
             <Badge>{balance} pts</Badge>
             <Avatar>{user?.email?.charAt(0).toUpperCase() ?? "E"}</Avatar>
+            <Button variant="secondary" onClick={logout} className="min-h-[36px] text-sm">
+              Sign Out
+            </Button>
           </div>
         </div>
       </header>

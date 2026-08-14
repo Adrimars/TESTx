@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Avatar } from "@testx/ui";
+import { Avatar, Button } from "@testx/ui";
 import { useAuth } from "./auth-provider";
 
 const navigation = [
@@ -14,7 +14,7 @@ const navigation = [
 ];
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const pathname = usePathname();
   const isAuthPage = pathname === "/login";
 
@@ -47,6 +47,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             </Link>
           ))}
         </nav>
+        <div className="mt-auto pt-6 lg:mt-8">
+          <Button variant="secondary" onClick={logout} className="w-full text-sm">
+            Sign Out
+          </Button>
+        </div>
       </aside>
       <main className="p-4 lg:p-8">{children}</main>
     </div>
