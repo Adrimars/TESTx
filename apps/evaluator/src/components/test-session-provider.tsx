@@ -23,7 +23,6 @@ type TestSessionContextValue = {
 const initialAnswer: AnswerData = {
   selectedOptionIds: [],
   ratingValue: null,
-  textValue: "",
   timeSpentSeconds: 0,
 };
 
