@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Avatar, Button } from "@testx/ui";
 import { useAuth } from "./auth-provider";
 
@@ -14,9 +15,15 @@ const navigation = [
 ];
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user, isLoading, logout } = useAuth();
+  const router = useRouter();
   const pathname = usePathname();
   const isAuthPage = pathname === "/login";
+
+  useEffect(() => {
+    if (isLoading || isAuthPage) return;
+    if (!user) router.replace("/login");
+  }, [user, isLoading, isAuthPage, router]);
 
   if (isAuthPage) {
     return (
