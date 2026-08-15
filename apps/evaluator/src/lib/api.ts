@@ -13,11 +13,12 @@ async function tryRefresh(): Promise<void> {
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit, _retry = true): Promise<T> {
+  const hasBody = init?.body != null;
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
     credentials: "include",
     headers: {
-      "Content-Type": "application/json",
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...init?.headers,
     },
   });
