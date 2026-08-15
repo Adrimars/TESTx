@@ -1,12 +1,7 @@
 export const USER_ROLES = ["EVALUATOR", "ADMIN"] as const;
 export const GENDERS = ["MALE", "FEMALE", "OTHER", "UNDISCLOSED"] as const;
 export const TEST_STATUSES = ["DRAFT", "ACTIVE", "PAUSED", "CLOSED"] as const;
-export const QUESTION_TYPES = [
-  "SINGLE_SELECT",
-  "MULTI_SELECT",
-  "RATING",
-  "FREE_TEXT",
-] as const;
+export const QUESTION_TYPES = ["SINGLE_SELECT", "MULTI_SELECT", "RATING"] as const;
 export const MEDIA_TYPES = ["IMAGE", "VIDEO", "AUDIO", "TEXT"] as const;
 export const FILE_MEDIA_TYPES = ["IMAGE", "VIDEO", "AUDIO"] as const;
 export const MEDIA_SOURCE_TYPES = ["UPLOAD", "GOOGLE_DRIVE"] as const;
@@ -17,14 +12,10 @@ export const DEFAULT_MIN_TIME_PER_QUESTION_SECONDS = 60;
 export const DEFAULT_RATING_MIN = 1;
 export const DEFAULT_RATING_MAX = 5;
 
-/** Ceiling on a stored free-text answer when the question's config omits `maxChars`. */
-export const DEFAULT_FREE_TEXT_MAX_CHARS = 5000;
-
 export const QUESTION_REWARD_WEIGHTS: Record<QuestionType, number> = {
   SINGLE_SELECT: 2,
   MULTI_SELECT: 2,
   RATING: 1,
-  FREE_TEXT: 3,
 };
 
 export type UserRole = (typeof USER_ROLES)[number];
