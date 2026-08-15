@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from "@testx/database";
-import { AGE_GROUPS, ageGroup, calculateAge, type QuestionType } from "@testx/shared";
+import { AGE_GROUPS, ageGroup, type QuestionType } from "@testx/shared";
 
 const scoredQuestionInclude = {
   where: { isAttentionCheck: false, isTrapDuplicate: false },
@@ -7,8 +7,6 @@ const scoredQuestionInclude = {
   include: { options: { orderBy: { order: "asc" } } },
 } satisfies Prisma.Test$questionsArgs;
 
-// Overall results never touch evaluator profiles, so they are excluded here to
-// avoid loading users/profiles for every response.
 const overallInclude = {
   questions: scoredQuestionInclude,
   responses: { include: { answers: true } },
@@ -54,7 +52,6 @@ export type QuestionResult = {
   answeredCount: number;
   options?: OptionAggregation[];
   rating?: RatingAggregation;
-  textResponses?: string[];
 };
 
 export type SegmentBy = "gender" | "ageGroup" | "country";
@@ -127,9 +124,6 @@ function aggregateQuestion(question: ResultQuestion, answers: ResultAnswer[]): Q
     return base;
   }
 
-  base.textResponses = answers
-    .map((answer) => answer.textValue?.trim())
-    .filter((value): value is string => !!value);
   return base;
 }
 
@@ -155,7 +149,7 @@ function segmentLabel(response: DemographicResponse, segmentBy: SegmentBy): stri
   if (!profile) return null;
   if (segmentBy === "gender") return profile.gender;
   if (segmentBy === "country") return profile.country;
-  return ageGroup(calculateAge(profile.dateOfBirth));
+  return ageGroup(profile.age);
 }
 
 function orderedSegmentLabels(segmentBy: SegmentBy, present: Set<string>): string[] {

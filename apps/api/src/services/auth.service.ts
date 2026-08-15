@@ -27,7 +27,7 @@ export function buildCurrentUser(user: UserWithProfile): CurrentUser {
       ? {
           id: user.evaluatorProfile.id,
           userId: user.evaluatorProfile.userId,
-          dateOfBirth: user.evaluatorProfile.dateOfBirth.toISOString().split("T")[0]!,
+          age: user.evaluatorProfile.age,
           gender: user.evaluatorProfile.gender,
           country: user.evaluatorProfile.country,
           city: user.evaluatorProfile.city,
@@ -68,7 +68,6 @@ export async function handleGoogleCallback(prisma: PrismaClient, code: string): 
     throw new Error("Google account missing required fields");
   }
 
-  // Try by googleId first, then link to existing email account, or create new
   let user = await prisma.user.findUnique({
     where: { googleId: data.id },
     include: { evaluatorProfile: true },
