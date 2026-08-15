@@ -389,28 +389,44 @@ async function main() {
     where: { testId: closedTest.id },
   });
 
-  if (existingResponseCount < 20) {
+  if (existingResponseCount < 35) {
     const [q1, q2, q3] = closedTestFull.questions;
 
     const q1Options = q1?.options ?? [];
     const q2Options = q2?.options ?? [];
 
     const syntheticEvals = [
-      { email: "synth1@demo.testx",  dob: "1995-03-10", gender: "MALE"   as const, country: "US", city: "Chicago" },
-      { email: "synth2@demo.testx",  dob: "1988-07-14", gender: "FEMALE" as const, country: "GB", city: "Manchester" },
-      { email: "synth3@demo.testx",  dob: "2001-12-01", gender: "MALE"   as const, country: "AU", city: "Melbourne" },
-      { email: "synth4@demo.testx",  dob: "1975-05-20", gender: "FEMALE" as const, country: "CA", city: "Vancouver" },
-      { email: "synth5@demo.testx",  dob: "1992-09-08", gender: "MALE"   as const, country: "DE", city: "Munich" },
-      { email: "synth6@demo.testx",  dob: "1983-11-25", gender: "FEMALE" as const, country: "FR", city: "Lyon" },
-      { email: "synth7@demo.testx",  dob: "1998-04-17", gender: "MALE"   as const, country: "ES", city: "Barcelona" },
-      { email: "synth8@demo.testx",  dob: "1969-02-28", gender: "FEMALE" as const, country: "US", city: "Seattle" },
-      { email: "synth9@demo.testx",  dob: "2003-08-03", gender: "MALE"   as const, country: "IT", city: "Rome" },
-      { email: "synth10@demo.testx", dob: "1986-06-11", gender: "FEMALE" as const, country: "NL", city: "Amsterdam" },
-      { email: "synth11@demo.testx", dob: "1994-01-19", gender: "MALE"   as const, country: "US", city: "Los Angeles" },
-      { email: "synth12@demo.testx", dob: "1979-10-06", gender: "FEMALE" as const, country: "GB", city: "Edinburgh" },
-      { email: "synth13@demo.testx", dob: "1991-03-22", gender: "MALE"   as const, country: "BR", city: "São Paulo" },
-      { email: "synth14@demo.testx", dob: "2002-07-30", gender: "FEMALE" as const, country: "MX", city: "Mexico City" },
-      { email: "synth15@demo.testx", dob: "1984-12-14", gender: "MALE"   as const, country: "JP", city: "Tokyo" },
+      { email: "synth1@demo.testx",  dob: "1995-03-10", gender: "MALE"        as const, country: "US", city: "Chicago" },
+      { email: "synth2@demo.testx",  dob: "1988-07-14", gender: "FEMALE"      as const, country: "GB", city: "Manchester" },
+      { email: "synth3@demo.testx",  dob: "2001-12-01", gender: "MALE"        as const, country: "AU", city: "Melbourne" },
+      { email: "synth4@demo.testx",  dob: "1975-05-20", gender: "FEMALE"      as const, country: "CA", city: "Vancouver" },
+      { email: "synth5@demo.testx",  dob: "1992-09-08", gender: "MALE"        as const, country: "DE", city: "Munich" },
+      { email: "synth6@demo.testx",  dob: "1983-11-25", gender: "FEMALE"      as const, country: "FR", city: "Lyon" },
+      { email: "synth7@demo.testx",  dob: "1998-04-17", gender: "MALE"        as const, country: "ES", city: "Barcelona" },
+      { email: "synth8@demo.testx",  dob: "1969-02-28", gender: "FEMALE"      as const, country: "US", city: "Seattle" },
+      { email: "synth9@demo.testx",  dob: "2003-08-03", gender: "MALE"        as const, country: "IT", city: "Rome" },
+      { email: "synth10@demo.testx", dob: "1986-06-11", gender: "FEMALE"      as const, country: "NL", city: "Amsterdam" },
+      { email: "synth11@demo.testx", dob: "1994-01-19", gender: "MALE"        as const, country: "US", city: "Los Angeles" },
+      { email: "synth12@demo.testx", dob: "1979-10-06", gender: "FEMALE"      as const, country: "GB", city: "Edinburgh" },
+      { email: "synth13@demo.testx", dob: "1991-03-22", gender: "MALE"        as const, country: "BR", city: "São Paulo" },
+      { email: "synth14@demo.testx", dob: "2002-07-30", gender: "FEMALE"      as const, country: "MX", city: "Mexico City" },
+      { email: "synth15@demo.testx", dob: "1984-12-14", gender: "MALE"        as const, country: "JP", city: "Tokyo" },
+      // Additional evaluators for richer demographic breakdown in demo analytics
+      { email: "synth16@demo.testx", dob: "1972-08-22", gender: "FEMALE"      as const, country: "US", city: "Dallas" },
+      { email: "synth17@demo.testx", dob: "1999-05-11", gender: "MALE"        as const, country: "IN", city: "Mumbai" },
+      { email: "synth18@demo.testx", dob: "1987-02-03", gender: "FEMALE"      as const, country: "KR", city: "Seoul" },
+      { email: "synth19@demo.testx", dob: "2000-11-27", gender: "MALE"        as const, country: "CA", city: "Montreal" },
+      { email: "synth20@demo.testx", dob: "1976-04-16", gender: "UNDISCLOSED" as const, country: "SE", city: "Stockholm" },
+      { email: "synth21@demo.testx", dob: "1993-07-09", gender: "FEMALE"      as const, country: "US", city: "Miami" },
+      { email: "synth22@demo.testx", dob: "1981-09-30", gender: "MALE"        as const, country: "ZA", city: "Cape Town" },
+      { email: "synth23@demo.testx", dob: "2004-01-14", gender: "FEMALE"      as const, country: "AU", city: "Brisbane" },
+      { email: "synth24@demo.testx", dob: "1967-06-05", gender: "MALE"        as const, country: "DE", city: "Hamburg" },
+      { email: "synth25@demo.testx", dob: "1996-10-21", gender: "FEMALE"      as const, country: "GB", city: "Birmingham" },
+      { email: "synth26@demo.testx", dob: "1989-03-18", gender: "MALE"        as const, country: "FR", city: "Marseille" },
+      { email: "synth27@demo.testx", dob: "2005-08-07", gender: "FEMALE"      as const, country: "US", city: "Phoenix" },
+      { email: "synth28@demo.testx", dob: "1973-12-25", gender: "MALE"        as const, country: "NL", city: "Rotterdam" },
+      { email: "synth29@demo.testx", dob: "1997-06-30", gender: "FEMALE"      as const, country: "IT", city: "Milan" },
+      { email: "synth30@demo.testx", dob: "1985-04-02", gender: "OTHER"       as const, country: "CA", city: "Calgary" },
     ];
 
     const synthUsers = await Promise.all(
@@ -438,7 +454,7 @@ async function main() {
       )
     );
 
-    const allResponders = [...evaluators.slice(0, 5), ...synthUsers];
+    const allResponders = [...evaluators, ...synthUsers];
 
     for (let i = 0; i < allResponders.length; i++) {
       const user = allResponders[i]!;
