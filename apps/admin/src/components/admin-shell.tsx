@@ -35,7 +35,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background text-foreground lg:grid lg:grid-cols-[260px_1fr]">
-      <aside className="border-b border-border bg-card p-4 lg:min-h-screen lg:border-b-0 lg:border-r">
+      <aside className="border-b border-border bg-card p-4 lg:flex lg:min-h-screen lg:flex-col lg:border-b-0 lg:border-r">
         <div className="mb-8 flex items-center justify-between lg:block">
           <div>
             <p className="text-xl font-bold tracking-tight">TESTx</p>
@@ -54,7 +54,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             </Link>
           ))}
         </nav>
-        <div className="mt-auto pt-6 lg:mt-8">
+        <div className="pt-6 lg:mt-auto">
           <Button variant="secondary" onClick={logout} className="w-full text-sm">
             Sign Out
           </Button>
