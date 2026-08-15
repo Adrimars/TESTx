@@ -94,8 +94,8 @@ export default function TestsPage() {
 
   async function changeStatus(testId: string, newStatus: TestStatus) {
     try {
-      await apiFetch(`/admin/tests/${testId}`, {
-        method: "PATCH",
+      await apiFetch(`/admin/tests/${testId}/status`, {
+        method: "PUT",
         body: JSON.stringify({ status: newStatus }),
       });
       void fetchTests();
