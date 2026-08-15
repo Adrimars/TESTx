@@ -120,7 +120,6 @@ export type QuestionResult = {
   answeredCount: number;
   options?: OptionAggregation[];
   rating?: RatingAggregation;
-  textResponses?: string[];
 };
 
 export type TestResults = {
@@ -154,4 +153,12 @@ export type EvaluatorListItem = {
   registeredAt: string;
   testsCompleted: number;
   totalPoints: number;
+};
+
+export type UploadResult = {
+  results: Array<{
+    fileName: string;
+    media?: AdminMedia;
+    error?: string;
+  }>;
 };

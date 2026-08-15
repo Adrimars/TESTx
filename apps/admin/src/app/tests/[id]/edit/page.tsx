@@ -34,8 +34,6 @@ type QuestionDraft = {
   ratingMax: string;
   minLabel: string;
   maxLabel: string;
-  minChars: string;
-  maxChars: string;
 };
 
 const EMPTY_QUESTION: QuestionDraft = {
@@ -52,8 +50,6 @@ const EMPTY_QUESTION: QuestionDraft = {
   ratingMax: "5",
   minLabel: "",
   maxLabel: "",
-  minChars: "",
-  maxChars: "",
 };
 
 const GENDERS: Gender[] = ["MALE", "FEMALE", "OTHER", "UNDISCLOSED"];
@@ -87,8 +83,6 @@ function toDraft(question?: AdminQuestion): QuestionDraft {
     ratingMax: configNumber(question.config.max, "5"),
     minLabel: configString(question.config.minLabel),
     maxLabel: configString(question.config.maxLabel),
-    minChars: configNumber(question.config.minChars),
-    maxChars: configNumber(question.config.maxChars),
   };
 }
 
@@ -194,12 +188,6 @@ export default function TestEditorPage() {
       if (draft.minLabel.trim()) config.minLabel = draft.minLabel.trim();
       if (draft.maxLabel.trim()) config.maxLabel = draft.maxLabel.trim();
     }
-    if (draft.type === "FREE_TEXT") {
-      const minChars = numberOrUndefined(draft.minChars);
-      const maxChars = numberOrUndefined(draft.maxChars);
-      if (minChars) config.minChars = minChars;
-      if (maxChars) config.maxChars = maxChars;
-    }
 
     const options =
       draft.type === "SINGLE_SELECT" || draft.type === "MULTI_SELECT"
@@ -213,7 +201,7 @@ export default function TestEditorPage() {
     return {
       type: draft.type,
       prompt: draft.prompt.trim(),
-      mediaType: draft.type === "FREE_TEXT" ? null : draft.mediaType,
+      mediaType: draft.mediaType,
       config,
       options,
       isAttentionCheck: draft.isAttentionCheck,
@@ -311,17 +299,17 @@ export default function TestEditorPage() {
     }
   }
 
-  async function activateTest() {
+  async function changeStatus(status: TestStatus) {
     setSaving(true);
     setError("");
     try {
       const updated = await apiFetch<AdminTestDetail>(`/admin/tests/${testId}/status`, {
         method: "PUT",
-        body: JSON.stringify({ status: "ACTIVE" satisfies TestStatus }),
+        body: JSON.stringify({ status }),
       });
       applyTest(updated);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to activate test");
+      setError(err instanceof Error ? err.message : `Failed to change status to ${status}`);
     } finally {
       setSaving(false);
     }
@@ -355,7 +343,19 @@ export default function TestEditorPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           <Link href={`/tests/${test.id}/preview`}><Button variant="secondary">Preview</Button></Link>
-          {isDraft && <Button onClick={activateTest} disabled={saving}>Activate</Button>}
+          {(test.status === "ACTIVE" || test.status === "CLOSED") && (
+            <Link href={`/tests/${test.id}/report`}><Button variant="secondary">Report</Button></Link>
+          )}
+          {isDraft && <Button onClick={() => changeStatus("ACTIVE")} disabled={saving}>Activate</Button>}
+          {test.status === "ACTIVE" && (
+            <Button variant="secondary" onClick={() => { if (confirm("Deactivate (pause) this test?")) changeStatus("PAUSED"); }} disabled={saving}>Deactivate</Button>
+          )}
+          {test.status === "PAUSED" && (
+            <Button onClick={() => changeStatus("ACTIVE")} disabled={saving}>Reactivate</Button>
+          )}
+          {(test.status === "ACTIVE" || test.status === "PAUSED") && (
+            <Button variant="secondary" onClick={() => { if (confirm("Close this test permanently? This cannot be undone.")) changeStatus("CLOSED"); }} disabled={saving}>Close</Button>
+          )}
           {isDraft && <Button variant="secondary" onClick={deleteTest} disabled={saving}>Delete Draft</Button>}
         </div>
       </div>
@@ -480,11 +480,9 @@ export default function TestEditorPage() {
               <option value="SINGLE_SELECT">Single select</option>
               <option value="MULTI_SELECT">Multi select</option>
               <option value="RATING">Rating</option>
-              <option value="FREE_TEXT">Free text</option>
             </Select>
             <Select
               value={draft.mediaType}
-              disabled={draft.type === "FREE_TEXT"}
               onChange={(event) => {
                 const mediaType = event.target.value as MediaType;
                 setDraft((current) => ({ ...current, mediaType, options: [{ label: "", mediaId: "" }, { label: "", mediaId: "" }] }));
@@ -548,13 +546,6 @@ export default function TestEditorPage() {
               <Input placeholder="Max value" value={draft.ratingMax} onChange={(event) => setDraft((current) => ({ ...current, ratingMax: event.target.value }))} />
               <Input placeholder="Min label" value={draft.minLabel} onChange={(event) => setDraft((current) => ({ ...current, minLabel: event.target.value }))} />
               <Input placeholder="Max label" value={draft.maxLabel} onChange={(event) => setDraft((current) => ({ ...current, maxLabel: event.target.value }))} />
-            </div>
-          )}
-
-          {draft.type === "FREE_TEXT" && (
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Input placeholder="Min characters" value={draft.minChars} onChange={(event) => setDraft((current) => ({ ...current, minChars: event.target.value }))} />
-              <Input placeholder="Max characters" value={draft.maxChars} onChange={(event) => setDraft((current) => ({ ...current, maxChars: event.target.value }))} />
             </div>
           )}
 

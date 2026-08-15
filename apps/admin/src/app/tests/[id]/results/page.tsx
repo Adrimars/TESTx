@@ -107,28 +107,11 @@ function RatingResult({ result }: { result: QuestionResult }) {
   );
 }
 
-function FreeTextResult({ result }: { result: QuestionResult }) {
-  const responses = result.textResponses ?? [];
-  if (responses.length === 0) {
-    return <p className="text-sm text-muted-foreground">No responses yet.</p>;
-  }
-  return (
-    <div className="max-h-64 space-y-2 overflow-y-auto">
-      {responses.map((text, index) => (
-        <p key={index} className="rounded-md border border-border bg-muted/40 p-2 text-sm">
-          {text}
-        </p>
-      ))}
-    </div>
-  );
-}
-
 function QuestionBody({ result }: { result: QuestionResult }) {
   if (result.answeredCount === 0) {
     return <p className="text-sm text-muted-foreground">No responses yet.</p>;
   }
   if (result.type === "RATING") return <RatingResult result={result} />;
-  if (result.type === "FREE_TEXT") return <FreeTextResult result={result} />;
   return <OptionBars result={result} />;
 }
 
