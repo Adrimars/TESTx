@@ -45,7 +45,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    await apiFetch("/auth/logout", { method: "POST" });
+    try {
+      await apiFetch("/auth/logout", { method: "POST" });
+    } catch {
+      // An expired session makes /auth/logout fail, but the intent is still to end
+      // the session locally — clear the user either way so the shell redirects.
+    }
     setUser(null);
   }, []);
 

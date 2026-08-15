@@ -14,14 +14,17 @@ export function EvaluatorShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (isLoading) return;
-    if (!user) return;
+    if (!user) {
+      if (!isAuthPage) router.replace("/login");
+      return;
+    }
     if (!user.evaluatorProfile && pathname !== "/onboarding") {
       router.replace("/onboarding");
     }
     if (user.evaluatorProfile && pathname === "/onboarding") {
       router.replace("/dashboard");
     }
-  }, [user, isLoading, pathname, router]);
+  }, [user, isLoading, isAuthPage, pathname, router]);
 
   if (isAuthPage) {
     return (
