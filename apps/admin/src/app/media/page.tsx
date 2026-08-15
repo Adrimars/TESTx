@@ -130,11 +130,17 @@ export default function MediaPage() {
     if (fileQueue.length === 0 || uploading) return;
     setUploading(true);
 
-    const formData = new FormData();
-    fileQueue.forEach((item) => formData.append("file", item.file));
+    // Snapshot the batch: files added while this request is in flight are not part
+    // of it and must keep their own status.
+    const batch = fileQueue.map((item) => item.file);
+    const inBatch = new Set(batch);
 
-    // Mark all as uploading
-    setFileQueue((prev) => prev.map((item) => ({ ...item, status: "uploading" as const })));
+    const formData = new FormData();
+    batch.forEach((file) => formData.append("file", file));
+
+    setFileQueue((prev) =>
+      prev.map((item) => (inBatch.has(item.file) ? { ...item, status: "uploading" as const } : item))
+    );
 
     try {
       const res = await fetch(`${API_URL}/admin/media/upload`, {
@@ -146,12 +152,17 @@ export default function MediaPage() {
 
       if (!res.ok || !("results" in body)) {
         const msg = (body as { message?: string }).message ?? `Upload failed (${res.status})`;
-        setFileQueue((prev) => prev.map((item) => ({ ...item, status: "error", error: msg })));
+        setFileQueue((prev) =>
+          prev.map((item) => (inBatch.has(item.file) ? { ...item, status: "error", error: msg } : item))
+        );
       } else {
-        const resultMap = new Map(body.results.map((r) => [r.fileName, r]));
+        // The server returns one result per file in the order they were sent, so pair
+        // them up by position. Filenames are not unique within a batch.
+        const resultByFile = new Map(batch.map((file, i) => [file, body.results[i]]));
         setFileQueue((prev) =>
           prev.map((item) => {
-            const result = resultMap.get(item.file.name);
+            if (!inBatch.has(item.file)) return item;
+            const result = resultByFile.get(item.file);
             if (!result) return { ...item, status: "error", error: "No result returned" };
             if (result.error) return { ...item, status: "error", error: result.error };
             return { ...item, status: "done" };
@@ -161,7 +172,9 @@ export default function MediaPage() {
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Upload failed";
-      setFileQueue((prev) => prev.map((item) => ({ ...item, status: "error", error: msg })));
+      setFileQueue((prev) =>
+        prev.map((item) => (inBatch.has(item.file) ? { ...item, status: "error", error: msg } : item))
+      );
     } finally {
       setUploading(false);
     }
