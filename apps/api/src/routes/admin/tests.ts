@@ -138,7 +138,7 @@ function validateQuestionShape(input: QuestionInput) {
   }
 
   if (input.options.length > 0) {
-    throw Object.assign(new Error("Rating and free-text questions cannot have options"), { statusCode: 400 });
+    throw Object.assign(new Error("Rating questions cannot have options"), { statusCode: 400 });
   }
 }
 
