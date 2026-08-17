@@ -40,16 +40,12 @@ export default function ReviewPage() {
 
   if (!test) return null;
 
-  // Driven off the question list rather than the answer map: the server requires exactly one
-  // entry per question, and a question the evaluator passed through without touching (a
-  // free-text one they left blank) has no map entry yet.
   const answers = test.questions.map((question) => {
     const data = state.answers.get(question.id);
     return {
       questionId: question.id,
       selectedOptionIds: data?.selectedOptionIds ?? [],
       ratingValue: data?.ratingValue ?? undefined,
-      textValue: data?.textValue || undefined,
       timeSpentSeconds: data?.timeSpentSeconds ?? 0,
     };
   });
@@ -119,8 +115,6 @@ export default function ReviewPage() {
           if (answer) {
             if (question.type === "RATING" && answer.ratingValue !== null) {
               answerText = `Rating: ${answer.ratingValue}`;
-            } else if (question.type === "FREE_TEXT" && answer.textValue) {
-              answerText = answer.textValue.slice(0, 100);
             } else if (answer.selectedOptionIds.length > 0) {
               const labels = answer.selectedOptionIds
                 .map((id) => question.options.find((o) => o.id === id)?.label ?? id)

@@ -1,8 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import {
-  calculateAge,
-  DEFAULT_FREE_TEXT_MAX_CHARS,
   DEFAULT_RATING_MAX,
   DEFAULT_RATING_MIN,
   evaluatorProfileSchema,
@@ -26,8 +24,6 @@ const submitSchema = z.object({
         questionId: z.string().uuid(),
         selectedOptionIds: z.array(z.string().uuid()).optional().default([]),
         ratingValue: z.number().int().optional(),
-        // Length is bounded per-question in validateAnswers, which knows the question's maxChars.
-        textValue: z.string().optional(),
         timeSpentSeconds: z.number().int().min(0),
       })
     )
@@ -50,7 +46,6 @@ const PUBLIC_CONFIG_KEYS: Record<string, readonly string[]> = {
   SINGLE_SELECT: [],
   MULTI_SELECT: ["minSelections", "maxSelections"],
   RATING: ["min", "max", "minLabel", "maxLabel"],
-  FREE_TEXT: ["minChars", "maxChars"],
 };
 
 function toConfig(raw: unknown): Record<string, unknown> {
@@ -77,7 +72,6 @@ type ValidatedAnswer = {
   questionId: string;
   selectedOptionIds: string[];
   ratingValue?: number;
-  textValue?: string;
   timeSpentSeconds: number;
 };
 
@@ -91,14 +85,10 @@ type QuestionForValidation = {
 /**
  * Rejects what an honest client cannot produce — an answer to a question outside this test,
  * two answers to the same question, an option belonging to a different question, more
- * selections than the type allows, an out-of-range rating, text past the question's maxChars.
+ * selections than the type allows, or an out-of-range rating.
  *
- * Under-filled answers (nothing selected, empty text, no rating) are deliberately *not*
- * rejected: they are reachable by an honest evaluator and are the quality service's call to
- * make, not a reason to throw away a completed test at the last step.
- *
- * Returned answers are normalised to their question type, so a value that does not apply
- * (text on a rating question, options on a free-text one) can never reach the database.
+ * Under-filled answers (nothing selected, no rating) are deliberately *not* rejected:
+ * they are reachable by an honest evaluator and are the quality service's call to make.
  */
 function validateAnswers(
   submitted: SubmittedAnswer[],
@@ -161,12 +151,8 @@ function validateAnswers(
       continue;
     }
 
-    const maxChars = numberOr(config.maxChars, DEFAULT_FREE_TEXT_MAX_CHARS);
-    const { textValue } = submittedAnswer;
-    if (textValue !== undefined && textValue.length > maxChars) {
-      return { message: `Answer for question ${questionId} exceeds ${maxChars} characters` };
-    }
-    answers.push({ ...base, selectedOptionIds: [], textValue });
+    // Unrecognised question type — skip gracefully
+    answers.push({ ...base, selectedOptionIds: [] });
   }
 
   return { answers };
@@ -211,8 +197,6 @@ function serializeQuestion(question: {
       mediaId: opt.mediaId,
       order: opt.order,
       mediaUrl: opt.mediaId ? `/media/${opt.mediaId}/file` : null,
-      // fileType drives which element the renderer uses; an <img> for a video option
-      // is a broken tile, and mediaUrl alone cannot tell them apart.
       media: opt.media
         ? {
             id: opt.media.id,
@@ -228,15 +212,14 @@ function serializeQuestion(question: {
 }
 
 function matchesDemographics(
-  profile: { dateOfBirth: Date; gender: string; country: string; city: string | null },
+  profile: { age: number; gender: string; country: string; city: string | null },
   filters: unknown
 ): boolean {
   if (!filters || typeof filters !== "object" || Array.isArray(filters)) return true;
   const f = filters as Record<string, unknown>;
 
-  const age = calculateAge(profile.dateOfBirth);
-  if (typeof f.ageMin === "number" && age < f.ageMin) return false;
-  if (typeof f.ageMax === "number" && age > f.ageMax) return false;
+  if (typeof f.ageMin === "number" && profile.age < f.ageMin) return false;
+  if (typeof f.ageMax === "number" && profile.age > f.ageMax) return false;
 
   if (Array.isArray(f.genders) && f.genders.length > 0) {
     if (!f.genders.includes(profile.gender)) return false;
@@ -244,7 +227,6 @@ function matchesDemographics(
   if (Array.isArray(f.countries) && f.countries.length > 0) {
     if (!f.countries.includes(profile.country)) return false;
   }
-  // Fail closed: a filtered city the evaluator hasn't set is a non-match, not a pass.
   if (Array.isArray(f.cities) && f.cities.length > 0) {
     if (!profile.city || !f.cities.includes(profile.city)) return false;
   }
@@ -259,14 +241,14 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
     const profile = await app.prisma.evaluatorProfile.upsert({
       where: { userId: request.user!.id },
       update: {
-        dateOfBirth: new Date(body.dateOfBirth),
+        age: body.age,
         gender: body.gender,
         country: body.country,
         city: body.city ?? null,
       },
       create: {
         userId: request.user!.id,
-        dateOfBirth: new Date(body.dateOfBirth),
+        age: body.age,
         gender: body.gender,
         country: body.country,
         city: body.city ?? null,
@@ -307,8 +289,6 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
         advisoryTimeMin: test.advisoryTimeMin,
         rewardPoints: test.rewardPoints,
         minTimePerQuestion: test.minTimePerQuestion,
-        // Attention checks and trap duplicates are indistinguishable to the evaluator and
-        // are stepped through like any other question, so they are part of the count.
         questionCount: await app.prisma.question.count({ where: { testId: test.id } }),
       });
     }
@@ -421,9 +401,6 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
     }
     const { answers } = validation;
 
-    // Every question must be answered, attention checks and trap duplicates included. They are
-    // stepped through like any other question, so a client that omits them is a client trying
-    // to skip the quality checks — those checks can only judge answers they were given.
     const answeredIds = new Set(answers.map((a) => a.questionId));
     const missing = test.questions.filter((q) => !answeredIds.has(q.id));
     if (missing.length > 0) {
@@ -440,9 +417,6 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
       Math.round((completedAt.getTime() - startedAt.getTime()) / 1000)
     );
 
-    // Per-question times cannot be verified individually, but their sum can never
-    // legitimately exceed the server-measured session duration. Scale them down
-    // proportionally when it does, so a rushed session cannot claim slow answers.
     const reportedTotal = answers.reduce((sum, a) => sum + a.timeSpentSeconds, 0);
     const scale = reportedTotal > totalTimeSeconds ? totalTimeSeconds / reportedTotal : 1;
     const timedAnswers = answers.map((a) => ({
@@ -478,12 +452,9 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
 
     try {
       await app.prisma.$transaction(async (tx) => {
-        // The cap was checked above against a count that is already stale by the time we
-        // write; re-check it inside the transaction so two concurrent submissions cannot
-        // both slip past it.
         await assertResponseCapAvailable(tx, test.id, test.responseCap);
 
-        const response = await tx.testResponse.create({
+        await tx.testResponse.create({
           data: {
             testId: test.id,
             userId,
@@ -498,7 +469,6 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
                 questionId: a.questionId,
                 selectedOptions: a.selectedOptionIds,
                 ratingValue: a.ratingValue ?? null,
-                textValue: a.textValue ?? null,
                 timeSpentSeconds: a.timeSpentSeconds,
               })),
             },
@@ -511,8 +481,6 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
             data: { balance: { increment: pointsEarned } },
           });
         }
-
-        return response;
       });
     } catch (error) {
       if (error instanceof ResponseCapReachedError) {

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Dialog, Input } from "@testx/ui";
 import type { Media } from "@testx/shared";
 import { apiFetch } from "@/lib/api";
+import type { UploadResult } from "@/lib/admin-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -58,9 +59,11 @@ export default function MediaPage() {
   // Upload dialog
   const uploadDialogRef = useRef<HTMLDialogElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  type FileStatus = { file: File; status: "pending" | "uploading" | "done" | "error"; error?: string };
+  const [fileQueue, setFileQueue] = useState<FileStatus[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
 
   // Drive import dialog
   const driveDialogRef = useRef<HTMLDialogElement>(null);
@@ -102,32 +105,76 @@ export default function MediaPage() {
   }, [fetchMedia]);
 
   // Upload flow
+  function addFiles(files: FileList | File[]) {
+    const accepted = Array.from(files).filter((f) =>
+      f.type.startsWith("image/") || f.type.startsWith("video/") || f.type.startsWith("audio/")
+    );
+    setFileQueue((prev) => [
+      ...prev,
+      ...accepted.map((file) => ({ file, status: "pending" as const })),
+    ]);
+  }
+
   function openUploadDialog() {
-    setSelectedFile(null);
-    setUploadError("");
+    setFileQueue([]);
     uploadDialogRef.current?.showModal();
   }
 
+  function handleDropzoneDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files.length > 0) addFiles(e.dataTransfer.files);
+  }
+
   async function handleUpload() {
-    if (!selectedFile) return;
+    if (fileQueue.length === 0 || uploading) return;
     setUploading(true);
-    setUploadError("");
+
+    // Snapshot the batch: files added while this request is in flight are not part
+    // of it and must keep their own status.
+    const batch = fileQueue.map((item) => item.file);
+    const inBatch = new Set(batch);
+
+    const formData = new FormData();
+    batch.forEach((file) => formData.append("file", file));
+
+    setFileQueue((prev) =>
+      prev.map((item) => (inBatch.has(item.file) ? { ...item, status: "uploading" as const } : item))
+    );
+
     try {
-      const formData = new FormData();
-      formData.append("file", selectedFile);
       const res = await fetch(`${API_URL}/admin/media/upload`, {
         method: "POST",
         credentials: "include",
         body: formData,
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({})) as { message?: string };
-        throw new Error(body.message ?? `Upload failed (${res.status})`);
+      const body = (await res.json()) as UploadResult | { message?: string };
+
+      if (!res.ok || !("results" in body)) {
+        const msg = (body as { message?: string }).message ?? `Upload failed (${res.status})`;
+        setFileQueue((prev) =>
+          prev.map((item) => (inBatch.has(item.file) ? { ...item, status: "error", error: msg } : item))
+        );
+      } else {
+        // The server returns one result per file in the order they were sent, so pair
+        // them up by position. Filenames are not unique within a batch.
+        const resultByFile = new Map(batch.map((file, i) => [file, body.results[i]]));
+        setFileQueue((prev) =>
+          prev.map((item) => {
+            if (!inBatch.has(item.file)) return item;
+            const result = resultByFile.get(item.file);
+            if (!result) return { ...item, status: "error", error: "No result returned" };
+            if (result.error) return { ...item, status: "error", error: result.error };
+            return { ...item, status: "done" };
+          })
+        );
+        await fetchMedia();
       }
-      uploadDialogRef.current?.close();
-      await fetchMedia();
     } catch (err: unknown) {
-      setUploadError(err instanceof Error ? err.message : "Upload failed");
+      const msg = err instanceof Error ? err.message : "Upload failed";
+      setFileQueue((prev) =>
+        prev.map((item) => (inBatch.has(item.file) ? { ...item, status: "error", error: msg } : item))
+      );
     } finally {
       setUploading(false);
     }
@@ -266,36 +313,68 @@ export default function MediaPage() {
       )}
 
       {/* Upload Dialog */}
-      <Dialog ref={uploadDialogRef} className="w-full max-w-md">
+      <Dialog ref={uploadDialogRef} className="w-full max-w-lg">
         <div className="p-6 space-y-4">
           <CardHeader className="p-0">
-            <CardTitle>Upload File</CardTitle>
+            <CardTitle>Upload Files</CardTitle>
           </CardHeader>
+
+          {/* Dropzone */}
           <div
-            className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-border p-8 text-sm text-muted-foreground hover:bg-muted/50"
+            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={handleDropzoneDrop}
             onClick={() => fileInputRef.current?.click()}
+            className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed p-8 text-sm transition-colors ${
+              isDragging
+                ? "border-primary bg-primary/5 text-primary"
+                : "border-border text-muted-foreground hover:bg-muted/50"
+            }`}
           >
             <span className="text-2xl">📁</span>
-            {selectedFile ? (
-              <span className="font-medium text-foreground">{selectedFile.name}</span>
-            ) : (
-              <span>Click to select an image, video, or audio file</span>
-            )}
+            <span>Drag files here or <span className="font-medium text-primary underline">browse</span></span>
+            <span className="text-xs">Images, videos, and audio files</span>
             <input
               ref={fileInputRef}
               type="file"
               accept="image/*,video/*,audio/*"
+              multiple
               className="hidden"
-              onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+              onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }}
             />
           </div>
-          {uploadError && <p className="text-sm text-destructive">{uploadError}</p>}
+
+          {/* File list */}
+          {fileQueue.length > 0 && (
+            <ul className="max-h-48 space-y-1.5 overflow-y-auto">
+              {fileQueue.map((item, i) => (
+                <li key={i} className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm">
+                  <span className="min-w-0 truncate">{item.file.name}</span>
+                  <span className={`shrink-0 text-xs font-medium ${
+                    item.status === "done" ? "text-green-600" :
+                    item.status === "error" ? "text-destructive" :
+                    item.status === "uploading" ? "text-primary" :
+                    "text-muted-foreground"
+                  }`}>
+                    {item.status === "done" ? "✓ Done" :
+                     item.status === "error" ? `✗ ${item.error ?? "Error"}` :
+                     item.status === "uploading" ? "Uploading…" :
+                     "Pending"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => uploadDialogRef.current?.close()} disabled={uploading}>
-              Cancel
+              {fileQueue.some((f) => f.status === "done") ? "Close" : "Cancel"}
             </Button>
-            <Button onClick={handleUpload} disabled={!selectedFile || uploading}>
-              {uploading ? "Uploading…" : "Upload"}
+            <Button
+              onClick={handleUpload}
+              disabled={fileQueue.length === 0 || uploading || fileQueue.every((f) => f.status === "done")}
+            >
+              {uploading ? "Uploading…" : `Upload ${fileQueue.length > 0 ? `(${fileQueue.length})` : ""}`}
             </Button>
           </div>
         </div>

@@ -92,6 +92,18 @@ export default function TestsPage() {
     }
   }
 
+  async function changeStatus(testId: string, newStatus: TestStatus) {
+    try {
+      await apiFetch(`/admin/tests/${testId}/status`, {
+        method: "PUT",
+        body: JSON.stringify({ status: newStatus }),
+      });
+      void fetchTests();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to update test status");
+    }
+  }
+
   async function createFromTemplate(templateId: string) {
     setCreating(true);
     setError("");
@@ -166,13 +178,45 @@ export default function TestsPage() {
                     <TableCell>{test.responseCount}</TableCell>
                     <TableCell>{formatDate(test.createdAt)}</TableCell>
                     <TableCell>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <Link className="text-sm font-medium underline" href={`/tests/${test.id}/edit`}>
                           Edit
                         </Link>
                         <Link className="text-sm font-medium underline" href={`/tests/${test.id}/preview`}>
                           Preview
                         </Link>
+                        {(test.status === "ACTIVE" || test.status === "CLOSED") && (
+                          <Link className="text-sm font-medium underline" href={`/tests/${test.id}/report`}>
+                            Report
+                          </Link>
+                        )}
+                        {test.status === "ACTIVE" && (
+                          <button
+                            type="button"
+                            onClick={() => changeStatus(test.id, "PAUSED")}
+                            className="text-sm font-medium underline text-amber-600"
+                          >
+                            Deactivate
+                          </button>
+                        )}
+                        {test.status === "PAUSED" && (
+                          <button
+                            type="button"
+                            onClick={() => changeStatus(test.id, "ACTIVE")}
+                            className="text-sm font-medium underline text-green-600"
+                          >
+                            Reactivate
+                          </button>
+                        )}
+                        {(test.status === "ACTIVE" || test.status === "PAUSED") && (
+                          <button
+                            type="button"
+                            onClick={() => changeStatus(test.id, "CLOSED")}
+                            className="text-sm font-medium underline text-destructive"
+                          >
+                            Close
+                          </button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

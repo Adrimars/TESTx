@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Avatar } from "@testx/ui";
+import { useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { Avatar, Button } from "@testx/ui";
 import { useAuth } from "./auth-provider";
 
 const navigation = [
@@ -14,9 +15,15 @@ const navigation = [
 ];
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, isLoading, logout } = useAuth();
+  const router = useRouter();
   const pathname = usePathname();
   const isAuthPage = pathname === "/login";
+
+  useEffect(() => {
+    if (isLoading || isAuthPage) return;
+    if (!user) router.replace("/login");
+  }, [user, isLoading, isAuthPage, router]);
 
   if (isAuthPage) {
     return (
@@ -28,7 +35,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-background text-foreground lg:grid lg:grid-cols-[260px_1fr]">
-      <aside className="border-b border-border bg-card p-4 lg:min-h-screen lg:border-b-0 lg:border-r">
+      <aside className="border-b border-border bg-card p-4 lg:flex lg:min-h-screen lg:flex-col lg:border-b-0 lg:border-r">
         <div className="mb-8 flex items-center justify-between lg:block">
           <div>
             <p className="text-xl font-bold tracking-tight">TESTx</p>
@@ -47,6 +54,11 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
             </Link>
           ))}
         </nav>
+        <div className="pt-6 lg:mt-auto">
+          <Button variant="secondary" onClick={logout} className="w-full text-sm">
+            Sign Out
+          </Button>
+        </div>
       </aside>
       <main className="p-4 lg:p-8">{children}</main>
     </div>

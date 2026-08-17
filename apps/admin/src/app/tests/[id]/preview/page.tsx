@@ -28,10 +28,6 @@ function QuestionPreview({ question }: { question: AdminQuestion }) {
     );
   }
 
-  if (question.type === "FREE_TEXT") {
-    return <textarea className="min-h-32 w-full rounded-md border border-border bg-background p-3 text-sm" disabled />;
-  }
-
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       {question.options.map((option, index) => (

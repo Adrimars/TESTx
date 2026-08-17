@@ -25,14 +25,37 @@ export const adminMediaRoutes: FastifyPluginAsync = async (app) => {
     return reply.send(result);
   });
 
+  // Accepts one or more files in a single multipart request.
+  // Returns per-file results so a single bad file doesn't fail the whole batch.
   app.post("/media/upload", adminAuth, async (request, reply) => {
-    const file = await request.file();
-    if (!file) {
-      return reply.status(400).send({ error: "BAD_REQUEST", message: "No file provided" });
+    const results: Array<{ fileName: string; media?: unknown; error?: string }> = [];
+
+    try {
+      const files = request.files();
+      let hasFiles = false;
+
+      for await (const file of files) {
+        hasFiles = true;
+        try {
+          const media = await uploadFile(app.prisma, file);
+          results.push({ fileName: file.filename, media });
+        } catch (err: unknown) {
+          // Drain the stream so subsequent files can be read
+          file.file.resume();
+          const message =
+            err instanceof Error ? err.message : "Upload failed";
+          results.push({ fileName: file.filename, error: message });
+        }
+      }
+
+      if (!hasFiles) {
+        return reply.status(400).send({ error: "BAD_REQUEST", message: "No files provided" });
+      }
+    } catch {
+      return reply.status(400).send({ error: "BAD_REQUEST", message: "Failed to parse multipart request" });
     }
 
-    const media = await uploadFile(app.prisma, file);
-    return reply.status(201).send(media);
+    return reply.status(201).send({ results });
   });
 
   app.post("/media/import-drive", adminAuth, async (request, reply) => {

@@ -7,7 +7,6 @@ import { useTestSession } from "@/components/test-session-provider";
 import { resolveMediaUrl } from "@/lib/api";
 import type { Question, QuestionOption } from "@/lib/test-types";
 
-/** An option's media can be an image, a video or a clip of audio; each needs its own element. */
 function OptionMedia({ option }: { option: QuestionOption }) {
   const url = resolveMediaUrl(option.media?.url ?? option.mediaUrl);
   if (!url) return null;
@@ -204,34 +203,6 @@ function RatingQuestion({
   );
 }
 
-function FreeTextQuestion({
-  question,
-  value,
-  onChange,
-}: {
-  question: Question;
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  const config = question.config as { minChars?: number; maxChars?: number };
-  return (
-    <div className="space-y-2">
-      <textarea
-        className="w-full min-h-[120px] rounded-lg border border-border bg-background px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-primary"
-        placeholder="Your answer…"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        maxLength={config.maxChars}
-      />
-      {config.maxChars && (
-        <p className="text-xs text-muted-foreground text-right">
-          {value.length} / {config.maxChars}
-        </p>
-      )}
-    </div>
-  );
-}
-
 export default function QuestionPage() {
   const params = useParams<{ id: string; n: string }>();
   const router = useRouter();
@@ -250,7 +221,6 @@ export default function QuestionPage() {
     return () => window.removeEventListener("beforeunload", handleUnload);
   }, []);
 
-  // If no session loaded redirect to intro
   useEffect(() => {
     if (!test) {
       router.replace(`/tests/${params.id}`);
@@ -259,7 +229,6 @@ export default function QuestionPage() {
 
   const question: Question | undefined = test?.questions[questionIndex];
 
-  // Per-question timer
   useEffect(() => {
     if (!question) return;
     tickRef.current = 0;
@@ -282,7 +251,6 @@ export default function QuestionPage() {
   const answer = getAnswer(question.id);
   const selected = answer?.selectedOptionIds ?? [];
   const ratingValue = answer?.ratingValue ?? null;
-  const textValue = answer?.textValue ?? "";
 
   const totalVisible = test.questions.length;
   const isFirst = questionIndex === 0;
@@ -295,8 +263,7 @@ export default function QuestionPage() {
       return selected.length >= (config.minSelections ?? 1);
     }
     if (question!.type === "RATING") return ratingValue !== null;
-    const config = question!.config as { minChars?: number };
-    return textValue.trim().length >= (config.minChars ?? 0);
+    return false;
   }
 
   function goNext() {
@@ -313,7 +280,6 @@ export default function QuestionPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      {/* Progress */}
       <div className="space-y-1">
         <div className="flex justify-between text-sm text-muted-foreground">
           <span>Question {questionIndex + 1} of {totalVisible}</span>
@@ -350,13 +316,6 @@ export default function QuestionPage() {
               question={question}
               value={ratingValue}
               onRate={(v) => setAnswer(question.id, { ratingValue: v })}
-            />
-          )}
-          {question.type === "FREE_TEXT" && (
-            <FreeTextQuestion
-              question={question}
-              value={textValue}
-              onChange={(v) => setAnswer(question.id, { textValue: v })}
             />
           )}
 

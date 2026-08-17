@@ -22,8 +22,8 @@ export default function RegisterPage() {
     try {
       await register(email, password);
       router.push("/onboarding");
-    } catch {
-      setError("Registration failed. Email may already be in use.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Registration failed. Please try again.");
     } finally {
       setIsPending(false);
     }

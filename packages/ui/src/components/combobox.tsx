@@ -1,0 +1,136 @@
+"use client";
+
+import * as React from "react";
+import { cn } from "../lib/cn";
+
+export type ComboboxOption = {
+  value: string;
+  label: string;
+};
+
+export type ComboboxProps = {
+  options: ComboboxOption[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  searchPlaceholder?: string;
+  disabled?: boolean;
+  className?: string;
+};
+
+export function Combobox({
+  options,
+  value,
+  onChange,
+  placeholder = "Select…",
+  searchPlaceholder = "Search…",
+  disabled = false,
+  className,
+}: ComboboxProps) {
+  const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  const selected = options.find((o) => o.value === value);
+
+  const filtered = query
+    ? options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase()))
+    : options;
+
+  React.useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery("");
+      }
+    }
+    if (open) {
+      document.addEventListener("mousedown", handleClick);
+    }
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  function handleToggle() {
+    if (disabled) return;
+    setOpen((o) => !o);
+    if (!open) setQuery("");
+  }
+
+  function handleSelect(option: ComboboxOption) {
+    onChange(option.value);
+    setOpen(false);
+    setQuery("");
+  }
+
+  return (
+    <div ref={containerRef} className={cn("relative w-full", className)}>
+      <button
+        type="button"
+        onClick={handleToggle}
+        disabled={disabled}
+        className={cn(
+          "min-h-10 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-left outline-none ring-primary transition focus:ring-2",
+          "flex items-center justify-between gap-2",
+          disabled && "cursor-not-allowed opacity-50",
+          open && "ring-2"
+        )}
+      >
+        <span className={cn(!selected && "text-muted-foreground")}>
+          {selected ? selected.label : placeholder}
+        </span>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={cn("shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-background shadow-md">
+          <div className="p-2 border-b border-border">
+            <input
+              autoFocus
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={searchPlaceholder}
+              className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none ring-primary focus:ring-2"
+            />
+          </div>
+          <ul className="max-h-60 overflow-auto py-1" role="listbox">
+            {filtered.length === 0 ? (
+              <li className="px-3 py-2 text-sm text-muted-foreground">No results</li>
+            ) : (
+              filtered.map((option) => (
+                <li
+                  key={option.value}
+                  role="option"
+                  aria-selected={option.value === value}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    handleSelect(option);
+                  }}
+                  className={cn(
+                    "cursor-pointer px-3 py-2 text-sm transition-colors hover:bg-accent",
+                    option.value === value && "bg-primary/10 font-medium"
+                  )}
+                >
+                  {option.label}
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}

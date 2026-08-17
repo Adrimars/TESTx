@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Badge,
+  Button,
   Card,
   CardContent,
   CardDescription,
@@ -22,6 +23,7 @@ import type {
 } from "@/lib/admin-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const REFRESH_INTERVAL_MS = 30_000;
 
 const SEGMENT_OPTIONS: Array<{ value: "none" | SegmentBy; label: string }> = [
   { value: "none", label: "None" },
@@ -74,7 +76,7 @@ function OptionBars({ result }: { result: QuestionResult }) {
 function RatingResult({ result }: { result: QuestionResult }) {
   const rating = result.rating;
   if (!rating) return null;
-  const maxCount = Math.max(1, ...rating.distribution.map((bucket) => bucket.count));
+  const maxCount = Math.max(1, ...rating.distribution.map((b) => b.count));
   return (
     <div className="space-y-4">
       <div className="flex gap-6 text-sm">
@@ -115,55 +117,72 @@ function QuestionBody({ result }: { result: QuestionResult }) {
   return <OptionBars result={result} />;
 }
 
-export default function ResultsPage() {
+export default function ReportPage() {
   const params = useParams<{ id: string }>();
   const testId = params.id;
+
   const [results, setResults] = useState<TestResults | null>(null);
   const [demographic, setDemographic] = useState<DemographicResults | null>(null);
   const [segmentBy, setSegmentBy] = useState<"none" | SegmentBy>("none");
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [error, setError] = useState("");
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchResults = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      setResults(await apiFetch<TestResults>(`/admin/tests/${testId}/results`));
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load results");
-    } finally {
-      setLoading(false);
-    }
-  }, [testId]);
+  const isActive = results?.status === "ACTIVE";
+
+  const fetchAll = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!opts?.silent) setLoading(true);
+      else setRefreshing(true);
+      setError("");
+      try {
+        const [base, demo] = await Promise.all([
+          apiFetch<TestResults>(`/admin/tests/${testId}/report`),
+          segmentBy !== "none"
+            ? apiFetch<DemographicResults>(`/admin/tests/${testId}/report?segmentBy=${segmentBy}`)
+            : Promise.resolve(null),
+        ]);
+        setResults(base);
+        setDemographic(demo);
+        setLastRefreshed(new Date());
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Failed to load report");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [testId, segmentBy]
+  );
 
   useEffect(() => {
-    void fetchResults();
-  }, [fetchResults]);
+    void fetchAll();
+  }, [fetchAll]);
 
   useEffect(() => {
-    if (segmentBy === "none") {
-      setDemographic(null);
+    if (!isActive) {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
       return;
     }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const data = await apiFetch<DemographicResults>(
-          `/admin/tests/${testId}/results/demographics?segmentBy=${segmentBy}`
-        );
-        if (!cancelled) setDemographic(data);
-      } catch (err: unknown) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to segment results");
-      }
-    })();
+    intervalRef.current = setInterval(() => {
+      void fetchAll({ silent: true });
+    }, REFRESH_INTERVAL_MS);
     return () => {
-      cancelled = true;
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
     };
-  }, [segmentBy, testId]);
+  }, [isActive, fetchAll]);
 
-  if (loading) return <p className="text-muted-foreground">Loading results…</p>;
+  if (loading) return <p className="text-muted-foreground">Loading report…</p>;
   if (error) return <p className="text-sm text-destructive">{error}</p>;
-  if (!results) return <p className="text-muted-foreground">No results found.</p>;
+  if (!results) return <p className="text-muted-foreground">No data found.</p>;
 
   return (
     <div className="space-y-6">
@@ -175,17 +194,44 @@ export default function ResultsPage() {
           <h1 className="mt-1 flex items-center gap-3 text-2xl font-bold tracking-tight">
             {results.title}
             <Badge>{results.status}</Badge>
+            {isActive && (
+              <span className="flex items-center gap-1.5 text-sm font-normal text-green-600">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
+                </span>
+                Live
+              </span>
+            )}
           </h1>
+          {lastRefreshed && (
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Last updated {lastRefreshed.toLocaleTimeString()}
+              {isActive && " · auto-refreshes every 30s"}
+            </p>
+          )}
         </div>
-        <div className="w-48">
-          <label className="mb-1 block text-xs font-medium text-muted-foreground">Segment by</label>
-          <Select value={segmentBy} onChange={(event) => setSegmentBy(event.target.value as "none" | SegmentBy)}>
-            {SEGMENT_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </Select>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="secondary"
+            onClick={() => fetchAll({ silent: true })}
+            disabled={refreshing}
+            className="text-sm"
+          >
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </Button>
+          <div className="w-40">
+            <Select
+              value={segmentBy}
+              onChange={(e) => setSegmentBy(e.target.value as "none" | SegmentBy)}
+            >
+              {SEGMENT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </Select>
+          </div>
         </div>
       </div>
 
@@ -223,50 +269,44 @@ export default function ResultsPage() {
       )}
 
       <div className="space-y-4">
-        {results.questions.map((question, index) => {
-          const segments =
-            demographic?.segments.map((segment) => ({
-              label: segment.label,
-              responseCount: segment.responseCount,
-              question: segment.questions.find((item) => item.questionId === question.questionId),
-            })) ?? null;
-
-          return (
-            <Card key={question.questionId}>
-              <CardHeader>
-                <CardDescription>
-                  Question {index + 1} · {question.type.replace("_", " ").toLowerCase()} · {question.answeredCount}{" "}
-                  responses
-                </CardDescription>
-                <CardTitle className="text-base">{question.prompt}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {segments ? (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {segments.map((segment) => (
+        {results.questions.map((question, index) => (
+          <Card key={question.questionId}>
+            <CardHeader>
+              <CardDescription>
+                Question {index + 1} · {question.type.replace("_", " ").toLowerCase()}
+                {!demographic && ` · ${question.answeredCount} responses`}
+              </CardDescription>
+              <CardTitle className="text-base">{question.prompt}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {demographic ? (
+                <div className="grid gap-4 md:grid-cols-2">
+                  {demographic.segments.map((segment) => {
+                    const sq = segment.questions.find((q) => q.questionId === question.questionId);
+                    return (
                       <div key={segment.label} className="rounded-lg border border-border p-3">
                         <p className="mb-2 text-sm font-semibold">
                           {segment.label}{" "}
                           <span className="font-normal text-muted-foreground">({segment.responseCount})</span>
                         </p>
-                        {segment.question ? (
-                          <QuestionBody result={segment.question} />
+                        {sq ? (
+                          <QuestionBody result={sq} />
                         ) : (
                           <p className="text-sm text-muted-foreground">No data.</p>
                         )}
                       </div>
-                    ))}
-                    {segments.length === 0 && (
-                      <p className="text-sm text-muted-foreground">No segmented data available.</p>
-                    )}
-                  </div>
-                ) : (
-                  <QuestionBody result={question} />
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
+                    );
+                  })}
+                  {demographic.segments.length === 0 && (
+                    <p className="text-sm text-muted-foreground">No segmented data available.</p>
+                  )}
+                </div>
+              ) : (
+                <QuestionBody result={question} />
+              )}
+            </CardContent>
+          </Card>
+        ))}
         {results.questions.length === 0 && (
           <p className="text-sm text-muted-foreground">This test has no scored questions.</p>
         )}

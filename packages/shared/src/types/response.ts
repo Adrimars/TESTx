@@ -2,7 +2,6 @@ export type AnswerPayload = {
   questionId: string;
   selectedOptionIds?: string[];
   ratingValue?: number;
-  textValue?: string;
   timeSpentSeconds: number;
 };
 

@@ -30,7 +30,6 @@ enum QuestionType {
   SINGLE_SELECT
   MULTI_SELECT
   RATING
-  FREE_TEXT
 }
 
 enum MediaType {
@@ -64,7 +63,7 @@ model EvaluatorProfile {
   id          String   @id @default(uuid()) @db.Uuid
   userId      String   @unique @db.Uuid
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  dateOfBirth DateTime @db.Date
+  age         Int
   gender      Gender
   country     String
   city        String?
@@ -169,7 +168,6 @@ model Answer {
   question         Question     @relation(fields: [questionId], references: [id], onDelete: Cascade)
   selectedOptions  String[]     @default([]) @db.Uuid
   ratingValue      Int?
-  textValue        String?
   timeSpentSeconds Int
 
   @@unique([responseId, questionId])

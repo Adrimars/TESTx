@@ -34,4 +34,40 @@ export const adminResultsRoutes: FastifyPluginAsync = async (app) => {
       return results;
     }
   );
+
+  // Live report — same aggregation as results but explicitly allowed for ACTIVE tests.
+  app.get<{ Params: { id: string }; Querystring: { segmentBy?: string } }>(
+    "/tests/:id/report",
+    adminAuth,
+    async (request, reply) => {
+      const test = await app.prisma.test.findUnique({
+        where: { id: request.params.id },
+        select: { id: true, status: true },
+      });
+      if (!test) return reply.status(404).send({ error: "NOT_FOUND", message: "Test not found" });
+      if (test.status !== "ACTIVE" && test.status !== "CLOSED") {
+        return reply.status(400).send({
+          error: "BAD_REQUEST",
+          message: "Report is only available for active and closed tests",
+        });
+      }
+
+      const segmentBy = request.query.segmentBy;
+      if (segmentBy) {
+        if (!SEGMENTS.includes(segmentBy as SegmentBy)) {
+          return reply.status(400).send({
+            error: "BAD_REQUEST",
+            message: `segmentBy must be one of: ${SEGMENTS.join(", ")}`,
+          });
+        }
+        const results = await getTestResultsByDemographic(app.prisma, request.params.id, segmentBy as SegmentBy);
+        if (!results) return reply.status(404).send({ error: "NOT_FOUND", message: "Test not found" });
+        return results;
+      }
+
+      const results = await getTestResults(app.prisma, request.params.id);
+      if (!results) return reply.status(404).send({ error: "NOT_FOUND", message: "Test not found" });
+      return results;
+    }
+  );
 };

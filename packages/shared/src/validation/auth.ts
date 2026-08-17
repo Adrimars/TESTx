@@ -12,7 +12,7 @@ export const loginSchema = z.object({
 });
 
 export const evaluatorProfileSchema = z.object({
-  dateOfBirth: z.string().date(),
+  age: z.number().int().min(13).max(100),
   gender: z.enum(GENDERS),
   country: z.string().min(2),
   city: z.string().trim().min(1).optional(),

@@ -12,7 +12,7 @@ export type User = {
 export type EvaluatorProfile = {
   id: string;
   userId: string;
-  dateOfBirth: string;
+  age: number;
   gender: Gender;
   country: string;
   city: string | null;
