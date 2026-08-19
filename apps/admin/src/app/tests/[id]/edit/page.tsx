@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Gender, MediaType, QuestionType, TestStatus } from "@testx/shared";
+import { COUNTRIES, CITIES_BY_COUNTRY } from "@testx/shared";
 import {
   Badge,
   Button,
@@ -13,6 +14,7 @@ import {
   CardTitle,
   Dialog,
   Input,
+  MultiCombobox,
   Select,
 } from "@testx/ui";
 import { apiFetch } from "@/lib/api";
@@ -90,14 +92,12 @@ function numberOrUndefined(value: string) {
   return value.trim() ? Number(value) : undefined;
 }
 
-function splitList(value: string) {
-  return value.split(",").map((item) => item.trim()).filter(Boolean);
-}
 
 export default function TestEditorPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const questionDialogRef = useRef<HTMLDialogElement>(null);
+  const closeTestDialogRef = useRef<HTMLDialogElement>(null);
   const [test, setTest] = useState<AdminTestDetail | null>(null);
   const [media, setMedia] = useState<AdminMedia[]>([]);
   const [draft, setDraft] = useState<QuestionDraft>(EMPTY_QUESTION);
@@ -113,11 +113,24 @@ export default function TestEditorPage() {
   const [ageMin, setAgeMin] = useState("");
   const [ageMax, setAgeMax] = useState("");
   const [selectedGenders, setSelectedGenders] = useState<Gender[]>([]);
-  const [countries, setCountries] = useState("");
-  const [cities, setCities] = useState("");
+  const [countries, setCountries] = useState<string[]>([]);
+  const [cities, setCities] = useState<string[]>([]);
 
   const testId = params.id;
   const isDraft = test?.status === "DRAFT";
+
+  const cityOptions = useMemo(() =>
+    countries.flatMap((code) =>
+      (CITIES_BY_COUNTRY[code] ?? []).map((c) => ({ value: c, label: c }))
+    ),
+    [countries]
+  );
+
+  function handleCountriesChange(next: string[]) {
+    setCountries(next);
+    const available = new Set(next.flatMap((code) => CITIES_BY_COUNTRY[code] ?? []));
+    setCities((prev) => prev.filter((c) => available.has(c)));
+  }
 
   const applyTest = useCallback((next: AdminTestDetail) => {
     setTest(next);
@@ -129,8 +142,8 @@ export default function TestEditorPage() {
     setAgeMin(next.demographicFilters?.ageMin ? String(next.demographicFilters.ageMin) : "");
     setAgeMax(next.demographicFilters?.ageMax ? String(next.demographicFilters.ageMax) : "");
     setSelectedGenders(next.demographicFilters?.genders ?? []);
-    setCountries(next.demographicFilters?.countries?.join(", ") ?? "");
-    setCities(next.demographicFilters?.cities?.join(", ") ?? "");
+    setCountries(next.demographicFilters?.countries ?? []);
+    setCities(next.demographicFilters?.cities ?? []);
   }, []);
 
   const fetchTest = useCallback(async () => {
@@ -218,8 +231,8 @@ export default function TestEditorPage() {
         ageMin: numberOrUndefined(ageMin),
         ageMax: numberOrUndefined(ageMax),
         genders: selectedGenders.length ? selectedGenders : undefined,
-        countries: splitList(countries).length ? splitList(countries) : undefined,
-        cities: splitList(cities).length ? splitList(cities) : undefined,
+        countries: countries.length ? countries : undefined,
+        cities: cities.length ? cities : undefined,
       };
       const hasFilters = Object.values(filters).some(Boolean);
       const updated = await apiFetch<AdminTestDetail>(`/admin/tests/${testId}`, {
@@ -354,7 +367,7 @@ export default function TestEditorPage() {
             <Button onClick={() => changeStatus("ACTIVE")} disabled={saving}>Reactivate</Button>
           )}
           {(test.status === "ACTIVE" || test.status === "PAUSED") && (
-            <Button variant="secondary" onClick={() => { if (confirm("Close this test permanently? This cannot be undone.")) changeStatus("CLOSED"); }} disabled={saving}>Close</Button>
+            <Button variant="secondary" onClick={() => closeTestDialogRef.current?.showModal()} disabled={saving}>Close Test</Button>
           )}
           {isDraft && <Button variant="secondary" onClick={deleteTest} disabled={saving}>Delete Draft</Button>}
         </div>
@@ -402,8 +415,20 @@ export default function TestEditorPage() {
             <Input placeholder="Age min" value={ageMin} onChange={(event) => setAgeMin(event.target.value)} disabled={!isDraft} />
             <Input placeholder="Age max" value={ageMax} onChange={(event) => setAgeMax(event.target.value)} disabled={!isDraft} />
           </div>
-          <Input placeholder="Countries, comma-separated" value={countries} onChange={(event) => setCountries(event.target.value)} disabled={!isDraft} />
-          <Input placeholder="Cities, comma-separated" value={cities} onChange={(event) => setCities(event.target.value)} disabled={!isDraft} />
+          <MultiCombobox
+            options={COUNTRIES}
+            value={countries}
+            onChange={handleCountriesChange}
+            placeholder="Select countries…"
+            disabled={!isDraft}
+          />
+          <MultiCombobox
+            options={cityOptions}
+            value={cities}
+            onChange={setCities}
+            placeholder={countries.length === 0 ? "Select countries first…" : "Select cities…"}
+            disabled={!isDraft || countries.length === 0}
+          />
           <div className="flex flex-wrap gap-3 lg:col-span-2">
             {GENDERS.map((gender) => (
               <label key={gender} className="flex items-center gap-2 text-sm">
@@ -575,6 +600,28 @@ export default function TestEditorPage() {
             <Button variant="secondary" onClick={() => questionDialogRef.current?.close()} disabled={saving}>Cancel</Button>
             <Button onClick={saveQuestion} disabled={saving || !draft.prompt.trim()}>
               {saving ? "Saving..." : "Save Question"}
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+
+      <Dialog ref={closeTestDialogRef}>
+        <div className="space-y-5 p-6">
+          <div>
+            <h2 className="text-lg font-semibold">Close Test</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Are you sure you want to close the test? The test cannot be reopened once closed.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => closeTestDialogRef.current?.close()}>Cancel</Button>
+            <Button
+              onClick={() => {
+                closeTestDialogRef.current?.close();
+                changeStatus("CLOSED");
+              }}
+            >
+              Close Test
             </Button>
           </div>
         </div>
