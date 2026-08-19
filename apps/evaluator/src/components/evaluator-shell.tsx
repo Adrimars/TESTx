@@ -39,7 +39,7 @@ export function EvaluatorShell({ children }: { children: React.ReactNode }) {
       <header className="border-b border-border bg-card/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
           <div className="min-w-0">
-            <p className="text-xl font-bold tracking-tight">TESTx</p>
+            <img src="/testxlogo.jpg" alt="TESTx" className="h-8 w-auto" />
             <p className="hidden text-xs text-muted-foreground sm:block">Evaluator workspace</p>
           </div>
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
