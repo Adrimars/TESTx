@@ -1,4 +1,5 @@
 export * from "./age";
+export * from "./geo";
 export * from "./constants";
 export * from "./rewards";
 export * from "./types/media";
