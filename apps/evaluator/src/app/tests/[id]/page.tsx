@@ -90,13 +90,23 @@ export default function TestIntroPage() {
             Careless answers will not earn points.
           </p>
 
-          <Button
-            className="w-full sm:w-auto min-h-[44px] px-8"
-            onClick={handleBegin}
-            disabled={starting}
-          >
-            {starting ? "Starting…" : "Begin Test"}
-          </Button>
+          <div className="flex flex-wrap gap-3">
+            <Button
+              className="min-h-[44px] px-8"
+              onClick={handleBegin}
+              disabled={starting}
+            >
+              {starting ? "Starting…" : "Begin Test"}
+            </Button>
+            <Button
+              variant="secondary"
+              className="min-h-[44px]"
+              onClick={() => router.push("/dashboard")}
+              disabled={starting}
+            >
+              Back to Dashboard
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>
