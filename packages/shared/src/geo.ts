@@ -78,7 +78,7 @@ export const COUNTRIES: { value: string; label: string }[] = [
   { value: "TZ", label: "Tanzania" },
   { value: "TH", label: "Thailand" },
   { value: "TN", label: "Tunisia" },
-  { value: "TR", label: "Turkey" },
+  { value: "TR", label: "Türkiye" },
   { value: "UA", label: "Ukraine" },
   { value: "AE", label: "United Arab Emirates" },
   { value: "GB", label: "United Kingdom" },
