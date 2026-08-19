@@ -38,7 +38,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
       <aside className="border-b border-border bg-card p-4 lg:flex lg:min-h-screen lg:flex-col lg:border-b-0 lg:border-r">
         <div className="mb-8 flex items-center justify-between lg:block">
           <div>
-            <p className="text-xl font-bold tracking-tight">TESTx</p>
+            <img src="/testxlogo.jpg" alt="TESTx" className="h-8 w-auto" />
             <p className="text-xs text-muted-foreground">Admin console</p>
           </div>
           <Avatar className="lg:mt-4">{user?.email?.charAt(0).toUpperCase() ?? "A"}</Avatar>
