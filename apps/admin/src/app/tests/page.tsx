@@ -32,6 +32,8 @@ function formatDate(iso: string) {
 export default function TestsPage() {
   const router = useRouter();
   const createDialogRef = useRef<HTMLDialogElement>(null);
+  const closeTestDialogRef = useRef<HTMLDialogElement>(null);
+  const [pendingCloseId, setPendingCloseId] = useState<string | null>(null);
   const [tests, setTests] = useState<AdminTestListItem[]>([]);
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [status, setStatus] = useState<"ALL" | TestStatus>("ALL");
@@ -211,7 +213,7 @@ export default function TestsPage() {
                         {(test.status === "ACTIVE" || test.status === "PAUSED") && (
                           <button
                             type="button"
-                            onClick={() => changeStatus(test.id, "CLOSED")}
+                            onClick={() => { setPendingCloseId(test.id); closeTestDialogRef.current?.showModal(); }}
                             className="text-sm font-medium underline text-destructive"
                           >
                             Close
@@ -226,6 +228,29 @@ export default function TestsPage() {
           </Table>
         </CardContent>
       </Card>
+
+      <Dialog ref={closeTestDialogRef}>
+        <div className="space-y-5 p-6">
+          <div>
+            <h2 className="text-lg font-semibold">Close Test</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Are you sure you want to close the test? The test cannot be reopened once closed.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => { closeTestDialogRef.current?.close(); setPendingCloseId(null); }}>Cancel</Button>
+            <Button
+              onClick={() => {
+                closeTestDialogRef.current?.close();
+                if (pendingCloseId) void changeStatus(pendingCloseId, "CLOSED");
+                setPendingCloseId(null);
+              }}
+            >
+              Close Test
+            </Button>
+          </div>
+        </div>
+      </Dialog>
 
       <Dialog ref={createDialogRef} className="w-full max-w-3xl">
         <div className="space-y-5 p-6">
