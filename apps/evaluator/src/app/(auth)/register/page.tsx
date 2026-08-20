@@ -51,7 +51,12 @@ export default function RegisterPage() {
   }
 
   return (
-    <Card className="w-full max-w-md">
+    <div className="flex flex-col items-center gap-6 w-full max-w-md">
+      <div className="flex flex-col items-center gap-2">
+        <img src="/testxlogo.jpg" alt="TESTx" className="h-12 w-auto" />
+        <p className="text-lg font-medium text-foreground">Welcome to TESTx</p>
+      </div>
+    <Card className="w-full">
       <CardHeader>
         <CardTitle>Create evaluator account</CardTitle>
       </CardHeader>
@@ -123,5 +128,6 @@ export default function RegisterPage() {
         </form>
       </CardContent>
     </Card>
+    </div>
   );
 }

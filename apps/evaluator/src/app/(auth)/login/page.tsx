@@ -46,7 +46,12 @@ export default function LoginPage() {
   }
 
   return (
-    <Card className="w-full max-w-md">
+    <div className="flex flex-col items-center gap-6 w-full max-w-md">
+      <div className="flex flex-col items-center gap-2">
+        <p className="text-lg font-medium text-foreground">Welcome to </p>
+        <img src="/testxlogo.jpg" alt="TESTx" className="h-12 w-auto" />
+      </div>
+    <Card className="w-full">
       <CardHeader>
         <CardTitle>Evaluator login</CardTitle>
       </CardHeader>
@@ -98,5 +103,6 @@ export default function LoginPage() {
         </form>
       </CardContent>
     </Card>
+    </div>
   );
 }
