@@ -53,8 +53,8 @@ export default function RegisterPage() {
   return (
     <div className="flex flex-col items-center gap-6 w-full max-w-md">
       <div className="flex flex-col items-center gap-2">
+        <p className="text-lg font-medium text-foreground">Welcome to</p>
         <img src="/testxlogo.jpg" alt="TESTx" className="h-12 w-auto" />
-        <p className="text-lg font-medium text-foreground">Welcome to TESTx</p>
       </div>
     <Card className="w-full">
       <CardHeader>
