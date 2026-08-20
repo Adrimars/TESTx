@@ -59,6 +59,9 @@ importers:
       '@testx/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      lucide-react:
+        specifier: ^1.33.0
+        version: 1.33.0(react@19.2.6)
       next:
         specifier: ^16.0.10
         version: 16.2.6(@babel/core@7.29.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)

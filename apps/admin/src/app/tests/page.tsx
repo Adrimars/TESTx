@@ -3,15 +3,22 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { BarChart3, Eye, Pencil, Play, Plus, Square, PauseCircle } from "lucide-react";
 import {
+  Alert,
   Badge,
   Button,
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
+  ConfirmDialog,
   Dialog,
+  DialogBody,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Field,
   Input,
+  PageHeader,
   Table,
   TableBody,
   TableCell,
@@ -21,13 +28,10 @@ import {
 } from "@testx/ui";
 import type { TestStatus } from "@testx/shared";
 import { apiFetch } from "@/lib/api";
+import { formatDate, statusVariant } from "@/lib/status";
 import type { AdminTestDetail, AdminTestListItem, Paginated, TemplateItem } from "@/lib/admin-types";
 
 const STATUSES: Array<"ALL" | TestStatus> = ["ALL", "DRAFT", "ACTIVE", "PAUSED", "CLOSED"];
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-}
 
 export default function TestsPage() {
   const router = useRouter();
@@ -122,21 +126,28 @@ export default function TestsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Tests</h1>
-          <p className="text-muted-foreground">Create and manage evaluation tests.</p>
-        </div>
-        <Button onClick={openCreateDialog}>Create Test</Button>
-      </div>
+      <PageHeader
+        title="Tests"
+        description="Create and manage evaluation tests."
+        actions={
+          <Button onClick={openCreateDialog}>
+            <Plus className="size-4" aria-hidden />
+            Create Test
+          </Button>
+        }
+      />
 
-      <div className="flex gap-1 overflow-x-auto rounded-lg border border-border bg-muted p-1">
+      <div className="flex w-fit gap-1 rounded-lg border border-border bg-muted p-1">
         {STATUSES.map((item) => (
           <button
             key={item}
+            type="button"
             onClick={() => setStatus(item)}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
-              status === item ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            aria-pressed={status === item}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              status === item
+                ? "bg-card text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             {item === "ALL" ? "All" : item.charAt(0) + item.slice(1).toLowerCase()}
@@ -144,13 +155,10 @@ export default function TestsPage() {
         ))}
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <Alert>{error}</Alert>}
 
       <Card>
-        <CardHeader>
-          <CardTitle>All tests</CardTitle>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
+        <CardContent className="overflow-x-auto p-0">
           <Table>
             <TableHeader>
               <TableRow>
@@ -174,50 +182,77 @@ export default function TestsPage() {
               ) : (
                 tests.map((test) => (
                   <TableRow key={test.id}>
-                    <TableCell className="font-medium">{test.title}</TableCell>
-                    <TableCell><Badge>{test.status}</Badge></TableCell>
-                    <TableCell>{test.questionCount}</TableCell>
-                    <TableCell>{test.responseCount}</TableCell>
-                    <TableCell>{formatDate(test.createdAt)}</TableCell>
+                    <TableCell className="font-medium text-foreground">{test.title}</TableCell>
                     <TableCell>
-                      <div className="flex flex-wrap gap-2">
-                        <Link className="text-sm font-medium underline" href={`/tests/${test.id}/edit`}>
-                          Edit
+                      <Badge variant={statusVariant(test.status)}>{test.status}</Badge>
+                    </TableCell>
+                    <TableCell className="tabular-nums">{test.questionCount}</TableCell>
+                    <TableCell className="tabular-nums">{test.responseCount}</TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">
+                      {formatDate(test.createdAt)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <Link href={`/tests/${test.id}/edit`}>
+                          <Button variant="ghost" size="sm">
+                            <Pencil className="size-3.5" aria-hidden />
+                            Edit
+                          </Button>
                         </Link>
-                        <Link className="text-sm font-medium underline" href={`/tests/${test.id}/preview`}>
-                          Preview
+                        <Link href={`/tests/${test.id}/preview`}>
+                          <Button variant="ghost" size="sm">
+                            <Eye className="size-3.5" aria-hidden />
+                            Preview
+                          </Button>
                         </Link>
                         {(test.status === "ACTIVE" || test.status === "CLOSED") && (
-                          <Link className="text-sm font-medium underline" href={`/tests/${test.id}/report`}>
-                            Report
+                          <Link href={`/tests/${test.id}/report`}>
+                            <Button variant="ghost" size="sm">
+                              <BarChart3 className="size-3.5" aria-hidden />
+                              Report
+                            </Button>
                           </Link>
                         )}
+
+                        {(test.status === "ACTIVE" || test.status === "PAUSED") && (
+                          <span className="mx-1 h-5 w-px bg-border" aria-hidden />
+                        )}
+
                         {test.status === "ACTIVE" && (
-                          <button
-                            type="button"
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-warning hover:bg-warning/10 hover:text-warning"
                             onClick={() => changeStatus(test.id, "PAUSED")}
-                            className="text-sm font-medium underline text-amber-600"
                           >
+                            <PauseCircle className="size-3.5" aria-hidden />
                             Deactivate
-                          </button>
+                          </Button>
                         )}
                         {test.status === "PAUSED" && (
-                          <button
-                            type="button"
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-success hover:bg-success/10 hover:text-success"
                             onClick={() => changeStatus(test.id, "ACTIVE")}
-                            className="text-sm font-medium underline text-green-600"
                           >
+                            <Play className="size-3.5" aria-hidden />
                             Reactivate
-                          </button>
+                          </Button>
                         )}
                         {(test.status === "ACTIVE" || test.status === "PAUSED") && (
-                          <button
-                            type="button"
-                            onClick={() => { setPendingCloseId(test.id); closeTestDialogRef.current?.showModal(); }}
-                            className="text-sm font-medium underline text-destructive"
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => {
+                              setPendingCloseId(test.id);
+                              closeTestDialogRef.current?.showModal();
+                            }}
                           >
+                            <Square className="size-3.5" aria-hidden />
                             Close
-                          </button>
+                          </Button>
                         )}
                       </div>
                     </TableCell>
@@ -229,71 +264,83 @@ export default function TestsPage() {
         </CardContent>
       </Card>
 
-      <Dialog ref={closeTestDialogRef}>
-        <div className="space-y-5 p-6">
-          <div>
-            <h2 className="text-lg font-semibold">Close Test</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Are you sure you want to close the test? The test cannot be reopened once closed.
-            </p>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => { closeTestDialogRef.current?.close(); setPendingCloseId(null); }}>Cancel</Button>
-            <Button
-              onClick={() => {
-                closeTestDialogRef.current?.close();
-                if (pendingCloseId) void changeStatus(pendingCloseId, "CLOSED");
-                setPendingCloseId(null);
-              }}
-            >
-              Close Test
-            </Button>
-          </div>
-        </div>
-      </Dialog>
+      <ConfirmDialog
+        ref={closeTestDialogRef}
+        title="Close Test"
+        description="Are you sure you want to close the test? The test cannot be reopened once closed."
+        confirmLabel="Close Test"
+        tone="danger"
+        onCancel={() => setPendingCloseId(null)}
+        onConfirm={() => {
+          closeTestDialogRef.current?.close();
+          if (pendingCloseId) void changeStatus(pendingCloseId, "CLOSED");
+          setPendingCloseId(null);
+        }}
+      />
 
-      <Dialog ref={createDialogRef} className="w-full max-w-3xl">
-        <div className="space-y-5 p-6">
-          <CardHeader className="p-0">
-            <CardTitle>Create test</CardTitle>
-          </CardHeader>
+      <Dialog ref={createDialogRef} className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Create test</DialogTitle>
+        </DialogHeader>
 
-          <div className="grid gap-3 sm:grid-cols-[1fr_2fr]">
-            <Input placeholder="Test title" value={title} onChange={(event) => setTitle(event.target.value)} />
-            <Input
-              placeholder="Description (optional)"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-            />
+        <DialogBody>
+          <div className="grid gap-4 sm:grid-cols-[1fr_2fr]">
+            <Field label="Title" htmlFor="test-title">
+              <Input
+                id="test-title"
+                placeholder="Test title"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+              />
+            </Field>
+            <Field label="Description" htmlFor="test-description" optional>
+              <Input
+                id="test-description"
+                placeholder="What evaluators will see under the title"
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+              />
+            </Field>
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => createDialogRef.current?.close()} disabled={creating}>
-              Cancel
-            </Button>
+
+          {error && <Alert>{error}</Alert>}
+
+          <div className="flex justify-end">
             <Button onClick={createBlank} disabled={!title.trim() || creating}>
-              Create Blank
+              {creating ? "Creating…" : "Create Blank"}
             </Button>
           </div>
 
-          <div className="border-t border-border pt-4">
-            <h2 className="mb-3 text-sm font-semibold">Start from template</h2>
+          <div className="border-t border-border pt-5">
+            <h3 className="mb-1 text-card-title">Start from template</h3>
+            <p className="mb-3 text-sm text-muted-foreground">
+              Creates a test with the template&rsquo;s questions already filled in.
+            </p>
             <div className="grid gap-3 sm:grid-cols-3">
               {templates.map((template) => (
                 <button
                   key={template.id}
+                  type="button"
                   onClick={() => createFromTemplate(template.id)}
                   disabled={creating}
-                  className="rounded-lg border border-border p-4 text-left text-sm hover:bg-muted disabled:opacity-50"
+                  className="rounded-lg border border-border p-4 text-left text-sm transition-colors hover:border-primary/40 hover:bg-accent disabled:opacity-50"
                 >
-                  <span className="block font-medium">{template.name}</span>
+                  <span className="block font-medium text-foreground">{template.name}</span>
                   <span className="mt-1 block text-muted-foreground">{template.description}</span>
                 </button>
               ))}
-              {templates.length === 0 && <p className="text-sm text-muted-foreground">No templates loaded.</p>}
+              {templates.length === 0 && (
+                <p className="text-sm text-muted-foreground">No templates loaded.</p>
+              )}
             </div>
           </div>
-        </div>
+        </DialogBody>
+
+        <DialogFooter>
+          <Button variant="secondary" onClick={() => createDialogRef.current?.close()} disabled={creating}>
+            Cancel
+          </Button>
+        </DialogFooter>
       </Dialog>
     </div>
   );

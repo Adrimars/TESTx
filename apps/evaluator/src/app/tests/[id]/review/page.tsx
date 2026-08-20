@@ -139,7 +139,12 @@ export default function ReviewPage() {
                   <Button
                     variant="link"
                     className="shrink-0 self-center"
-                    onClick={() => router.push(`/tests/${params.id}/question/${index + 1}`)}
+                    onClick={() => {
+                      // The visible list is filtered, but question numbers in the URL
+                      // are positions in the full (unfiltered) question order.
+                      const realIndex = test.questions.findIndex((q) => q.id === question.id);
+                      router.push(`/tests/${params.id}/question/${realIndex + 1}`);
+                    }}
                   >
                     Change
                   </Button>

@@ -3,21 +3,43 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowDown,
+  ArrowUp,
+  BarChart3,
+  Eye,
+  Pencil,
+  Play,
+  Plus,
+  Square,
+  Trash2,
+  PauseCircle,
+} from "lucide-react";
 import type { Gender, MediaType, QuestionType, TestStatus } from "@testx/shared";
 import { COUNTRIES, CITIES_BY_COUNTRY } from "@testx/shared";
 import {
+  Alert,
   Badge,
   Button,
   Card,
   CardContent,
+  CardFooter,
   CardHeader,
   CardTitle,
+  ConfirmDialog,
   Dialog,
+  DialogBody,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  EmptyState,
+  Field,
   Input,
   MultiCombobox,
   Select,
 } from "@testx/ui";
 import { apiFetch } from "@/lib/api";
+import { statusVariant } from "@/lib/status";
 import type { AdminMedia, AdminQuestion, AdminTestDetail, Paginated } from "@/lib/admin-types";
 
 type OptionDraft = { label: string; mediaId: string };
@@ -56,6 +78,14 @@ const EMPTY_QUESTION: QuestionDraft = {
 
 const GENDERS: Gender[] = ["MALE", "FEMALE", "OTHER", "UNDISCLOSED"];
 const FILE_MEDIA_TYPES: Array<Exclude<MediaType, "TEXT">> = ["IMAGE", "VIDEO", "AUDIO"];
+
+const SETTINGS_TABS = [
+  { value: "general", label: "General" },
+  { value: "timing", label: "Timing & quality" },
+  { value: "targeting", label: "Targeting" },
+] as const;
+
+type SettingsTab = (typeof SETTINGS_TABS)[number]["value"];
 
 function configNumber(value: unknown, fallback = "") {
   return typeof value === "number" ? String(value) : fallback;
@@ -98,39 +128,22 @@ function formatTotalMinimum(totalSeconds: number): string {
   return `${Math.round((totalSeconds / 60) * 10) / 10} min`;
 }
 
-/** Small heading above a settings control, so each field says what it is even once filled in. */
-function Field({
-  label,
-  hint,
-  className,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className={`space-y-1.5 ${className ?? ""}`}>
-      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-      {children}
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-    </div>
-  );
-}
-
-
 export default function TestEditorPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const questionDialogRef = useRef<HTMLDialogElement>(null);
   const closeTestDialogRef = useRef<HTMLDialogElement>(null);
+  const deactivateDialogRef = useRef<HTMLDialogElement>(null);
+  const deleteDraftDialogRef = useRef<HTMLDialogElement>(null);
+  const deleteQuestionDialogRef = useRef<HTMLDialogElement>(null);
+  const [pendingDeleteQuestionId, setPendingDeleteQuestionId] = useState<string | null>(null);
   const [test, setTest] = useState<AdminTestDetail | null>(null);
   const [media, setMedia] = useState<AdminMedia[]>([]);
   const [draft, setDraft] = useState<QuestionDraft>(EMPTY_QUESTION);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("general");
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -368,274 +381,598 @@ export default function TestEditorPage() {
   }
 
   if (loading) return <p className="text-sm text-muted-foreground">Loading test...</p>;
-  if (!test) return <p className="text-sm text-destructive">{error || "Test not found"}</p>;
+  if (!test) return <Alert>{error || "Test not found"}</Alert>;
+
+  const totalMinimum = Number(minTimePerQuestion || 0) * test.questions.length;
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <div className="mb-2 flex items-center gap-2">
-            <h1 className="text-2xl font-bold tracking-tight">{test.title}</h1>
-            <Badge>{test.status}</Badge>
-            <Badge>{test.rewardPoints} pts</Badge>
-          </div>
-          <p className="text-muted-foreground">Edit draft settings, questions, media options, and lifecycle.</p>
+      <div className="space-y-2">
+        <Link href="/tests" className="text-sm text-muted-foreground underline underline-offset-4">
+          ← Back to tests
+        </Link>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <h1 className="text-page-title text-foreground">{test.title}</h1>
+          <Badge variant={statusVariant(test.status)}>{test.status}</Badge>
+          <Badge variant="primary">{test.rewardPoints} pts</Badge>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Link href={`/tests/${test.id}/preview`}><Button variant="secondary">Preview</Button></Link>
-          {(test.status === "ACTIVE" || test.status === "CLOSED") && (
-            <Link href={`/tests/${test.id}/report`}><Button variant="secondary">Report</Button></Link>
-          )}
-          {isDraft && <Button onClick={() => changeStatus("ACTIVE")} disabled={saving}>Activate</Button>}
-          {test.status === "ACTIVE" && (
-            <Button variant="secondary" onClick={() => { if (confirm("Deactivate (pause) this test?")) changeStatus("PAUSED"); }} disabled={saving}>Deactivate</Button>
-          )}
-          {test.status === "PAUSED" && (
-            <Button onClick={() => changeStatus("ACTIVE")} disabled={saving}>Reactivate</Button>
-          )}
-          {(test.status === "ACTIVE" || test.status === "PAUSED") && (
-            <Button variant="secondary" onClick={() => closeTestDialogRef.current?.showModal()} disabled={saving}>Close Test</Button>
-          )}
-          {isDraft && <Button variant="secondary" onClick={deleteTest} disabled={saving}>Delete Draft</Button>}
-        </div>
+        <p className="text-sm text-muted-foreground">
+          Edit draft settings, questions, media options, and lifecycle.
+        </p>
       </div>
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <Alert>{error}</Alert>}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Settings</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 lg:grid-cols-2">
-          <Field label="Title">
-            <Input placeholder="Test title" value={title} onChange={(event) => setTitle(event.target.value)} disabled={!isDraft} />
-          </Field>
-          <Field label="Description">
-            <Input
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Description"
-              disabled={!isDraft}
-            />
-          </Field>
-          <Field label="Response cap">
-            <Input
-              type="number"
-              min={1}
-              placeholder="Response cap"
-              value={responseCap}
-              onChange={(event) => setResponseCap(event.target.value)}
-              disabled={!isDraft}
-            />
-          </Field>
-          <Field label="Advisory time (minutes)" hint="Fractional minutes allowed, e.g. 0.5 for 30 seconds.">
-            <Input
-              type="number"
-              min={0.1}
-              step={0.1}
-              placeholder="Advisory time in minutes"
-              value={advisoryTimeMin}
-              onChange={(event) => setAdvisoryTimeMin(event.target.value)}
-              disabled={!isDraft}
-            />
-          </Field>
-          <Field
-            label="Minimum time per question (seconds)"
-            hint={
-              test.questions.length > 0
-                ? `Checked as a total: a response finished in under ${formatTotalMinimum(
-                    Number(minTimePerQuestion || 0) * test.questions.length
-                  )} is flagged and earns no points.`
-                : "Checked as a total across all questions: finishing faster than that earns no points."
-            }
-          >
-            <Input
-              type="number"
-              min={0}
-              placeholder="Min seconds per question"
-              value={minTimePerQuestion}
-              onChange={(event) => setMinTimePerQuestion(event.target.value)}
-              disabled={!isDraft}
-            />
-          </Field>
-          <Field label="Age range">
-            <div className="grid grid-cols-2 gap-2">
-              <Input placeholder="Age min" value={ageMin} onChange={(event) => setAgeMin(event.target.value)} disabled={!isDraft} />
-              <Input placeholder="Age max" value={ageMax} onChange={(event) => setAgeMax(event.target.value)} disabled={!isDraft} />
-            </div>
-          </Field>
-          <Field label="Countries">
-            <MultiCombobox
-              options={COUNTRIES}
-              value={countries}
-              onChange={handleCountriesChange}
-              placeholder="Select countries…"
-              disabled={!isDraft}
-            />
-          </Field>
-          <Field label="Cities">
-            <MultiCombobox
-              options={cityOptions}
-              value={cities}
-              onChange={setCities}
-              placeholder={countries.length === 0 ? "Select countries first…" : "Select cities…"}
-              disabled={!isDraft || countries.length === 0}
-            />
-          </Field>
-          <Field label="Genders" className="lg:col-span-2">
-            <div className="flex flex-wrap gap-3">
-              {GENDERS.map((gender) => (
-                <label key={gender} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={selectedGenders.includes(gender)}
-                    disabled={!isDraft}
-                    onChange={(event) => {
-                      setSelectedGenders((current) =>
-                        event.target.checked ? [...current, gender] : current.filter((item) => item !== gender)
-                      );
-                    }}
-                  />
-                  {gender}
-                </label>
-              ))}
-            </div>
-          </Field>
-          {isDraft && (
-            <div className="lg:col-span-2">
-              <Button onClick={saveSettings} disabled={saving || !title.trim()}>
-                {saving ? "Saving..." : "Save Settings"}
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Questions</CardTitle>
-          {isDraft && <Button onClick={() => openQuestionDialog()}>Add Question</Button>}
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {test.questions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No questions yet.</p>
-          ) : (
-            test.questions.map((question, index) => (
-              <div key={question.id} className="rounded-lg border border-border p-4">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <Badge>#{question.order}</Badge>
-                      <Badge>{question.type}</Badge>
-                      {question.mediaType && <Badge>{question.mediaType}</Badge>}
-                      {question.isAttentionCheck && <Badge>Attention</Badge>}
-                      {question.isTrapDuplicate && <Badge>Trap</Badge>}
-                    </div>
-                    <p className="font-medium">{question.prompt}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{question.options.length} options</p>
-                  </div>
-                  {isDraft && (
-                    <div className="flex flex-wrap gap-2">
-                      <Button variant="secondary" onClick={() => moveQuestion(question.id, -1)} disabled={saving || index === 0}>Up</Button>
-                      <Button variant="secondary" onClick={() => moveQuestion(question.id, 1)} disabled={saving || index === test.questions.length - 1}>Down</Button>
-                      <Button variant="secondary" onClick={() => openQuestionDialog(question)} disabled={saving}>Edit</Button>
-                      <Button variant="secondary" onClick={() => deleteQuestion(question.id)} disabled={saving}>Delete</Button>
-                    </div>
-                  )}
-                </div>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_280px] xl:items-start">
+        <div className="min-w-0 space-y-6">
+          <Card>
+            <CardHeader className="border-b border-border pb-0">
+              <CardTitle>Settings</CardTitle>
+              {!isDraft && (
+                <p className="text-sm text-muted-foreground">
+                  Settings are read-only once a test leaves draft.
+                </p>
+              )}
+              <div className="flex gap-1 pt-3">
+                {SETTINGS_TABS.map((tab) => (
+                  <button
+                    key={tab.value}
+                    type="button"
+                    onClick={() => setSettingsTab(tab.value)}
+                    aria-pressed={settingsTab === tab.value}
+                    className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+                      settingsTab === tab.value
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+            </CardHeader>
 
-      <Dialog ref={questionDialogRef} className="w-full max-w-4xl">
-        <div className="space-y-5 p-6">
-          <CardHeader className="p-0">
-            <CardTitle>{draft.id ? "Edit question" : "Add question"}</CardTitle>
+            <CardContent className="pt-5">
+              {settingsTab === "general" && (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <Field label="Title" htmlFor="title">
+                    <Input
+                      id="title"
+                      placeholder="Test title"
+                      value={title}
+                      onChange={(event) => setTitle(event.target.value)}
+                      disabled={!isDraft}
+                    />
+                  </Field>
+                  <Field label="Description" htmlFor="description" optional>
+                    <Input
+                      id="description"
+                      value={description}
+                      onChange={(event) => setDescription(event.target.value)}
+                      placeholder="Shown to evaluators under the title"
+                      disabled={!isDraft}
+                    />
+                  </Field>
+                  <Field
+                    label="Response cap"
+                    htmlFor="responseCap"
+                    optional
+                    hint="Stops assigning the test once this many responses arrive."
+                  >
+                    <Input
+                      id="responseCap"
+                      type="number"
+                      min={1}
+                      placeholder="No limit"
+                      value={responseCap}
+                      onChange={(event) => setResponseCap(event.target.value)}
+                      disabled={!isDraft}
+                    />
+                  </Field>
+                </div>
+              )}
+
+              {settingsTab === "timing" && (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <Field
+                    label="Advisory time (minutes)"
+                    htmlFor="advisoryTimeMin"
+                    optional
+                    hint="Shown to evaluators as an estimate. Fractional minutes allowed, e.g. 0.5 for 30 seconds."
+                  >
+                    <Input
+                      id="advisoryTimeMin"
+                      type="number"
+                      min={0.1}
+                      step={0.1}
+                      placeholder="Advisory time in minutes"
+                      value={advisoryTimeMin}
+                      onChange={(event) => setAdvisoryTimeMin(event.target.value)}
+                      disabled={!isDraft}
+                    />
+                  </Field>
+                  <Field
+                    label="Minimum time per question (seconds)"
+                    htmlFor="minTimePerQuestion"
+                    hint={
+                      test.questions.length > 0
+                        ? `Checked as a total: a response finished in under ${formatTotalMinimum(
+                            totalMinimum
+                          )} is flagged and earns no points.`
+                        : "Checked as a total across all questions: finishing faster than that earns no points."
+                    }
+                  >
+                    <Input
+                      id="minTimePerQuestion"
+                      type="number"
+                      min={0}
+                      placeholder="Min seconds per question"
+                      value={minTimePerQuestion}
+                      onChange={(event) => setMinTimePerQuestion(event.target.value)}
+                      disabled={!isDraft}
+                    />
+                  </Field>
+                </div>
+              )}
+
+              {settingsTab === "targeting" && (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  <Field label="Age range" optional hint="Leave empty to accept any age.">
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        placeholder="Min"
+                        aria-label="Minimum age"
+                        value={ageMin}
+                        onChange={(event) => setAgeMin(event.target.value)}
+                        disabled={!isDraft}
+                      />
+                      <Input
+                        placeholder="Max"
+                        aria-label="Maximum age"
+                        value={ageMax}
+                        onChange={(event) => setAgeMax(event.target.value)}
+                        disabled={!isDraft}
+                      />
+                    </div>
+                  </Field>
+                  <Field label="Genders" optional hint="No selection means every gender is eligible.">
+                    <div className="flex min-h-11 flex-wrap items-center gap-3">
+                      {GENDERS.map((gender) => (
+                        <label key={gender} className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            className="size-4 rounded border-input accent-primary"
+                            checked={selectedGenders.includes(gender)}
+                            disabled={!isDraft}
+                            onChange={(event) => {
+                              setSelectedGenders((current) =>
+                                event.target.checked
+                                  ? [...current, gender]
+                                  : current.filter((item) => item !== gender)
+                              );
+                            }}
+                          />
+                          {gender}
+                        </label>
+                      ))}
+                    </div>
+                  </Field>
+                  <Field label="Countries" optional>
+                    <MultiCombobox
+                      options={COUNTRIES}
+                      value={countries}
+                      onChange={handleCountriesChange}
+                      placeholder="Select countries…"
+                      disabled={!isDraft}
+                    />
+                  </Field>
+                  <Field label="Cities" optional>
+                    <MultiCombobox
+                      options={cityOptions}
+                      value={cities}
+                      onChange={setCities}
+                      placeholder={countries.length === 0 ? "Select countries first…" : "Select cities…"}
+                      disabled={!isDraft || countries.length === 0}
+                    />
+                  </Field>
+                </div>
+              )}
+            </CardContent>
+
+            {isDraft && (
+              <CardFooter className="justify-end">
+                <Button onClick={saveSettings} disabled={saving || !title.trim()}>
+                  {saving ? "Saving..." : "Save Settings"}
+                </Button>
+              </CardFooter>
+            )}
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between border-b border-border">
+              <CardTitle>Questions ({test.questions.length})</CardTitle>
+              {isDraft && (
+                <Button size="sm" onClick={() => openQuestionDialog()}>
+                  <Plus className="size-4" aria-hidden />
+                  Add Question
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent className="p-0">
+              {test.questions.length === 0 ? (
+                <EmptyState
+                  className="border-0 bg-transparent"
+                  title="No questions yet"
+                  description={
+                    isDraft
+                      ? "Add the first question to build this test."
+                      : "This test has no questions."
+                  }
+                />
+              ) : (
+                <ul className="divide-y divide-border">
+                  {test.questions.map((question, index) => (
+                    <li
+                      key={question.id}
+                      className="flex flex-col gap-3 p-4 transition-colors hover:bg-accent/40 lg:flex-row lg:items-start lg:justify-between"
+                    >
+                      <div className="min-w-0">
+                        <div className="mb-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <span className="font-semibold tabular-nums text-foreground">#{question.order}</span>
+                          <span>·</span>
+                          <span>{question.type.replace("_", " ").toLowerCase()}</span>
+                          {question.mediaType && (
+                            <>
+                              <span>·</span>
+                              <span>{question.mediaType.toLowerCase()}</span>
+                            </>
+                          )}
+                          <span>·</span>
+                          <span>{question.options.length} options</span>
+                          {question.isAttentionCheck && <Badge variant="warning">Attention</Badge>}
+                          {question.isTrapDuplicate && <Badge variant="warning">Trap</Badge>}
+                        </div>
+                        <p className="font-medium text-foreground">{question.prompt}</p>
+                      </div>
+                      {isDraft && (
+                        <div className="flex shrink-0 flex-wrap items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label="Move up"
+                            className="px-2"
+                            onClick={() => moveQuestion(question.id, -1)}
+                            disabled={saving || index === 0}
+                          >
+                            <ArrowUp className="size-4" aria-hidden />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label="Move down"
+                            className="px-2"
+                            onClick={() => moveQuestion(question.id, 1)}
+                            disabled={saving || index === test.questions.length - 1}
+                          >
+                            <ArrowDown className="size-4" aria-hidden />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openQuestionDialog(question)}
+                            disabled={saving}
+                          >
+                            <Pencil className="size-3.5" aria-hidden />
+                            Edit
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => {
+                              setPendingDeleteQuestionId(question.id);
+                              deleteQuestionDialogRef.current?.showModal();
+                            }}
+                            disabled={saving}
+                          >
+                            <Trash2 className="size-3.5" aria-hidden />
+                            Delete
+                          </Button>
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Lifecycle actions, gathered in one place instead of spread across the header. */}
+        <Card className="xl:sticky xl:top-8">
+          <CardHeader className="pb-3">
+            <CardTitle>Status & actions</CardTitle>
           </CardHeader>
+          <CardContent className="space-y-4 p-5 pt-0">
+            <dl className="space-y-2 text-sm">
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">Status</dt>
+                <dd>
+                  <Badge variant={statusVariant(test.status)}>{test.status}</Badge>
+                </dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">Questions</dt>
+                <dd className="tabular-nums">{test.questions.length}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">Reward</dt>
+                <dd className="tabular-nums">{test.rewardPoints} pts</dd>
+              </div>
+              {test.questions.length > 0 && (
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted-foreground">Min. total time</dt>
+                  <dd className="tabular-nums">{formatTotalMinimum(totalMinimum)}</dd>
+                </div>
+              )}
+            </dl>
 
-          <div className="grid gap-3 lg:grid-cols-3">
-            <Select value={draft.type} onChange={(event) => setDraft((current) => ({ ...current, type: event.target.value as QuestionType }))}>
-              <option value="SINGLE_SELECT">Single select</option>
-              <option value="MULTI_SELECT">Multi select</option>
-              <option value="RATING">Rating</option>
-            </Select>
-            <Select
-              value={draft.mediaType}
-              onChange={(event) => {
-                const mediaType = event.target.value as MediaType;
-                setDraft((current) => ({ ...current, mediaType, options: [{ label: "", mediaId: "" }, { label: "", mediaId: "" }] }));
-                void fetchMedia(mediaType);
-              }}
-            >
-              <option value="TEXT">Text</option>
-              {FILE_MEDIA_TYPES.map((mediaType) => <option key={mediaType} value={mediaType}>{mediaType}</option>)}
-            </Select>
-            <Input
-              placeholder="Question prompt"
-              value={draft.prompt}
-              onChange={(event) => setDraft((current) => ({ ...current, prompt: event.target.value }))}
-            />
-          </div>
+            <div className="flex flex-col gap-2 border-t border-border pt-4">
+              {isDraft && (
+                <Button onClick={() => changeStatus("ACTIVE")} disabled={saving}>
+                  <Play className="size-4" aria-hidden />
+                  Activate
+                </Button>
+              )}
+              {test.status === "PAUSED" && (
+                <Button onClick={() => changeStatus("ACTIVE")} disabled={saving}>
+                  <Play className="size-4" aria-hidden />
+                  Reactivate
+                </Button>
+              )}
 
-          {(draft.type === "SINGLE_SELECT" || draft.type === "MULTI_SELECT") && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold">Options</h3>
+              <Link href={`/tests/${test.id}/preview`} className="contents">
+                <Button variant="secondary" className="w-full">
+                  <Eye className="size-4" aria-hidden />
+                  Preview
+                </Button>
+              </Link>
+              {(test.status === "ACTIVE" || test.status === "CLOSED") && (
+                <Link href={`/tests/${test.id}/report`} className="contents">
+                  <Button variant="secondary" className="w-full">
+                    <BarChart3 className="size-4" aria-hidden />
+                    Report
+                  </Button>
+                </Link>
+              )}
+
+              {test.status === "ACTIVE" && (
                 <Button
                   variant="secondary"
-                  onClick={() => setDraft((current) => ({ ...current, options: [...current.options, { label: "", mediaId: "" }] }))}
+                  className="text-warning"
+                  onClick={() => deactivateDialogRef.current?.showModal()}
+                  disabled={saving}
+                >
+                  <PauseCircle className="size-4" aria-hidden />
+                  Deactivate
+                </Button>
+              )}
+              {(test.status === "ACTIVE" || test.status === "PAUSED") && (
+                <Button
+                  variant="secondary"
+                  className="text-destructive"
+                  onClick={() => closeTestDialogRef.current?.showModal()}
+                  disabled={saving}
+                >
+                  <Square className="size-4" aria-hidden />
+                  Close Test
+                </Button>
+              )}
+              {isDraft && (
+                <Button
+                  variant="ghost"
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => deleteDraftDialogRef.current?.showModal()}
+                  disabled={saving}
+                >
+                  <Trash2 className="size-4" aria-hidden />
+                  Delete Draft
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Dialog ref={questionDialogRef} className="max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>{draft.id ? "Edit question" : "Add question"}</DialogTitle>
+        </DialogHeader>
+
+        <DialogBody>
+          <section className="space-y-4">
+            <h3 className="text-meta uppercase text-muted-foreground">Basics</h3>
+            <div className="grid gap-4 lg:grid-cols-3">
+              <Field label="Question type">
+                <Select
+                  aria-label="Question type"
+                  value={draft.type}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, type: event.target.value as QuestionType }))
+                  }
+                >
+                  <option value="SINGLE_SELECT">Single select</option>
+                  <option value="MULTI_SELECT">Multi select</option>
+                  <option value="RATING">Rating</option>
+                </Select>
+              </Field>
+              <Field label="Option media" hint="Changing this clears the options.">
+                <Select
+                  aria-label="Option media type"
+                  value={draft.mediaType}
+                  onChange={(event) => {
+                    const mediaType = event.target.value as MediaType;
+                    setDraft((current) => ({
+                      ...current,
+                      mediaType,
+                      options: [{ label: "", mediaId: "" }, { label: "", mediaId: "" }],
+                    }));
+                    void fetchMedia(mediaType);
+                  }}
+                >
+                  <option value="TEXT">Text</option>
+                  {FILE_MEDIA_TYPES.map((mediaType) => (
+                    <option key={mediaType} value={mediaType}>{mediaType}</option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Prompt">
+                <Input
+                  placeholder="Question prompt"
+                  value={draft.prompt}
+                  onChange={(event) => setDraft((current) => ({ ...current, prompt: event.target.value }))}
+                />
+              </Field>
+            </div>
+          </section>
+
+          {(draft.type === "SINGLE_SELECT" || draft.type === "MULTI_SELECT") && (
+            <section className="space-y-3 border-t border-border pt-5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-meta uppercase text-muted-foreground">
+                  Options ({draft.options.length})
+                </h3>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() =>
+                    setDraft((current) => ({
+                      ...current,
+                      options: [...current.options, { label: "", mediaId: "" }],
+                    }))
+                  }
                   disabled={draft.options.length >= 10}
                 >
+                  <Plus className="size-4" aria-hidden />
                   Add Option
                 </Button>
               </div>
+
               {draft.options.map((option, index) => (
                 <div key={index} className="grid gap-2 lg:grid-cols-[1fr_1fr_auto]">
-                  <Input placeholder="Label" value={option.label} onChange={(event) => updateOption(index, { label: event.target.value })} />
+                  <Input
+                    placeholder={`Option ${index + 1} label`}
+                    aria-label={`Option ${index + 1} label`}
+                    value={option.label}
+                    onChange={(event) => updateOption(index, { label: event.target.value })}
+                  />
                   {draft.mediaType === "TEXT" ? (
-                    <Input value="Text option" disabled />
+                    <Input value="Text option" aria-label="Option media" disabled />
                   ) : (
-                    <Select value={option.mediaId} onChange={(event) => updateOption(index, { mediaId: event.target.value })}>
+                    <Select
+                      aria-label={`Option ${index + 1} media`}
+                      value={option.mediaId}
+                      onChange={(event) => updateOption(index, { mediaId: event.target.value })}
+                    >
                       <option value="">Select media</option>
-                      {media.map((item) => <option key={item.id} value={item.id}>{item.fileName}</option>)}
+                      {media.map((item) => (
+                        <option key={item.id} value={item.id}>{item.fileName}</option>
+                      ))}
                     </Select>
                   )}
                   <Button
-                    variant="secondary"
-                    onClick={() => setDraft((current) => ({ ...current, options: current.options.filter((_, itemIndex) => itemIndex !== index) }))}
+                    variant="ghost"
+                    aria-label={`Remove option ${index + 1}`}
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() =>
+                      setDraft((current) => ({
+                        ...current,
+                        options: current.options.filter((_, itemIndex) => itemIndex !== index),
+                      }))
+                    }
                     disabled={draft.options.length <= 2}
                   >
+                    <Trash2 className="size-4" aria-hidden />
                     Remove
                   </Button>
                 </div>
               ))}
+
               {draft.type === "MULTI_SELECT" && (
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <Input placeholder="Min selections" value={draft.minSelections} onChange={(event) => setDraft((current) => ({ ...current, minSelections: event.target.value }))} />
-                  <Input placeholder="Max selections" value={draft.maxSelections} onChange={(event) => setDraft((current) => ({ ...current, maxSelections: event.target.value }))} />
+                <div className="grid gap-4 pt-1 sm:grid-cols-2">
+                  <Field label="Min selections" optional>
+                    <Input
+                      placeholder="No minimum"
+                      value={draft.minSelections}
+                      onChange={(event) =>
+                        setDraft((current) => ({ ...current, minSelections: event.target.value }))
+                      }
+                    />
+                  </Field>
+                  <Field label="Max selections" optional>
+                    <Input
+                      placeholder="No maximum"
+                      value={draft.maxSelections}
+                      onChange={(event) =>
+                        setDraft((current) => ({ ...current, maxSelections: event.target.value }))
+                      }
+                    />
+                  </Field>
                 </div>
               )}
-            </div>
+            </section>
           )}
 
           {draft.type === "RATING" && (
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Input placeholder="Min value" value={draft.ratingMin} onChange={(event) => setDraft((current) => ({ ...current, ratingMin: event.target.value }))} />
-              <Input placeholder="Max value" value={draft.ratingMax} onChange={(event) => setDraft((current) => ({ ...current, ratingMax: event.target.value }))} />
-              <Input placeholder="Min label" value={draft.minLabel} onChange={(event) => setDraft((current) => ({ ...current, minLabel: event.target.value }))} />
-              <Input placeholder="Max label" value={draft.maxLabel} onChange={(event) => setDraft((current) => ({ ...current, maxLabel: event.target.value }))} />
-            </div>
+            <section className="space-y-3 border-t border-border pt-5">
+              <h3 className="text-meta uppercase text-muted-foreground">Rating scale</h3>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Min value">
+                  <Input
+                    placeholder="1"
+                    value={draft.ratingMin}
+                    onChange={(event) => setDraft((current) => ({ ...current, ratingMin: event.target.value }))}
+                  />
+                </Field>
+                <Field label="Max value">
+                  <Input
+                    placeholder="5"
+                    value={draft.ratingMax}
+                    onChange={(event) => setDraft((current) => ({ ...current, ratingMax: event.target.value }))}
+                  />
+                </Field>
+                <Field label="Min label" optional>
+                  <Input
+                    placeholder="e.g. Not likely"
+                    value={draft.minLabel}
+                    onChange={(event) => setDraft((current) => ({ ...current, minLabel: event.target.value }))}
+                  />
+                </Field>
+                <Field label="Max label" optional>
+                  <Input
+                    placeholder="e.g. Very likely"
+                    value={draft.maxLabel}
+                    onChange={(event) => setDraft((current) => ({ ...current, maxLabel: event.target.value }))}
+                  />
+                </Field>
+              </div>
+            </section>
           )}
 
-          <div className="space-y-2">
-            <div className="grid gap-3 lg:grid-cols-3">
+          <section className="space-y-3 border-t border-border pt-5">
+            <h3 className="text-meta uppercase text-muted-foreground">Quality control</h3>
+            <p className="text-sm text-muted-foreground">
+              A question can be an attention check or a trap duplicate, not both.
+            </p>
+            <div className="grid gap-4 lg:grid-cols-3">
               <label
-                className={`flex items-center gap-2 text-sm ${draft.isTrapDuplicate ? "text-muted-foreground" : ""}`}
+                className={`flex min-h-11 items-center gap-2 text-sm ${
+                  draft.isTrapDuplicate ? "text-muted-foreground" : ""
+                }`}
               >
                 <input
                   type="checkbox"
+                  className="size-4 rounded border-input accent-primary"
                   checked={draft.isAttentionCheck}
                   disabled={draft.isTrapDuplicate}
                   onChange={(event) =>
@@ -651,10 +988,13 @@ export default function TestEditorPage() {
                 Attention check
               </label>
               <label
-                className={`flex items-center gap-2 text-sm ${draft.isAttentionCheck ? "text-muted-foreground" : ""}`}
+                className={`flex min-h-11 items-center gap-2 text-sm ${
+                  draft.isAttentionCheck ? "text-muted-foreground" : ""
+                }`}
               >
                 <input
                   type="checkbox"
+                  className="size-4 rounded border-input accent-primary"
                   checked={draft.isTrapDuplicate}
                   disabled={draft.isAttentionCheck}
                   onChange={(event) =>
@@ -668,53 +1008,93 @@ export default function TestEditorPage() {
                 />
                 Trap duplicate
               </label>
-              <Select
-                value={draft.trapSourceId}
-                disabled={!draft.isTrapDuplicate}
-                onChange={(event) => setDraft((current) => ({ ...current, trapSourceId: event.target.value }))}
-              >
-                <option value="">Trap source question</option>
-                {test.questions.filter((question) => question.id !== draft.id).map((question) => (
-                  <option key={question.id} value={question.id}>#{question.order} {question.prompt}</option>
-                ))}
-              </Select>
+              <Field label="Trap source question">
+                <Select
+                  aria-label="Trap source question"
+                  value={draft.trapSourceId}
+                  disabled={!draft.isTrapDuplicate}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, trapSourceId: event.target.value }))
+                  }
+                >
+                  <option value="">Trap source question</option>
+                  {test.questions
+                    .filter((question) => question.id !== draft.id)
+                    .map((question) => (
+                      <option key={question.id} value={question.id}>
+                        #{question.order} {question.prompt}
+                      </option>
+                    ))}
+                </Select>
+              </Field>
             </div>
-            <p className="text-xs text-muted-foreground">
-              A question can be an attention check or a trap duplicate, not both.
-            </p>
-          </div>
+          </section>
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => questionDialogRef.current?.close()} disabled={saving}>Cancel</Button>
-            <Button onClick={saveQuestion} disabled={saving || !draft.prompt.trim()}>
-              {saving ? "Saving..." : "Save Question"}
-            </Button>
-          </div>
-        </div>
+          {error && <Alert>{error}</Alert>}
+        </DialogBody>
+
+        <DialogFooter>
+          <Button variant="secondary" onClick={() => questionDialogRef.current?.close()} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={saveQuestion} disabled={saving || !draft.prompt.trim()}>
+            {saving ? "Saving..." : "Save Question"}
+          </Button>
+        </DialogFooter>
       </Dialog>
 
-      <Dialog ref={closeTestDialogRef}>
-        <div className="space-y-5 p-6">
-          <div>
-            <h2 className="text-lg font-semibold">Close Test</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Are you sure you want to close the test? The test cannot be reopened once closed.
-            </p>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => closeTestDialogRef.current?.close()}>Cancel</Button>
-            <Button
-              onClick={() => {
-                closeTestDialogRef.current?.close();
-                changeStatus("CLOSED");
-              }}
-            >
-              Close Test
-            </Button>
-          </div>
-        </div>
-      </Dialog>
+      <ConfirmDialog
+        ref={closeTestDialogRef}
+        title="Close Test"
+        description="Are you sure you want to close the test? The test cannot be reopened once closed."
+        confirmLabel="Close Test"
+        tone="danger"
+        busy={saving}
+        onConfirm={() => {
+          closeTestDialogRef.current?.close();
+          changeStatus("CLOSED");
+        }}
+      />
+
+      <ConfirmDialog
+        ref={deactivateDialogRef}
+        title="Deactivate test"
+        description="Deactivate (pause) this test? Evaluators will stop receiving it until you reactivate."
+        confirmLabel="Deactivate"
+        busy={saving}
+        onConfirm={() => {
+          deactivateDialogRef.current?.close();
+          changeStatus("PAUSED");
+        }}
+      />
+
+      <ConfirmDialog
+        ref={deleteDraftDialogRef}
+        title="Delete draft"
+        description="This draft and its questions will be permanently removed."
+        confirmLabel="Delete Draft"
+        tone="danger"
+        busy={saving}
+        onConfirm={() => {
+          deleteDraftDialogRef.current?.close();
+          void deleteTest();
+        }}
+      />
+
+      <ConfirmDialog
+        ref={deleteQuestionDialogRef}
+        title="Delete question"
+        description="This question will be removed from the test."
+        confirmLabel="Delete"
+        tone="danger"
+        busy={saving}
+        onCancel={() => setPendingDeleteQuestionId(null)}
+        onConfirm={() => {
+          deleteQuestionDialogRef.current?.close();
+          if (pendingDeleteQuestionId) void deleteQuestion(pendingDeleteQuestionId);
+          setPendingDeleteQuestionId(null);
+        }}
+      />
     </div>
   );
 }

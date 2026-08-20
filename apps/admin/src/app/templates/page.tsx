@@ -2,7 +2,26 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Card, CardContent, CardHeader, CardTitle, Dialog, Input, Select } from "@testx/ui";
+import { Plus, Trash2 } from "lucide-react";
+import {
+  Alert,
+  Button,
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  ConfirmDialog,
+  Dialog,
+  DialogBody,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  EmptyState,
+  Field,
+  Input,
+  PageHeader,
+  Select,
+} from "@testx/ui";
 import { apiFetch } from "@/lib/api";
 import type { AdminTestDetail, TemplateItem } from "@/lib/admin-types";
 
@@ -89,11 +108,13 @@ function toStructure(questions: DraftQuestion[]) {
 export default function TemplatesPage() {
   const router = useRouter();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const deleteDialogRef = useRef<HTMLDialogElement>(null);
 
   const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [creatingId, setCreatingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<TemplateItem | null>(null);
   const [error, setError] = useState("");
 
   const [formMode, setFormMode] = useState<"add" | "edit">("add");
@@ -220,165 +241,238 @@ export default function TemplatesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Templates</h1>
-          <p className="text-muted-foreground">Seeded starting points for common evaluation patterns.</p>
-        </div>
-        <Button onClick={openAdd}>Add Template</Button>
-      </div>
+      <PageHeader
+        title="Templates"
+        description="Seeded starting points for common evaluation patterns."
+        actions={
+          <Button onClick={openAdd}>
+            <Plus className="size-4" aria-hidden />
+            Add Template
+          </Button>
+        }
+      />
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <Alert>{error}</Alert>}
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading templates...</p>
       ) : templates.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No templates found.</p>
+        <EmptyState
+          title="No templates yet"
+          description="Templates give a new test its questions in one step."
+          action={
+            <Button onClick={openAdd}>
+              <Plus className="size-4" aria-hidden />
+              Add Template
+            </Button>
+          }
+        />
       ) : (
         <div className="grid gap-4 lg:grid-cols-3">
           {templates.map((template) => (
-            <Card key={template.id}>
-              <CardHeader>
+            <Card key={template.id} className="flex flex-col">
+              <CardHeader className="pb-2">
                 <CardTitle>{template.name}</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="flex-1 p-5 pt-0">
                 <p className="text-sm text-muted-foreground">{template.description}</p>
-                <div className="flex flex-wrap gap-2">
-                  <Button onClick={() => createFromTemplate(template.id)} disabled={creatingId === template.id}>
-                    {creatingId === template.id ? "Creating..." : "Use Template"}
-                  </Button>
-                  <Button variant="secondary" onClick={() => openEdit(template)}>
-                    Edit Template
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    onClick={() => deleteTemplate(template.id)}
-                    disabled={deletingId === template.id}
-                    className="text-destructive hover:text-destructive"
-                  >
-                    {deletingId === template.id ? "Deleting..." : "Delete Template"}
-                  </Button>
-                </div>
               </CardContent>
+              <div className="flex flex-wrap items-center gap-2 border-t border-border p-4">
+                <Button
+                  size="sm"
+                  onClick={() => createFromTemplate(template.id)}
+                  disabled={creatingId === template.id}
+                >
+                  {creatingId === template.id ? "Creating..." : "Use Template"}
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => openEdit(template)}>
+                  Edit
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="ml-auto text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => {
+                    setPendingDelete(template);
+                    deleteDialogRef.current?.showModal();
+                  }}
+                  disabled={deletingId === template.id}
+                  aria-label={`Delete ${template.name}`}
+                >
+                  <Trash2 className="size-4" aria-hidden />
+                  {deletingId === template.id ? "Deleting..." : "Delete"}
+                </Button>
+              </div>
             </Card>
           ))}
         </div>
       )}
 
-      <Dialog ref={dialogRef} className="w-full max-w-3xl">
-        <div className="flex items-center justify-between gap-4 border-b border-border px-6 py-4 sticky top-0 bg-card z-10">
-          <h2 className="text-lg font-semibold">
-            {formMode === "add" ? "Add Template" : "Edit Template"}
-          </h2>
-          <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => dialogRef.current?.close()} disabled={formSaving}>
-              Cancel
-            </Button>
-            <Button onClick={saveForm} disabled={formSaving}>
-              {formSaving ? "Saving..." : formMode === "add" ? "Save Template" : "Save Changes"}
-            </Button>
+      <ConfirmDialog
+        ref={deleteDialogRef}
+        title="Delete template?"
+        description={
+          pendingDelete
+            ? `“${pendingDelete.name}” will be permanently removed. Tests already created from it are not affected.`
+            : undefined
+        }
+        confirmLabel="Delete Template"
+        tone="danger"
+        busy={deletingId !== null}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={() => {
+          deleteDialogRef.current?.close();
+          if (pendingDelete) void deleteTemplate(pendingDelete.id);
+          setPendingDelete(null);
+        }}
+      />
+
+      <Dialog ref={dialogRef} className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>{formMode === "add" ? "Add Template" : "Edit Template"}</DialogTitle>
+        </DialogHeader>
+
+        <DialogBody>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Template name" htmlFor="template-name">
+              <Input
+                id="template-name"
+                placeholder="e.g. Image A/B comparison"
+                value={formName}
+                onChange={(e) => setFormName(e.target.value)}
+              />
+            </Field>
+            <Field label="Description" htmlFor="template-desc" optional>
+              <Input
+                id="template-desc"
+                placeholder="What this template is for"
+                value={formDesc}
+                onChange={(e) => setFormDesc(e.target.value)}
+              />
+            </Field>
           </div>
-        </div>
 
-        <div className="space-y-6 p-6 max-h-[75vh] overflow-y-auto">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Input
-              placeholder="Template name"
-              value={formName}
-              onChange={(e) => setFormName(e.target.value)}
-            />
-            <Input
-              placeholder="Description (optional)"
-              value={formDesc}
-              onChange={(e) => setFormDesc(e.target.value)}
-            />
-          </div>
+          <div className="space-y-4 border-t border-border pt-5">
+            <h3 className="text-meta uppercase text-muted-foreground">
+              Questions ({formQuestions.length})
+            </h3>
 
-          {formQuestions.map((q, qi) => (
-            <div key={qi} className="rounded-lg border border-border p-4 space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm font-medium">Question {qi + 1}</span>
-                <button
-                  type="button"
-                  onClick={() => removeQuestion(qi)}
-                  disabled={formQuestions.length === 1}
-                  className="text-sm text-destructive hover:underline disabled:opacity-30"
-                >
-                  Remove
-                </button>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Input
-                  placeholder="Question prompt"
-                  value={q.prompt}
-                  onChange={(e) => updateQuestion(qi, { prompt: e.target.value })}
-                />
-                <Select
-                  aria-label="Question type"
-                  value={q.type}
-                  onChange={(e) => updateQuestion(qi, { type: e.target.value as DraftQuestion["type"] })}
-                >
-                  <option value="SINGLE_SELECT">Single Select</option>
-                  <option value="MULTI_SELECT">Multi Select</option>
-                  <option value="RATING">Rating</option>
-                </Select>
-              </div>
-
-              {q.type === "RATING" && (
-                <div className="grid gap-3 sm:grid-cols-4">
-                  <Input placeholder="Min (e.g. 1)" value={q.ratingMin} onChange={(e) => updateQuestion(qi, { ratingMin: e.target.value })} />
-                  <Input placeholder="Max (e.g. 5)" value={q.ratingMax} onChange={(e) => updateQuestion(qi, { ratingMax: e.target.value })} />
-                  <Input placeholder="Min label" value={q.minLabel} onChange={(e) => updateQuestion(qi, { minLabel: e.target.value })} />
-                  <Input placeholder="Max label" value={q.maxLabel} onChange={(e) => updateQuestion(qi, { maxLabel: e.target.value })} />
-                </div>
-              )}
-
-              {q.type === "MULTI_SELECT" && (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Input placeholder="Min selections" value={q.minSelections} onChange={(e) => updateQuestion(qi, { minSelections: e.target.value })} />
-                  <Input placeholder="Max selections" value={q.maxSelections} onChange={(e) => updateQuestion(qi, { maxSelections: e.target.value })} />
-                </div>
-              )}
-
-              {q.type !== "RATING" && (
-                <div className="space-y-2">
-                  {q.options.map((opt, oi) => (
-                    <div key={oi} className="flex gap-2">
-                      <Input
-                        placeholder={`Option ${oi + 1}`}
-                        value={opt}
-                        onChange={(e) => updateOption(qi, oi, e.target.value)}
-                      />
-                      {q.options.length > 2 && (
-                        <button
-                          type="button"
-                          onClick={() => removeOption(qi, oi)}
-                          className="text-sm text-destructive hover:underline whitespace-nowrap"
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => addOption(qi)}
-                    className="text-sm text-primary hover:underline"
+            {formQuestions.map((q, qi) => (
+              <div key={qi} className="space-y-4 rounded-lg border border-border p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-semibold text-foreground">Question {qi + 1}</span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeQuestion(qi)}
+                    disabled={formQuestions.length === 1}
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                   >
-                    + Add option
-                  </button>
+                    <Trash2 className="size-3.5" aria-hidden />
+                    Remove
+                  </Button>
                 </div>
-              )}
-            </div>
-          ))}
 
-          <Button variant="secondary" onClick={() => setFormQuestions((prev) => [...prev, { ...EMPTY_QUESTION }])}>
-            Add Question
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Prompt">
+                    <Input
+                      placeholder="Question prompt"
+                      value={q.prompt}
+                      onChange={(e) => updateQuestion(qi, { prompt: e.target.value })}
+                    />
+                  </Field>
+                  <Field label="Question type">
+                    <Select
+                      aria-label="Question type"
+                      value={q.type}
+                      onChange={(e) => updateQuestion(qi, { type: e.target.value as DraftQuestion["type"] })}
+                    >
+                      <option value="SINGLE_SELECT">Single Select</option>
+                      <option value="MULTI_SELECT">Multi Select</option>
+                      <option value="RATING">Rating</option>
+                    </Select>
+                  </Field>
+                </div>
+
+                {q.type === "RATING" && (
+                  <div className="grid gap-4 sm:grid-cols-4">
+                    <Field label="Min value">
+                      <Input placeholder="1" value={q.ratingMin} onChange={(e) => updateQuestion(qi, { ratingMin: e.target.value })} />
+                    </Field>
+                    <Field label="Max value">
+                      <Input placeholder="5" value={q.ratingMax} onChange={(e) => updateQuestion(qi, { ratingMax: e.target.value })} />
+                    </Field>
+                    <Field label="Min label" optional>
+                      <Input placeholder="e.g. Poor" value={q.minLabel} onChange={(e) => updateQuestion(qi, { minLabel: e.target.value })} />
+                    </Field>
+                    <Field label="Max label" optional>
+                      <Input placeholder="e.g. Great" value={q.maxLabel} onChange={(e) => updateQuestion(qi, { maxLabel: e.target.value })} />
+                    </Field>
+                  </div>
+                )}
+
+                {q.type === "MULTI_SELECT" && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="Min selections" optional>
+                      <Input placeholder="No minimum" value={q.minSelections} onChange={(e) => updateQuestion(qi, { minSelections: e.target.value })} />
+                    </Field>
+                    <Field label="Max selections" optional>
+                      <Input placeholder="No maximum" value={q.maxSelections} onChange={(e) => updateQuestion(qi, { maxSelections: e.target.value })} />
+                    </Field>
+                  </div>
+                )}
+
+                {q.type !== "RATING" && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-foreground">Options</p>
+                    {q.options.map((opt, oi) => (
+                      <div key={oi} className="flex gap-2">
+                        <Input
+                          placeholder={`Option ${oi + 1}`}
+                          aria-label={`Option ${oi + 1}`}
+                          value={opt}
+                          onChange={(e) => updateOption(qi, oi, e.target.value)}
+                        />
+                        {q.options.length > 2 && (
+                          <Button
+                            variant="ghost"
+                            aria-label={`Remove option ${oi + 1}`}
+                            className="shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => removeOption(qi, oi)}
+                          >
+                            Remove
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                    <Button variant="link" onClick={() => addOption(qi)}>
+                      + Add option
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            <Button
+              variant="secondary"
+              onClick={() => setFormQuestions((prev) => [...prev, { ...EMPTY_QUESTION }])}
+            >
+              <Plus className="size-4" aria-hidden />
+              Add Question
+            </Button>
+          </div>
+
+          {formError && <Alert>{formError}</Alert>}
+        </DialogBody>
+
+        <DialogFooter>
+          <Button variant="secondary" onClick={() => dialogRef.current?.close()} disabled={formSaving}>
+            Cancel
           </Button>
-
-          {formError && <p className="text-sm text-destructive">{formError}</p>}
-        </div>
+          <Button onClick={saveForm} disabled={formSaving}>
+            {formSaving ? "Saving..." : formMode === "add" ? "Save Template" : "Save Changes"}
+          </Button>
+        </DialogFooter>
       </Dialog>
     </div>
   );
