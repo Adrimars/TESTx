@@ -1,9 +1,27 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { Badge, Button, Card, CardContent, CardHeader, CardTitle, Dialog, Input } from "@testx/ui";
+import { CloudUpload, FileAudio, FileVideo, FolderUp, Trash2, Upload } from "lucide-react";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  Dialog,
+  DialogBody,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  EmptyState,
+  Field,
+  IconButton,
+  Input,
+  PageHeader,
+} from "@testx/ui";
 import type { Media } from "@testx/shared";
 import { apiFetch } from "@/lib/api";
+import { formatDate } from "@/lib/status";
 import type { UploadResult } from "@/lib/admin-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -25,10 +43,6 @@ function formatBytes(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-}
-
 function MediaThumbnail({ media }: { media: Media }) {
   if (media.fileType === "IMAGE") {
     return (
@@ -40,10 +54,10 @@ function MediaThumbnail({ media }: { media: Media }) {
       />
     );
   }
-  const icon = media.fileType === "VIDEO" ? "🎬" : "🎵";
+  const Icon = media.fileType === "VIDEO" ? FileVideo : FileAudio;
   return (
-    <div className="flex h-full w-full items-center justify-center bg-muted text-3xl">
-      {icon}
+    <div className="flex h-full w-full items-center justify-center bg-muted text-muted-foreground">
+      <Icon className="size-8" aria-hidden />
     </div>
   );
 }
@@ -231,26 +245,32 @@ export default function MediaPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Media Library</h1>
-          <p className="text-sm text-muted-foreground">{total} file{total !== 1 ? "s" : ""}</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={openDriveDialog}>Import from Drive</Button>
-          <Button onClick={openUploadDialog}>Upload</Button>
-        </div>
-      </div>
+      <PageHeader
+        title="Media Library"
+        description={`${total} file${total !== 1 ? "s" : ""}`}
+        actions={
+          <>
+            <Button variant="secondary" onClick={openDriveDialog}>
+              <FolderUp className="size-4" aria-hidden />
+              Import from Drive
+            </Button>
+            <Button onClick={openUploadDialog}>
+              <Upload className="size-4" aria-hidden />
+              Upload
+            </Button>
+          </>
+        }
+      />
 
-      {/* Filter + Search */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="flex gap-1 rounded-lg border border-border bg-muted p-1">
+        <div className="flex w-fit gap-1 rounded-lg border border-border bg-muted p-1">
           {FILE_TYPE_TABS.map((tab) => (
             <button
               key={tab.value}
+              type="button"
               onClick={() => setActiveTab(tab.value)}
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+              aria-pressed={activeTab === tab.value}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                 activeTab === tab.value
                   ? "bg-card text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
@@ -261,6 +281,8 @@ export default function MediaPage() {
           ))}
         </div>
         <Input
+          type="search"
+          aria-label="Search media by filename"
           placeholder="Search by filename…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -268,58 +290,59 @@ export default function MediaPage() {
         />
       </div>
 
-      {/* Grid */}
       {loading ? (
         <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">Loading…</div>
       ) : items.length === 0 ? (
-        <div className="flex h-48 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border text-sm text-muted-foreground">
-          <span>No media yet.</span>
-          <span>Upload a file or import from Google Drive.</span>
-        </div>
+        <EmptyState
+          icon={<CloudUpload className="size-8" aria-hidden />}
+          title="No media yet"
+          description="Upload a file or import a folder from Google Drive to get started."
+          action={
+            <Button onClick={openUploadDialog}>
+              <Upload className="size-4" aria-hidden />
+              Upload
+            </Button>
+          }
+        />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {items.map((media) => (
-            <Card key={media.id} className="overflow-hidden">
+            <Card key={media.id} className="group overflow-hidden">
               <div className="relative aspect-video bg-muted">
                 <MediaThumbnail media={media} />
-                <button
-                  onClick={() => openDeleteDialog(media)}
-                  className="absolute right-2 top-2 rounded-md bg-black/60 p-1.5 text-white opacity-0 transition hover:bg-black/80 group-hover:opacity-100 focus:opacity-100"
-                  aria-label="Delete"
+                <IconButton
+                  variant="surface"
+                  aria-label={`Delete ${media.fileName}`}
                   title="Delete"
+                  onClick={() => openDeleteDialog(media)}
+                  className="absolute right-2 top-2 size-8 opacity-0 transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
                 >
-                  🗑
-                </button>
+                  <Trash2 className="size-4" aria-hidden />
+                </IconButton>
               </div>
               <CardContent className="p-3">
-                <p className="truncate text-sm font-medium" title={media.fileName}>{media.fileName}</p>
-                <div className="mt-1.5 flex items-center justify-between gap-2">
+                <p className="truncate text-sm font-medium text-foreground" title={media.fileName}>
+                  {media.fileName}
+                </p>
+                <div className="mt-2 flex items-center justify-between gap-2">
                   <Badge>{media.fileType}</Badge>
-                  <span className="text-xs text-muted-foreground">{formatBytes(media.fileSize)}</span>
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {formatBytes(media.fileSize)}
+                  </span>
                 </div>
-                <div className="mt-1 flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">{formatDate(media.uploadedAt)}</span>
-                  <button
-                    onClick={() => openDeleteDialog(media)}
-                    className="text-xs text-destructive hover:underline"
-                  >
-                    Delete
-                  </button>
-                </div>
+                <p className="mt-1.5 text-xs text-muted-foreground">{formatDate(media.uploadedAt)}</p>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
 
-      {/* Upload Dialog */}
-      <Dialog ref={uploadDialogRef} className="w-full max-w-lg">
-        <div className="p-6 space-y-4">
-          <CardHeader className="p-0">
-            <CardTitle>Upload Files</CardTitle>
-          </CardHeader>
+      <Dialog ref={uploadDialogRef} className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Upload Files</DialogTitle>
+        </DialogHeader>
 
-          {/* Dropzone */}
+        <DialogBody className="space-y-4">
           <div
             onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
             onDragLeave={() => setIsDragging(false)}
@@ -328,11 +351,13 @@ export default function MediaPage() {
             className={`flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed p-8 text-sm transition-colors ${
               isDragging
                 ? "border-primary bg-primary/5 text-primary"
-                : "border-border text-muted-foreground hover:bg-muted/50"
+                : "border-border text-muted-foreground hover:bg-accent"
             }`}
           >
-            <span className="text-2xl">📁</span>
-            <span>Drag files here or <span className="font-medium text-primary underline">browse</span></span>
+            <CloudUpload className="size-7" aria-hidden />
+            <span>
+              Drag files here or <span className="font-medium text-primary underline">browse</span>
+            </span>
             <span className="text-xs">Images, videos, and audio files</span>
             <input
               ref={fileInputRef}
@@ -344,14 +369,16 @@ export default function MediaPage() {
             />
           </div>
 
-          {/* File list */}
           {fileQueue.length > 0 && (
             <ul className="max-h-48 space-y-1.5 overflow-y-auto">
               {fileQueue.map((item, i) => (
-                <li key={i} className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm">
+                <li
+                  key={i}
+                  className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm"
+                >
                   <span className="min-w-0 truncate">{item.file.name}</span>
                   <span className={`shrink-0 text-xs font-medium ${
-                    item.status === "done" ? "text-green-600" :
+                    item.status === "done" ? "text-success" :
                     item.status === "error" ? "text-destructive" :
                     item.status === "uploading" ? "text-primary" :
                     "text-muted-foreground"
@@ -365,63 +392,69 @@ export default function MediaPage() {
               ))}
             </ul>
           )}
+        </DialogBody>
 
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => uploadDialogRef.current?.close()} disabled={uploading}>
-              {fileQueue.some((f) => f.status === "done") ? "Close" : "Cancel"}
-            </Button>
-            <Button
-              onClick={handleUpload}
-              disabled={fileQueue.length === 0 || uploading || fileQueue.every((f) => f.status === "done")}
-            >
-              {uploading ? "Uploading…" : `Upload ${fileQueue.length > 0 ? `(${fileQueue.length})` : ""}`}
-            </Button>
-          </div>
-        </div>
+        <DialogFooter>
+          <Button variant="secondary" onClick={() => uploadDialogRef.current?.close()} disabled={uploading}>
+            {fileQueue.some((f) => f.status === "done") ? "Close" : "Cancel"}
+          </Button>
+          <Button
+            onClick={handleUpload}
+            disabled={fileQueue.length === 0 || uploading || fileQueue.every((f) => f.status === "done")}
+          >
+            {uploading ? "Uploading…" : `Upload ${fileQueue.length > 0 ? `(${fileQueue.length})` : ""}`}
+          </Button>
+        </DialogFooter>
       </Dialog>
 
-      {/* Drive Import Dialog */}
-      <Dialog ref={driveDialogRef} className="w-full max-w-md">
-        <div className="p-6 space-y-4">
-          <CardHeader className="p-0">
-            <CardTitle>Import from Google Drive</CardTitle>
-            <p className="text-sm text-muted-foreground">Paste a public Google Drive folder URL.</p>
-          </CardHeader>
-          <Input
-            placeholder="https://drive.google.com/drive/folders/…"
-            value={driveUrl}
-            onChange={(e) => setDriveUrl(e.target.value)}
-            disabled={importing}
-          />
-          {driveError && <p className="text-sm text-destructive">{driveError}</p>}
+      <Dialog ref={driveDialogRef} className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Import from Google Drive</DialogTitle>
+        </DialogHeader>
+
+        <DialogBody className="space-y-4">
+          <Field
+            label="Folder URL"
+            htmlFor="driveUrl"
+            hint="The folder must be shared publicly, or with the service account."
+          >
+            <Input
+              id="driveUrl"
+              placeholder="https://drive.google.com/drive/folders/…"
+              value={driveUrl}
+              onChange={(e) => setDriveUrl(e.target.value)}
+              disabled={importing}
+            />
+          </Field>
+          {driveError && <Alert>{driveError}</Alert>}
           {driveResult && (
-            <p className="text-sm text-green-600">
-              ✓ Imported {driveResult.count} file{driveResult.count !== 1 ? "s" : ""} successfully.
-            </p>
+            <Alert tone="success">
+              Imported {driveResult.count} file{driveResult.count !== 1 ? "s" : ""} successfully.
+            </Alert>
           )}
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => driveDialogRef.current?.close()} disabled={importing}>
-              {driveResult ? "Close" : "Cancel"}
+        </DialogBody>
+
+        <DialogFooter>
+          <Button variant="secondary" onClick={() => driveDialogRef.current?.close()} disabled={importing}>
+            {driveResult ? "Close" : "Cancel"}
+          </Button>
+          {!driveResult && (
+            <Button onClick={handleDriveImport} disabled={!driveUrl.trim() || importing}>
+              {importing ? "Importing…" : "Import"}
             </Button>
-            {!driveResult && (
-              <Button onClick={handleDriveImport} disabled={!driveUrl.trim() || importing}>
-                {importing ? "Importing…" : "Import"}
-              </Button>
-            )}
-          </div>
-        </div>
+          )}
+        </DialogFooter>
       </Dialog>
 
-      {/* Delete Confirm Dialog */}
-      <Dialog ref={deleteDialogRef} className="w-full max-w-sm">
-        <div className="p-6 space-y-4">
-          <CardHeader className="p-0">
-            <CardTitle>Delete media?</CardTitle>
+      <Dialog ref={deleteDialogRef} className="max-w-md">
+        <div className="space-y-4 p-5">
+          <div className="space-y-1.5">
+            <h2 className="text-section-title text-foreground">Delete media?</h2>
             <p className="text-sm text-muted-foreground">
               &ldquo;{deleteTarget?.fileName}&rdquo; will be permanently removed.
             </p>
-          </CardHeader>
-          {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
+          </div>
+          {deleteError && <Alert>{deleteError}</Alert>}
           <div className="flex justify-end gap-2">
             <Button
               variant="secondary"
@@ -433,11 +466,7 @@ export default function MediaPage() {
             >
               Cancel
             </Button>
-            <Button
-              className="bg-destructive text-destructive-foreground hover:opacity-90"
-              onClick={handleDelete}
-              disabled={deleting}
-            >
+            <Button variant="danger" onClick={handleDelete} disabled={deleting}>
               {deleting ? "Deleting…" : "Delete"}
             </Button>
           </div>

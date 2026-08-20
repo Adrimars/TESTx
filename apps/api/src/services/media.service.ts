@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { Readable } from "node:stream";
 import fsPromises from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -156,9 +157,6 @@ export async function serveMedia(prisma: PrismaClient, id: string, reply: Fastif
     return reply.status(404).send({ error: "NOT_FOUND", message: "Media not found" });
   }
 
-  reply.header("Content-Type", media.mimeType);
-  reply.header("Cache-Control", "public, max-age=86400");
-
   if (media.sourceType === "UPLOAD") {
     if (!media.sourceUrl) {
       return reply.status(404).send({ error: "NOT_FOUND", message: "File not found on disk" });
@@ -168,9 +166,13 @@ export async function serveMedia(prisma: PrismaClient, id: string, reply: Fastif
     } catch {
       return reply.status(404).send({ error: "NOT_FOUND", message: "File not found on disk" });
     }
-    return reply.send(fs.createReadStream(media.sourceUrl));
+    reply.header("Content-Type", media.mimeType);
+    reply.header("Cache-Control", "public, max-age=86400");
+    return reply.send(Readable.toWeb(fs.createReadStream(media.sourceUrl)));
   }
 
   // GOOGLE_DRIVE — delegate to drive service
+  reply.header("Content-Type", media.mimeType);
+  reply.header("Cache-Control", "public, max-age=86400");
   return driveService.streamFile(media as Parameters<typeof driveService.streamFile>[0], reply);
 }

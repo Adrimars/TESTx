@@ -69,10 +69,10 @@ export function Combobox({
         onClick={handleToggle}
         disabled={disabled}
         className={cn(
-          "min-h-10 w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-left outline-none ring-primary transition focus:ring-2",
+          "min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-left outline-none transition-colors focus:border-ring focus:ring-2 focus:ring-ring/30",
           "flex items-center justify-between gap-2",
           disabled && "cursor-not-allowed opacity-50",
-          open && "ring-2"
+          open && "border-ring ring-2 ring-ring/30"
         )}
       >
         <span className={cn(!selected && "text-muted-foreground")}>
@@ -95,7 +95,7 @@ export function Combobox({
       </button>
 
       {open && (
-        <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-background shadow-md">
+        <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-md border border-border bg-card shadow-lg">
           <div className="p-2 border-b border-border">
             <input
               autoFocus
@@ -103,7 +103,7 @@ export function Combobox({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={searchPlaceholder}
-              className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm outline-none ring-primary focus:ring-2"
+              className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/30"
             />
           </div>
           <ul className="max-h-60 overflow-auto py-1" role="listbox">

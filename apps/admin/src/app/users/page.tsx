@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
+  Alert,
   Button,
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
+  CardFooter,
+  PageHeader,
   Table,
   TableBody,
   TableCell,
@@ -15,13 +17,10 @@ import {
   TableRow,
 } from "@testx/ui";
 import { apiFetch } from "@/lib/api";
+import { formatDate } from "@/lib/status";
 import type { EvaluatorListItem, Paginated } from "@/lib/admin-types";
 
 const PAGE_SIZE = 25;
-
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-}
 
 export default function UsersPage() {
   const [users, setUsers] = useState<EvaluatorListItem[]>([]);
@@ -54,18 +53,15 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Evaluators</h1>
-        <p className="text-muted-foreground">{total} registered evaluator{total === 1 ? "" : "s"}.</p>
-      </div>
+      <PageHeader
+        title="Evaluators"
+        description={`${total} registered evaluator${total === 1 ? "" : "s"}.`}
+      />
 
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      {error && <Alert>{error}</Alert>}
 
       <Card>
-        <CardHeader>
-          <CardTitle>All evaluators</CardTitle>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
+        <CardContent className="overflow-x-auto p-0">
           <Table>
             <TableHeader>
               <TableRow>
@@ -88,40 +84,46 @@ export default function UsersPage() {
               ) : (
                 users.map((user) => (
                   <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.name ?? "—"}</TableCell>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell>{formatDate(user.registeredAt)}</TableCell>
-                    <TableCell>{user.testsCompleted}</TableCell>
-                    <TableCell>{user.totalPoints}</TableCell>
+                    <TableCell className="font-medium text-foreground">{user.name ?? "—"}</TableCell>
+                    <TableCell className="text-muted-foreground">{user.email}</TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">
+                      {formatDate(user.registeredAt)}
+                    </TableCell>
+                    <TableCell className="tabular-nums">{user.testsCompleted}</TableCell>
+                    <TableCell className="tabular-nums">{user.totalPoints}</TableCell>
                   </TableRow>
                 ))
               )}
             </TableBody>
           </Table>
         </CardContent>
-      </Card>
 
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">
-          Page {page} of {totalPages}
-        </p>
-        <div className="flex gap-2">
-          <Button
-            variant="secondary"
-            disabled={page <= 1 || loading}
-            onClick={() => setPage((current) => Math.max(1, current - 1))}
-          >
-            Previous
-          </Button>
-          <Button
-            variant="secondary"
-            disabled={page >= totalPages || loading}
-            onClick={() => setPage((current) => current + 1)}
-          >
-            Next
-          </Button>
-        </div>
-      </div>
+        <CardFooter className="justify-between">
+          <p className="text-sm tabular-nums text-muted-foreground">
+            Page {page} of {totalPages}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={page <= 1 || loading}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+            >
+              <ChevronLeft className="size-4" aria-hidden />
+              Previous
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={page >= totalPages || loading}
+              onClick={() => setPage((current) => current + 1)}
+            >
+              Next
+              <ChevronRight className="size-4" aria-hidden />
+            </Button>
+          </div>
+        </CardFooter>
+      </Card>
     </div>
   );
 }

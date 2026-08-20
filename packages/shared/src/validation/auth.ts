@@ -16,6 +16,13 @@ export const evaluatorProfileSchema = z.object({
   gender: z.enum(GENDERS),
   country: z.string().min(2),
   city: z.string().trim().min(1).optional(),
+  nativeLanguage: z.string().min(1).optional(),
+  foreignLanguages: z.array(z.string().min(1)).optional().default([]),
+  occupation: z.string().trim().optional(),
+  educationLevel: z.string().min(1).optional(),
+  aiUseCases: z.array(z.string().min(1)).optional().default([]),
+  aiExperience: z.string().min(1).optional(),
+  aiFrequency: z.string().min(1).optional(),
 });
 
 export type RegisterInput = z.infer<typeof registerSchema>;

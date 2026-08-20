@@ -23,6 +23,7 @@ export type Question = {
   mediaType: string | null;
   order: number;
   config: Record<string, unknown>;
+  isReviewHidden: boolean;
   options: QuestionOption[];
 };
 

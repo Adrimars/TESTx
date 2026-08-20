@@ -3,119 +3,14 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  Select,
-} from "@testx/ui";
+import { RefreshCw } from "lucide-react";
+import { Alert, Badge, Button } from "@testx/ui";
 import { apiFetch } from "@/lib/api";
-import type {
-  DemographicResults,
-  OptionAggregation,
-  QuestionResult,
-  SegmentBy,
-  TestResults,
-} from "@/lib/admin-types";
+import { statusVariant } from "@/lib/status";
+import { QuestionResults, ResultsSummary, SegmentSelect } from "@/components/results-view";
+import type { DemographicResults, SegmentBy, TestResults } from "@/lib/admin-types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 const REFRESH_INTERVAL_MS = 30_000;
-
-const SEGMENT_OPTIONS: Array<{ value: "none" | SegmentBy; label: string }> = [
-  { value: "none", label: "None" },
-  { value: "gender", label: "Gender" },
-  { value: "ageGroup", label: "Age Group" },
-  { value: "country", label: "Country" },
-];
-
-function formatDuration(seconds: number | null) {
-  if (seconds === null) return "—";
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-}
-
-function optionLabel(option: OptionAggregation, index: number) {
-  return option.label ?? (option.mediaId ? `Media ${index + 1}` : `Option ${index + 1}`);
-}
-
-function OptionBars({ result }: { result: QuestionResult }) {
-  const options = result.options ?? [];
-  return (
-    <div className="space-y-3">
-      {options.map((option, index) => (
-        <div key={option.optionId} className="space-y-1">
-          <div className="flex items-center justify-between gap-3 text-sm">
-            <span className="flex items-center gap-2">
-              {option.mediaId && (
-                <img
-                  src={`${API_URL}/media/${option.mediaId}/file`}
-                  alt={optionLabel(option, index)}
-                  className="h-8 w-8 rounded object-cover"
-                />
-              )}
-              <span className="font-medium">{optionLabel(option, index)}</span>
-            </span>
-            <span className="text-muted-foreground">
-              {option.count} · {option.percentage}%
-            </span>
-          </div>
-          <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
-            <div className="h-full rounded-full bg-primary" style={{ width: `${option.percentage}%` }} />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function RatingResult({ result }: { result: QuestionResult }) {
-  const rating = result.rating;
-  if (!rating) return null;
-  const maxCount = Math.max(1, ...rating.distribution.map((b) => b.count));
-  return (
-    <div className="space-y-4">
-      <div className="flex gap-6 text-sm">
-        <div>
-          <p className="text-2xl font-bold">{rating.average ?? "—"}</p>
-          <p className="text-muted-foreground">Average</p>
-        </div>
-        <div>
-          <p className="text-2xl font-bold">{rating.min ?? "—"}</p>
-          <p className="text-muted-foreground">Min</p>
-        </div>
-        <div>
-          <p className="text-2xl font-bold">{rating.max ?? "—"}</p>
-          <p className="text-muted-foreground">Max</p>
-        </div>
-      </div>
-      <div className="flex items-end gap-2">
-        {rating.distribution.map((bucket) => (
-          <div key={bucket.value} className="flex flex-1 flex-col items-center gap-1">
-            <span className="text-xs text-muted-foreground">{bucket.count}</span>
-            <div
-              className="w-full rounded-t bg-primary"
-              style={{ height: `${(bucket.count / maxCount) * 80 + 4}px` }}
-            />
-            <span className="text-xs font-medium">{bucket.value}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function QuestionBody({ result }: { result: QuestionResult }) {
-  if (result.answeredCount === 0) {
-    return <p className="text-sm text-muted-foreground">No responses yet.</p>;
-  }
-  if (result.type === "RATING") return <RatingResult result={result} />;
-  return <OptionBars result={result} />;
-}
 
 export default function ReportPage() {
   const params = useParams<{ id: string }>();
@@ -181,86 +76,47 @@ export default function ReportPage() {
   }, [isActive, fetchAll]);
 
   if (loading) return <p className="text-muted-foreground">Loading report…</p>;
-  if (error) return <p className="text-sm text-destructive">{error}</p>;
+  if (error) return <Alert>{error}</Alert>;
   if (!results) return <p className="text-muted-foreground">No data found.</p>;
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <Link className="text-sm text-muted-foreground underline" href="/tests">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="space-y-2">
+          <Link href="/tests" className="text-sm text-muted-foreground underline underline-offset-4">
             ← Back to tests
           </Link>
-          <h1 className="mt-1 flex items-center gap-3 text-2xl font-bold tracking-tight">
-            {results.title}
-            <Badge>{results.status}</Badge>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="text-page-title text-foreground">{results.title}</h1>
+            <Badge variant={statusVariant(results.status)}>{results.status}</Badge>
             {isActive && (
-              <span className="flex items-center gap-1.5 text-sm font-normal text-green-600">
-                <span className="relative flex h-2.5 w-2.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75" />
-                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
+              <span className="flex items-center gap-1.5 text-sm font-medium text-success">
+                <span className="relative flex size-2.5">
+                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-75" />
+                  <span className="relative inline-flex size-2.5 rounded-full bg-success" />
                 </span>
                 Live
               </span>
             )}
-          </h1>
+          </div>
           {lastRefreshed && (
-            <p className="mt-0.5 text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Last updated {lastRefreshed.toLocaleTimeString()}
               {isActive && " · auto-refreshes every 30s"}
             </p>
           )}
         </div>
-        <div className="flex items-center gap-3">
-          <Button
-            variant="secondary"
-            onClick={() => fetchAll({ silent: true })}
-            disabled={refreshing}
-            className="text-sm"
-          >
+
+        <div className="flex items-end gap-3">
+          <Button variant="secondary" onClick={() => fetchAll({ silent: true })} disabled={refreshing}>
+            <RefreshCw className={`size-4 ${refreshing ? "animate-spin" : ""}`} aria-hidden />
             {refreshing ? "Refreshing…" : "Refresh"}
           </Button>
-          <div className="w-40">
-            <Select
-              value={segmentBy}
-              onChange={(e) => setSegmentBy(e.target.value as "none" | SegmentBy)}
-            >
-              {SEGMENT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </Select>
-          </div>
+          <SegmentSelect value={segmentBy} onChange={setSegmentBy} className="w-44" />
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card>
-          <CardHeader>
-            <CardDescription>Total Responses</CardDescription>
-            <CardTitle className="text-3xl">{results.totalResponses}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardDescription>Valid Responses</CardDescription>
-            <CardTitle className="text-3xl">{results.validResponses}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardDescription>Flagged Responses</CardDescription>
-            <CardTitle className="text-3xl text-destructive">{results.flaggedResponses}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardDescription>Avg. Completion</CardDescription>
-            <CardTitle className="text-3xl">{formatDuration(results.averageCompletionTime)}</CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
+      <ResultsSummary results={results} />
 
       {results.validResponses === 0 && (
         <p className="text-sm text-muted-foreground">
@@ -268,49 +124,7 @@ export default function ReportPage() {
         </p>
       )}
 
-      <div className="space-y-4">
-        {results.questions.map((question, index) => (
-          <Card key={question.questionId}>
-            <CardHeader>
-              <CardDescription>
-                Question {index + 1} · {question.type.replace("_", " ").toLowerCase()}
-                {!demographic && ` · ${question.answeredCount} responses`}
-              </CardDescription>
-              <CardTitle className="text-base">{question.prompt}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {demographic ? (
-                <div className="grid gap-4 md:grid-cols-2">
-                  {demographic.segments.map((segment) => {
-                    const sq = segment.questions.find((q) => q.questionId === question.questionId);
-                    return (
-                      <div key={segment.label} className="rounded-lg border border-border p-3">
-                        <p className="mb-2 text-sm font-semibold">
-                          {segment.label}{" "}
-                          <span className="font-normal text-muted-foreground">({segment.responseCount})</span>
-                        </p>
-                        {sq ? (
-                          <QuestionBody result={sq} />
-                        ) : (
-                          <p className="text-sm text-muted-foreground">No data.</p>
-                        )}
-                      </div>
-                    );
-                  })}
-                  {demographic.segments.length === 0 && (
-                    <p className="text-sm text-muted-foreground">No segmented data available.</p>
-                  )}
-                </div>
-              ) : (
-                <QuestionBody result={question} />
-              )}
-            </CardContent>
-          </Card>
-        ))}
-        {results.questions.length === 0 && (
-          <p className="text-sm text-muted-foreground">This test has no scored questions.</p>
-        )}
-      </div>
+      <QuestionResults results={results} demographic={demographic} showAnsweredCount={!demographic} />
     </div>
   );
 }

@@ -2,8 +2,11 @@
 
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Card, CardContent, CardHeader, CardTitle, Select, Combobox } from "@testx/ui";
+import { Alert, Button, Card, CardContent, Combobox, Field, Input, Select } from "@testx/ui";
+import { MultiCombobox } from "@testx/ui";
 import type { ComboboxOption } from "@testx/ui";
+import { COUNTRIES, CITIES_BY_COUNTRY, LANGUAGES } from "@testx/shared";
+import { EDUCATION_LEVELS, AI_USE_CASES, AI_EXPERIENCE_OPTIONS, AI_FREQUENCY_OPTIONS } from "@testx/shared";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/components/auth-provider";
 
@@ -12,182 +15,75 @@ const AGE_OPTIONS: ComboboxOption[] = Array.from({ length: 88 }, (_, i) => {
   return { value: String(age), label: String(age) };
 });
 
-const COUNTRIES: ComboboxOption[] = [
-  { value: "AF", label: "Afghanistan" },
-  { value: "AL", label: "Albania" },
-  { value: "DZ", label: "Algeria" },
-  { value: "AR", label: "Argentina" },
-  { value: "AM", label: "Armenia" },
-  { value: "AU", label: "Australia" },
-  { value: "AT", label: "Austria" },
-  { value: "AZ", label: "Azerbaijan" },
-  { value: "BH", label: "Bahrain" },
-  { value: "BD", label: "Bangladesh" },
-  { value: "BY", label: "Belarus" },
-  { value: "BE", label: "Belgium" },
-  { value: "BO", label: "Bolivia" },
-  { value: "BA", label: "Bosnia and Herzegovina" },
-  { value: "BR", label: "Brazil" },
-  { value: "BG", label: "Bulgaria" },
-  { value: "CA", label: "Canada" },
-  { value: "CL", label: "Chile" },
-  { value: "CN", label: "China" },
-  { value: "CO", label: "Colombia" },
-  { value: "HR", label: "Croatia" },
-  { value: "CZ", label: "Czech Republic" },
-  { value: "DK", label: "Denmark" },
-  { value: "EC", label: "Ecuador" },
-  { value: "EG", label: "Egypt" },
-  { value: "EE", label: "Estonia" },
-  { value: "ET", label: "Ethiopia" },
-  { value: "FI", label: "Finland" },
-  { value: "FR", label: "France" },
-  { value: "GE", label: "Georgia" },
-  { value: "DE", label: "Germany" },
-  { value: "GH", label: "Ghana" },
-  { value: "GR", label: "Greece" },
-  { value: "GT", label: "Guatemala" },
-  { value: "HU", label: "Hungary" },
-  { value: "IN", label: "India" },
-  { value: "ID", label: "Indonesia" },
-  { value: "IR", label: "Iran" },
-  { value: "IQ", label: "Iraq" },
-  { value: "IE", label: "Ireland" },
-  { value: "IL", label: "Israel" },
-  { value: "IT", label: "Italy" },
-  { value: "JP", label: "Japan" },
-  { value: "JO", label: "Jordan" },
-  { value: "KZ", label: "Kazakhstan" },
-  { value: "KE", label: "Kenya" },
-  { value: "KW", label: "Kuwait" },
-  { value: "LV", label: "Latvia" },
-  { value: "LB", label: "Lebanon" },
-  { value: "LT", label: "Lithuania" },
-  { value: "MY", label: "Malaysia" },
-  { value: "MX", label: "Mexico" },
-  { value: "MA", label: "Morocco" },
-  { value: "NL", label: "Netherlands" },
-  { value: "NZ", label: "New Zealand" },
-  { value: "NG", label: "Nigeria" },
-  { value: "NO", label: "Norway" },
-  { value: "PK", label: "Pakistan" },
-  { value: "PE", label: "Peru" },
-  { value: "PH", label: "Philippines" },
-  { value: "PL", label: "Poland" },
-  { value: "PT", label: "Portugal" },
-  { value: "QA", label: "Qatar" },
-  { value: "RO", label: "Romania" },
-  { value: "RU", label: "Russia" },
-  { value: "SA", label: "Saudi Arabia" },
-  { value: "RS", label: "Serbia" },
-  { value: "SG", label: "Singapore" },
-  { value: "SK", label: "Slovakia" },
-  { value: "ZA", label: "South Africa" },
-  { value: "KR", label: "South Korea" },
-  { value: "ES", label: "Spain" },
-  { value: "LK", label: "Sri Lanka" },
-  { value: "SE", label: "Sweden" },
-  { value: "CH", label: "Switzerland" },
-  { value: "TW", label: "Taiwan" },
-  { value: "TZ", label: "Tanzania" },
-  { value: "TH", label: "Thailand" },
-  { value: "TN", label: "Tunisia" },
-  { value: "TR", label: "Turkey" },
-  { value: "UA", label: "Ukraine" },
-  { value: "AE", label: "United Arab Emirates" },
-  { value: "GB", label: "United Kingdom" },
-  { value: "US", label: "United States" },
-  { value: "UY", label: "Uruguay" },
-  { value: "UZ", label: "Uzbekistan" },
-  { value: "VE", label: "Venezuela" },
-  { value: "VN", label: "Vietnam" },
-];
-
-const CITIES_BY_COUNTRY: Record<string, string[]> = {
-  AU: ["Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide"],
-  AT: ["Vienna", "Graz", "Linz", "Salzburg"],
-  BR: ["São Paulo", "Rio de Janeiro", "Brasília", "Salvador", "Fortaleza"],
-  CA: ["Toronto", "Montreal", "Vancouver", "Calgary", "Ottawa"],
-  CN: ["Beijing", "Shanghai", "Guangzhou", "Shenzhen", "Chengdu"],
-  CZ: ["Prague", "Brno", "Ostrava"],
-  DK: ["Copenhagen", "Aarhus", "Odense"],
-  EG: ["Cairo", "Alexandria", "Giza"],
-  FR: ["Paris", "Lyon", "Marseille", "Toulouse", "Nice"],
-  DE: ["Berlin", "Hamburg", "Munich", "Cologne", "Frankfurt"],
-  GR: ["Athens", "Thessaloniki", "Patras"],
-  IN: ["Mumbai", "Delhi", "Bangalore", "Hyderabad", "Chennai", "Kolkata", "Pune"],
-  ID: ["Jakarta", "Surabaya", "Bandung", "Medan"],
-  IE: ["Dublin", "Cork", "Limerick"],
-  IL: ["Tel Aviv", "Jerusalem", "Haifa"],
-  IT: ["Rome", "Milan", "Naples", "Turin", "Florence"],
-  JP: ["Tokyo", "Osaka", "Nagoya", "Sapporo", "Fukuoka"],
-  MY: ["Kuala Lumpur", "Johor Bahru", "Penang", "Ipoh"],
-  MX: ["Mexico City", "Guadalajara", "Monterrey", "Tijuana", "Puebla"],
-  NL: ["Amsterdam", "Rotterdam", "The Hague", "Utrecht"],
-  NZ: ["Auckland", "Wellington", "Christchurch"],
-  NG: ["Lagos", "Abuja", "Kano", "Ibadan"],
-  NO: ["Oslo", "Bergen", "Trondheim"],
-  PK: ["Karachi", "Lahore", "Islamabad", "Faisalabad"],
-  PH: ["Manila", "Quezon City", "Davao", "Cebu"],
-  PL: ["Warsaw", "Kraków", "Wrocław", "Gdańsk"],
-  PT: ["Lisbon", "Porto", "Braga"],
-  RO: ["Bucharest", "Cluj-Napoca", "Timișoara"],
-  RU: ["Moscow", "Saint Petersburg", "Novosibirsk", "Yekaterinburg"],
-  SA: ["Riyadh", "Jeddah", "Mecca", "Medina"],
-  SG: ["Singapore"],
-  ZA: ["Johannesburg", "Cape Town", "Durban", "Pretoria"],
-  KR: ["Seoul", "Busan", "Incheon", "Daegu"],
-  ES: ["Madrid", "Barcelona", "Valencia", "Seville", "Bilbao"],
-  SE: ["Stockholm", "Gothenburg", "Malmö"],
-  CH: ["Zurich", "Geneva", "Basel", "Bern"],
-  TW: ["Taipei", "Kaohsiung", "Taichung"],
-  TH: ["Bangkok", "Chiang Mai", "Pattaya"],
-  TR: ["Istanbul", "Ankara", "Izmir", "Bursa"],
-  UA: ["Kyiv", "Kharkiv", "Odessa", "Dnipro"],
-  AE: ["Dubai", "Abu Dhabi", "Sharjah"],
-  GB: ["London", "Birmingham", "Manchester", "Leeds", "Glasgow", "Edinburgh"],
-  US: [
-    "New York", "Los Angeles", "Chicago", "Houston", "Phoenix",
-    "Philadelphia", "San Antonio", "San Diego", "Dallas", "San Jose",
-    "Austin", "Jacksonville", "Fort Worth", "Columbus", "Charlotte",
-    "Seattle", "Denver", "Boston", "Nashville", "Miami",
-  ],
-  VN: ["Ho Chi Minh City", "Hanoi", "Da Nang"],
-};
+const LANGUAGE_OPTIONS: ComboboxOption[] = LANGUAGES.map((l) => ({ value: l.value, label: l.label }));
 
 function getCityOptions(countryCode: string): ComboboxOption[] {
   const cities = CITIES_BY_COUNTRY[countryCode] ?? [];
   return cities.map((c) => ({ value: c, label: c }));
 }
 
+/** One titled block of the profile form. */
+function FormSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="border-t border-border pt-6 first:border-t-0 first:pt-0">
+      <div className="mb-4">
+        <h2 className="text-section-title text-foreground">{title}</h2>
+        <p className="text-sm text-muted-foreground">{description}</p>
+      </div>
+      {children}
+    </section>
+  );
+}
+
 export default function OnboardingPage() {
   const { refreshUser } = useAuth();
   const router = useRouter();
+
   const [age, setAge] = useState("");
   const [gender, setGender] = useState("UNDISCLOSED");
   const [country, setCountry] = useState("");
   const [city, setCity] = useState("");
+  const [nativeLanguage, setNativeLanguage] = useState("");
+  const [foreignLanguages, setForeignLanguages] = useState<string[]>([]);
+  const [occupation, setOccupation] = useState("");
+  const [educationLevel, setEducationLevel] = useState("");
+  const [aiUseCases, setAiUseCases] = useState<string[]>([]);
+  const [aiExperience, setAiExperience] = useState("");
+  const [aiFrequency, setAiFrequency] = useState("");
+
   const [error, setError] = useState("");
   const [isPending, setIsPending] = useState(false);
 
   const cityOptions = useMemo(() => getCityOptions(country), [country]);
+
+  const foreignLanguageOptions: ComboboxOption[] = useMemo(
+    () => LANGUAGE_OPTIONS.filter((l) => l.value !== nativeLanguage),
+    [nativeLanguage]
+  );
 
   function handleCountryChange(value: string) {
     setCountry(value);
     setCity("");
   }
 
+  function handleNativeLanguageChange(value: string) {
+    setNativeLanguage(value);
+    setForeignLanguages((prev) => prev.filter((l) => l !== value));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
-    if (!age) {
-      setError("Please select your age.");
-      return;
-    }
-    if (!country) {
-      setError("Please select your country.");
-      return;
-    }
+    if (!age) { setError("Please select your age."); return; }
+    if (!country) { setError("Please select your country."); return; }
     setIsPending(true);
     try {
       await apiFetch("/evaluator/profile", {
@@ -197,6 +93,13 @@ export default function OnboardingPage() {
           gender,
           country,
           city: city || undefined,
+          nativeLanguage: nativeLanguage || undefined,
+          foreignLanguages,
+          occupation: occupation.trim() || undefined,
+          educationLevel: educationLevel || undefined,
+          aiUseCases,
+          aiExperience: aiExperience || undefined,
+          aiFrequency: aiFrequency || undefined,
         }),
       });
       await refreshUser();
@@ -209,66 +112,177 @@ export default function OnboardingPage() {
   }
 
   return (
-    <Card className="mx-auto max-w-2xl">
-      <CardHeader>
-        <CardTitle>Complete demographic profile</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Age</label>
-            <Combobox
-              options={AGE_OPTIONS}
-              value={age}
-              onChange={setAge}
-              placeholder="Select age…"
-              searchPlaceholder="Search age…"
-            />
-          </div>
+    <div className="mx-auto max-w-3xl space-y-6">
+      <div className="space-y-1">
+        <h1 className="text-page-title text-foreground">Complete your profile</h1>
+        <p className="text-sm text-muted-foreground">
+          Tests are matched to evaluators by these details. Only age and country are required — the rest
+          helps us send you more relevant work.
+        </p>
+      </div>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Gender</label>
-            <Select
-              aria-label="Gender"
-              value={gender}
-              onChange={(e) => setGender(e.target.value)}
-            >
-              <option value="MALE">Male</option>
-              <option value="FEMALE">Female</option>
-              <option value="OTHER">Other</option>
-              <option value="UNDISCLOSED">Prefer not to say</option>
-            </Select>
-          </div>
+      <Card>
+        <CardContent className="p-5 sm:p-6">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <FormSection title="Demographics" description="Used to match you with the right tests.">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Age">
+                  <Combobox
+                    options={AGE_OPTIONS}
+                    value={age}
+                    onChange={setAge}
+                    placeholder="Select age…"
+                    searchPlaceholder="Search age…"
+                  />
+                </Field>
+                <Field label="Gender">
+                  <Select aria-label="Gender" value={gender} onChange={(e) => setGender(e.target.value)}>
+                    <option value="MALE">Male</option>
+                    <option value="FEMALE">Female</option>
+                    <option value="OTHER">Other</option>
+                    <option value="UNDISCLOSED">Prefer not to say</option>
+                  </Select>
+                </Field>
+                <Field label="Country">
+                  <Combobox
+                    options={COUNTRIES}
+                    value={country}
+                    onChange={handleCountryChange}
+                    placeholder="Select country…"
+                    searchPlaceholder="Search country…"
+                  />
+                </Field>
+                <Field label="City" optional>
+                  <Combobox
+                    options={cityOptions}
+                    value={city}
+                    onChange={setCity}
+                    placeholder={country ? "Select city…" : "Select country first"}
+                    searchPlaceholder="Search city…"
+                    disabled={!country || cityOptions.length === 0}
+                  />
+                </Field>
+              </div>
+            </FormSection>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Country</label>
-            <Combobox
-              options={COUNTRIES}
-              value={country}
-              onChange={handleCountryChange}
-              placeholder="Select country…"
-              searchPlaceholder="Search country…"
-            />
-          </div>
+            <FormSection title="Language" description="Some tests are only shown to speakers of a given language.">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Native language" optional>
+                  <Combobox
+                    options={LANGUAGE_OPTIONS}
+                    value={nativeLanguage}
+                    onChange={handleNativeLanguageChange}
+                    placeholder="Select language…"
+                    searchPlaceholder="Search language…"
+                  />
+                </Field>
+                <Field label="Foreign languages" optional>
+                  <MultiCombobox
+                    options={foreignLanguageOptions}
+                    value={foreignLanguages}
+                    onChange={setForeignLanguages}
+                    placeholder="Select languages…"
+                    searchPlaceholder="Search language…"
+                  />
+                </Field>
+              </div>
+            </FormSection>
 
-          <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">City (optional)</label>
-            <Combobox
-              options={cityOptions}
-              value={city}
-              onChange={setCity}
-              placeholder={country ? "Select city…" : "Select country first"}
-              searchPlaceholder="Search city…"
-              disabled={!country || cityOptions.length === 0}
-            />
-          </div>
+            <FormSection title="Background" description="What you do outside of TESTx.">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Current occupation" optional>
+                  <Input
+                    placeholder="e.g. Software Engineer, Student…"
+                    value={occupation}
+                    onChange={(e) => setOccupation(e.target.value)}
+                  />
+                </Field>
+                <Field label="Education level" optional>
+                  <Select
+                    aria-label="Education level"
+                    value={educationLevel}
+                    onChange={(e) => setEducationLevel(e.target.value)}
+                  >
+                    <option value="">Select level…</option>
+                    {EDUCATION_LEVELS.map((l) => (
+                      <option key={l.value} value={l.value}>{l.label}</option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
+            </FormSection>
 
-          {error && <p className="text-sm text-red-500 sm:col-span-2">{error}</p>}
-          <Button type="submit" className="sm:col-span-2" disabled={isPending}>
-            {isPending ? "Saving…" : "Save profile"}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+            <FormSection title="Artificial intelligence" description="How you use AI today.">
+              <div className="space-y-4">
+                <Field label="What are you using AI for?" optional hint="Pick as many as apply.">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {AI_USE_CASES.map((uc) => {
+                      const checked = aiUseCases.includes(uc.value);
+                      return (
+                        <label
+                          key={uc.value}
+                          className={`flex cursor-pointer items-start gap-2.5 rounded-md border px-3 py-2.5 text-sm transition-colors ${
+                            checked
+                              ? "border-primary bg-primary/5 text-foreground"
+                              : "border-border hover:bg-accent"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 size-4 rounded border-input accent-primary"
+                            checked={checked}
+                            onChange={(e) =>
+                              setAiUseCases((prev) =>
+                                e.target.checked ? [...prev, uc.value] : prev.filter((v) => v !== uc.value)
+                              )
+                            }
+                          />
+                          <span>{uc.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </Field>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="How long have you been using AI?" optional>
+                    <Select
+                      aria-label="AI experience"
+                      value={aiExperience}
+                      onChange={(e) => setAiExperience(e.target.value)}
+                    >
+                      <option value="">Select…</option>
+                      {AI_EXPERIENCE_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label="How often do you use AI?" optional>
+                    <Select
+                      aria-label="AI frequency"
+                      value={aiFrequency}
+                      onChange={(e) => setAiFrequency(e.target.value)}
+                    >
+                      <option value="">Select…</option>
+                      {AI_FREQUENCY_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+              </div>
+            </FormSection>
+
+            {error && <Alert>{error}</Alert>}
+
+            <div className="flex justify-end border-t border-border pt-5">
+              <Button type="submit" size="lg" className="w-full sm:w-auto" disabled={isPending}>
+                {isPending ? "Saving…" : "Save profile"}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

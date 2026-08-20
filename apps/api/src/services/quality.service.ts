@@ -85,10 +85,13 @@ export const qualityService = {
     const flagReasons = new Set<string>();
     const warnings: string[] = [];
 
-    // Speed check: any answer below minTimePerQuestion threshold
-    if (minTimePerQuestion > 0) {
-      const tooFast = answers.some((a) => a.timeSpentSeconds < minTimePerQuestion);
-      if (tooFast) flagReasons.add("SPEED_TOO_FAST");
+    // Speed check: judged on the session as a whole, not question by question. An evaluator may
+    // answer one question fast and dwell on the next; what matters is that the whole test got at
+    // least the time its author asked for. Measured against the server clock, not self-reported
+    // times, so it cannot be inflated by the client.
+    const requiredTotalSeconds = minTimePerQuestion * questions.length;
+    if (requiredTotalSeconds > 0 && sessionSeconds < requiredTotalSeconds) {
+      flagReasons.add("SPEED_TOO_FAST");
     }
 
     // Idle check: the caller has already capped reported times so their sum cannot exceed the

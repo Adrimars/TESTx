@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
+import { z } from "zod";
 import type { MediaType, QuestionInput, QuestionType, TestStatus } from "@testx/shared";
 import {
   calculateTestReward,
@@ -125,6 +126,15 @@ function assertDraft(test: { status: TestStatus }) {
 }
 
 function validateQuestionShape(input: QuestionInput) {
+  // The two checks measure different things and would contradict each other: the attention
+  // check demands one specific answer, the trap demands the answer given to another question.
+  if (input.isAttentionCheck && input.isTrapDuplicate) {
+    throw Object.assign(
+      new Error("A question cannot be both an attention check and a trap duplicate"),
+      { statusCode: 400 }
+    );
+  }
+
   if (input.type === "SINGLE_SELECT" || input.type === "MULTI_SELECT") {
     if (input.options.length < 2 || input.options.length > 10) {
       throw Object.assign(new Error("Selection questions require 2 to 10 options"), { statusCode: 400 });
@@ -283,6 +293,20 @@ type TemplateQuestion = {
   config?: Record<string, unknown>;
   options?: Array<string | { label?: string; mediaId?: string }>;
 };
+
+const templateQuestionZod = z.object({
+  type: z.string().optional(),
+  prompt: z.string().optional(),
+  mediaType: z.string().optional(),
+  config: z.record(z.unknown()).optional(),
+  options: z.array(z.union([z.string(), z.object({ label: z.string().optional(), mediaId: z.string().optional() })])).optional(),
+});
+
+const templateBodySchema = z.object({
+  name: z.string().min(1),
+  description: z.string().nullable().optional(),
+  structure: z.object({ questions: z.array(templateQuestionZod) }),
+});
 
 function templateQuestions(structure: Prisma.JsonValue): TemplateQuestion[] {
   if (!structure || typeof structure !== "object" || Array.isArray(structure)) return [];
@@ -576,5 +600,56 @@ export const adminTestsRoutes: FastifyPluginAsync = async (app) => {
 
     const updated = await app.prisma.test.findUniqueOrThrow({ where: { id: created.id }, include: testDetailInclude });
     return reply.status(201).send(serializeTest(updated));
+  });
+
+  app.post("/templates", adminAuth, async (request, reply) => {
+    const body = templateBodySchema.parse(request.body);
+    const template = await app.prisma.template.create({
+      data: {
+        name: body.name,
+        description: body.description ?? null,
+        structure: body.structure as Prisma.InputJsonValue,
+        isSystem: true,
+      },
+    });
+    return reply.status(201).send({
+      id: template.id,
+      name: template.name,
+      description: template.description,
+      structure: template.structure,
+      isSystem: template.isSystem,
+      createdAt: template.createdAt.toISOString(),
+      updatedAt: template.updatedAt.toISOString(),
+    });
+  });
+
+  app.put<{ Params: { id: string } }>("/templates/:id", adminAuth, async (request, reply) => {
+    const body = templateBodySchema.partial().parse(request.body);
+    const existing = await app.prisma.template.findUnique({ where: { id: request.params.id } });
+    if (!existing) return reply.status(404).send({ error: "NOT_FOUND", message: "Template not found" });
+    const template = await app.prisma.template.update({
+      where: { id: request.params.id },
+      data: {
+        ...(body.name !== undefined && { name: body.name }),
+        ...(body.description !== undefined && { description: body.description }),
+        ...(body.structure !== undefined && { structure: body.structure as Prisma.InputJsonValue }),
+      },
+    });
+    return reply.send({
+      id: template.id,
+      name: template.name,
+      description: template.description,
+      structure: template.structure,
+      isSystem: template.isSystem,
+      createdAt: template.createdAt.toISOString(),
+      updatedAt: template.updatedAt.toISOString(),
+    });
+  });
+
+  app.delete<{ Params: { id: string } }>("/templates/:id", adminAuth, async (request, reply) => {
+    const existing = await app.prisma.template.findUnique({ where: { id: request.params.id } });
+    if (!existing) return reply.status(404).send({ error: "NOT_FOUND", message: "Template not found" });
+    await app.prisma.template.delete({ where: { id: request.params.id } });
+    return reply.status(204).send();
   });
 };

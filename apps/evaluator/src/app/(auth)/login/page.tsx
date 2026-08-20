@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Card, CardContent, CardHeader, CardTitle, Input } from "@testx/ui";
+import { Alert, Button, Field, Input, PasswordInput } from "@testx/ui";
+import { AuthCard } from "@/components/auth-card";
 import { useAuth } from "@/components/auth-provider";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -30,46 +31,65 @@ export default function LoginPage() {
   }
 
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader>
-        <CardTitle>Evaluator login</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-3">
+    <AuthCard
+      title="Evaluator login"
+      description="Sign in to pick up your next test."
+      footer={
+        <>
+          No account?{" "}
+          <a href="/register" className="font-medium text-primary underline underline-offset-4">
+            Register
+          </a>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <Field label="Email" htmlFor="email">
           <Input
+            id="email"
             type="email"
-            placeholder="Email"
+            autoComplete="email"
+            placeholder="you@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
           />
-          <Input
-            type="password"
-            placeholder="Password"
+        </Field>
+
+        <Field label="Password" htmlFor="password">
+          <PasswordInput
+            id="password"
+            autoComplete="current-password"
+            placeholder="••••••••"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
           />
-          {error && <p className="text-sm text-red-500">{error}</p>}
-          <Button type="submit" className="w-full" disabled={isPending}>
-            {isPending ? "Signing in…" : "Sign in"}
-          </Button>
-          <Button
-            type="button"
-            className="w-full"
-            variant="secondary"
-            onClick={() => { window.location.href = `${API_URL}/auth/google`; }}
-          >
-            Sign in with Google
-          </Button>
-          <p className="text-center text-sm text-muted-foreground">
-            No account?{" "}
-            <a href="/register" className="underline">
-              Register
-            </a>
-          </p>
-        </form>
-      </CardContent>
-    </Card>
+        </Field>
+
+        {error && <Alert>{error}</Alert>}
+
+        <Button type="submit" className="w-full" disabled={isPending}>
+          {isPending ? "Signing in…" : "Sign in"}
+        </Button>
+      </form>
+
+      <div className="flex items-center gap-3">
+        <span className="h-px flex-1 bg-border" />
+        <span className="text-xs uppercase tracking-wide text-muted-foreground">or</span>
+        <span className="h-px flex-1 bg-border" />
+      </div>
+
+      <Button
+        type="button"
+        className="w-full"
+        variant="secondary"
+        onClick={() => {
+          window.location.href = `${API_URL}/auth/google`;
+        }}
+      >
+        Sign in with Google
+      </Button>
+    </AuthCard>
   );
 }

@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import fsPromises from "node:fs/promises";
 import path from "node:path";
-import { PassThrough } from "node:stream";
+import { PassThrough, Readable } from "node:stream";
 import { google } from "googleapis";
 import type { FastifyReply } from "fastify";
 import type { PrismaClient, Prisma } from "@testx/database";
@@ -129,7 +129,7 @@ export const driveService = {
     // Serve from cache on hit
     try {
       await fsPromises.access(cachePath);
-      return reply.send(fs.createReadStream(cachePath));
+      return reply.send(Readable.toWeb(fs.createReadStream(cachePath)));
     } catch {
       // cache miss — fetch from Drive
     }
@@ -170,6 +170,6 @@ export const driveService = {
       if (!reply.raw.writableEnded) cleanup();
     });
 
-    return reply.send(passThrough);
+    return reply.send(Readable.toWeb(passThrough));
   },
 };

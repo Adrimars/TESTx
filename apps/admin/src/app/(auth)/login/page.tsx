@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Card, CardContent, CardHeader, CardTitle, Input } from "@testx/ui";
+import { Alert, Button, Field, Input, PasswordInput } from "@testx/ui";
+import { AuthCard } from "@/components/auth-card";
 import { useAuth } from "@/components/auth-provider";
 
 export default function LoginPage() {
@@ -33,32 +34,37 @@ export default function LoginPage() {
   }
 
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader>
-        <CardTitle>Admin login</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-3">
+    <AuthCard title="Admin login" description="Admin accounts only.">
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <Field label="Email" htmlFor="email">
           <Input
+            id="email"
             type="email"
-            placeholder="Email"
+            autoComplete="email"
+            placeholder="admin@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
           />
-          <Input
-            type="password"
-            placeholder="Password"
+        </Field>
+
+        <Field label="Password" htmlFor="password">
+          <PasswordInput
+            id="password"
+            autoComplete="current-password"
+            placeholder="••••••••"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
           />
-          {error && <p className="text-sm text-red-500">{error}</p>}
-          <Button type="submit" className="w-full" disabled={isPending}>
-            {isPending ? "Signing in…" : "Sign in"}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+        </Field>
+
+        {error && <Alert>{error}</Alert>}
+
+        <Button type="submit" className="w-full" disabled={isPending}>
+          {isPending ? "Signing in…" : "Sign in"}
+        </Button>
+      </form>
+    </AuthCard>
   );
 }
