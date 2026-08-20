@@ -16,6 +16,13 @@ export type EvaluatorProfile = {
   gender: Gender;
   country: string;
   city: string | null;
+  nativeLanguage: string | null;
+  foreignLanguages: string[];
+  occupation: string | null;
+  educationLevel: string | null;
+  aiUseCases: string[];
+  aiExperience: string | null;
+  aiFrequency: string | null;
   balance: number;
   createdAt: string;
   updatedAt: string;

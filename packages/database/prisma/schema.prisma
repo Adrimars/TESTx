@@ -60,16 +60,23 @@ model User {
 }
 
 model EvaluatorProfile {
-  id          String   @id @default(uuid()) @db.Uuid
-  userId      String   @unique @db.Uuid
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  age         Int
-  gender      Gender
-  country     String
-  city        String?
-  balance     Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               String   @id @default(uuid()) @db.Uuid
+  userId           String   @unique @db.Uuid
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  age              Int
+  gender           Gender
+  country          String
+  city             String?
+  nativeLanguage   String?
+  foreignLanguages String[] @default([])
+  occupation       String?
+  educationLevel   String?
+  aiUseCases       String[] @default([])
+  aiExperience     String?
+  aiFrequency      String?
+  balance          Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 }
 
 model Test {
