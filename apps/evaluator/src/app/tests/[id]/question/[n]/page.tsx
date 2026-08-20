@@ -2,10 +2,47 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { Button, Card, CardContent, CardHeader, CardTitle } from "@testx/ui";
+import { ArrowLeft, ArrowRight, Check } from "lucide-react";
+import { Button } from "@testx/ui";
 import { useTestSession } from "@/components/test-session-provider";
 import { resolveMediaUrl } from "@/lib/api";
 import type { Question, QuestionOption } from "@/lib/test-types";
+
+/** Shared frame for a selectable option, so text and media options behave the same. */
+function OptionShell({
+  selected,
+  onClick,
+  className,
+  children,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={`group relative min-h-11 overflow-hidden rounded-lg border-2 text-left transition-colors ${
+        selected
+          ? "border-primary bg-primary/5"
+          : "border-border bg-card hover:border-primary/40 hover:bg-accent/50"
+      } ${className ?? ""}`}
+    >
+      {children}
+      <span
+        aria-hidden
+        className={`pointer-events-none absolute right-2.5 top-2.5 flex size-6 items-center justify-center rounded-full transition-opacity ${
+          selected ? "bg-primary text-primary-foreground opacity-100" : "opacity-0"
+        }`}
+      >
+        <Check className="size-3.5" strokeWidth={3} />
+      </span>
+    </button>
+  );
+}
 
 function OptionMedia({ option }: { option: QuestionOption }) {
   const url = resolveMediaUrl(option.media?.url ?? option.mediaUrl);
@@ -14,11 +51,11 @@ function OptionMedia({ option }: { option: QuestionOption }) {
   const label = option.label ?? option.media?.fileName ?? "Option";
 
   if (kind === "VIDEO") {
-    return <video src={url} controls className="w-full h-32 sm:h-40 object-cover rounded-md" />;
+    return <video src={url} controls className="aspect-video w-full bg-muted object-cover" />;
   }
   if (kind === "AUDIO") {
     return (
-      <div className="flex w-full h-32 sm:h-40 items-center justify-center rounded-md bg-muted p-3">
+      <div className="flex aspect-video w-full items-center justify-center bg-muted p-4">
         <audio src={url} controls className="w-full" />
       </div>
     );
@@ -27,7 +64,7 @@ function OptionMedia({ option }: { option: QuestionOption }) {
     <img
       src={url}
       alt={label}
-      className="w-full h-32 sm:h-40 object-cover rounded-md"
+      className="aspect-video w-full bg-muted object-cover"
       loading="lazy"
     />
   );
@@ -46,43 +83,28 @@ function SingleSelectQuestion({
 
   if (hasMedia) {
     return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {question.options.map((opt) => (
-          <button
-            key={opt.id}
-            type="button"
-            onClick={() => onSelect([opt.id])}
-            className={`rounded-lg border-2 overflow-hidden text-left transition-all min-h-[44px] ${
-              selected.includes(opt.id)
-                ? "border-primary ring-2 ring-primary"
-                : "border-border hover:border-primary/50"
-            }`}
-          >
+          <OptionShell key={opt.id} selected={selected.includes(opt.id)} onClick={() => onSelect([opt.id])}>
             <OptionMedia option={opt} />
-            {opt.label && (
-              <p className="p-2 text-sm font-medium">{opt.label}</p>
-            )}
-          </button>
+            {opt.label && <p className="px-3 py-2.5 text-sm font-medium">{opt.label}</p>}
+          </OptionShell>
         ))}
       </div>
     );
   }
 
   return (
-    <div className="space-y-2">
+    <div className="grid gap-2.5">
       {question.options.map((opt) => (
-        <button
+        <OptionShell
           key={opt.id}
-          type="button"
+          selected={selected.includes(opt.id)}
           onClick={() => onSelect([opt.id])}
-          className={`w-full rounded-lg border-2 px-4 py-3 text-left transition-all min-h-[44px] ${
-            selected.includes(opt.id)
-              ? "border-primary bg-primary/5"
-              : "border-border hover:border-primary/50"
-          }`}
+          className="w-full px-4 py-3.5 pr-11 text-sm font-medium"
         >
           {opt.label}
-        </button>
+        </OptionShell>
       ))}
     </div>
   );
@@ -109,27 +131,23 @@ function MultiSelectQuestion({
     }
   }
 
+  const counter = (
+    <p className="mb-3 text-sm text-muted-foreground">
+      Select up to {max}{" "}
+      <span className="font-medium tabular-nums text-foreground">({selected.length} selected)</span>
+    </p>
+  );
+
   if (hasMedia) {
     return (
       <div>
-        <p className="text-sm text-muted-foreground mb-3">
-          Select up to {max} ({selected.length} selected)
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {counter}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {question.options.map((opt) => (
-            <button
-              key={opt.id}
-              type="button"
-              onClick={() => toggle(opt.id)}
-              className={`rounded-lg border-2 overflow-hidden text-left transition-all min-h-[44px] ${
-                selected.includes(opt.id)
-                  ? "border-primary ring-2 ring-primary"
-                  : "border-border hover:border-primary/50"
-              }`}
-            >
+            <OptionShell key={opt.id} selected={selected.includes(opt.id)} onClick={() => toggle(opt.id)}>
               <OptionMedia option={opt} />
-              {opt.label && <p className="p-2 text-sm font-medium">{opt.label}</p>}
-            </button>
+              {opt.label && <p className="px-3 py-2.5 text-sm font-medium">{opt.label}</p>}
+            </OptionShell>
           ))}
         </div>
       </div>
@@ -138,23 +156,17 @@ function MultiSelectQuestion({
 
   return (
     <div>
-      <p className="text-sm text-muted-foreground mb-3">
-        Select up to {max} ({selected.length} selected)
-      </p>
-      <div className="space-y-2">
+      {counter}
+      <div className="grid gap-2.5">
         {question.options.map((opt) => (
-          <button
+          <OptionShell
             key={opt.id}
-            type="button"
+            selected={selected.includes(opt.id)}
             onClick={() => toggle(opt.id)}
-            className={`w-full rounded-lg border-2 px-4 py-3 text-left transition-all min-h-[44px] ${
-              selected.includes(opt.id)
-                ? "border-primary bg-primary/5"
-                : "border-border hover:border-primary/50"
-            }`}
+            className="w-full px-4 py-3.5 pr-11 text-sm font-medium"
           >
             {opt.label}
-          </button>
+          </OptionShell>
         ))}
       </div>
     </div>
@@ -183,10 +195,11 @@ function RatingQuestion({
             key={v}
             type="button"
             onClick={() => onRate(v)}
-            className={`min-w-[44px] min-h-[44px] rounded-lg border-2 font-bold transition-all ${
+            aria-pressed={value === v}
+            className={`min-h-12 min-w-12 rounded-lg border-2 text-base font-bold tabular-nums transition-colors ${
               value === v
                 ? "border-primary bg-primary text-primary-foreground"
-                : "border-border hover:border-primary/50"
+                : "border-border bg-card hover:border-primary/40 hover:bg-accent/50"
             }`}
           >
             {v}
@@ -278,66 +291,68 @@ export default function QuestionPage() {
     router.push(`/tests/${params.id}/question/${questionIndex}`);
   }
 
+  const percent = ((questionIndex + 1) / totalVisible) * 100;
+
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <div className="space-y-1">
-        <div className="flex justify-between text-sm text-muted-foreground">
-          <span>Question {questionIndex + 1} of {totalVisible}</span>
+    <div className="mx-auto max-w-2xl pb-24 sm:pb-0">
+      {/* Progress stays in view while the options scroll. */}
+      <div className="sticky top-16 z-30 -mx-4 mb-6 border-b border-border bg-background/90 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
+        <div className="mb-2 flex items-baseline justify-between text-sm">
+          <span className="font-medium text-foreground">
+            Question <span className="tabular-nums">{questionIndex + 1}</span> of{" "}
+            <span className="tabular-nums">{totalVisible}</span>
+          </span>
+          <span className="text-xs tabular-nums text-muted-foreground">{Math.round(percent)}%</span>
         </div>
-        <div className="h-2 rounded-full bg-border overflow-hidden">
+        <div
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(percent)}
+          className="h-1.5 overflow-hidden rounded-full bg-muted"
+        >
           <div
-            className="h-full bg-primary rounded-full transition-all"
-            style={{ width: `${((questionIndex + 1) / totalVisible) * 100}%` }}
+            className="h-full rounded-full bg-primary transition-all duration-300"
+            style={{ width: `${percent}%` }}
           />
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg leading-snug">{question.prompt}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {question.type === "SINGLE_SELECT" && (
-            <SingleSelectQuestion
-              question={question}
-              selected={selected}
-              onSelect={(ids) => setAnswer(question.id, { selectedOptionIds: ids })}
-            />
-          )}
-          {question.type === "MULTI_SELECT" && (
-            <MultiSelectQuestion
-              question={question}
-              selected={selected}
-              onSelect={(ids) => setAnswer(question.id, { selectedOptionIds: ids })}
-            />
-          )}
-          {question.type === "RATING" && (
-            <RatingQuestion
-              question={question}
-              value={ratingValue}
-              onRate={(v) => setAnswer(question.id, { ratingValue: v })}
-            />
-          )}
+      <h1 className="mb-5 text-xl font-semibold leading-snug text-foreground">{question.prompt}</h1>
 
-          <div className="flex justify-between pt-4">
-            <Button
-              variant="secondary"
-              onClick={goPrev}
-              disabled={isFirst}
-              className="min-h-[44px]"
-            >
-              Previous
-            </Button>
-            <Button
-              onClick={goNext}
-              disabled={!hasAnswer()}
-              className="min-h-[44px]"
-            >
-              {isLast ? "Review & Submit" : "Next"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      {question.type === "SINGLE_SELECT" && (
+        <SingleSelectQuestion
+          question={question}
+          selected={selected}
+          onSelect={(ids) => setAnswer(question.id, { selectedOptionIds: ids })}
+        />
+      )}
+      {question.type === "MULTI_SELECT" && (
+        <MultiSelectQuestion
+          question={question}
+          selected={selected}
+          onSelect={(ids) => setAnswer(question.id, { selectedOptionIds: ids })}
+        />
+      )}
+      {question.type === "RATING" && (
+        <RatingQuestion
+          question={question}
+          value={ratingValue}
+          onRate={(v) => setAnswer(question.id, { ratingValue: v })}
+        />
+      )}
+
+      {/* Pinned to the bottom on phones, inline on desktop. */}
+      <div className="fixed inset-x-0 bottom-0 z-30 flex justify-between gap-3 border-t border-border bg-card/95 px-4 py-3 backdrop-blur sm:static sm:mt-8 sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
+        <Button variant="secondary" onClick={goPrev} disabled={isFirst}>
+          <ArrowLeft className="size-4" aria-hidden />
+          Previous
+        </Button>
+        <Button onClick={goNext} disabled={!hasAnswer()}>
+          {isLast ? "Review & Submit" : "Next"}
+          <ArrowRight className="size-4" aria-hidden />
+        </Button>
+      </div>
     </div>
   );
 }

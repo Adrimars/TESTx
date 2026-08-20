@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { Button, Card, CardContent, CardHeader, CardTitle, Dialog } from "@testx/ui";
+import { CircleAlert, CircleCheck } from "lucide-react";
+import { Alert, Button, Dialog } from "@testx/ui";
 import { useTestSession } from "@/components/test-session-provider";
 import { useAuth } from "@/components/auth-provider";
 import { apiFetch } from "@/lib/api";
@@ -99,15 +100,15 @@ export default function ReviewPage() {
   return (
     <>
       {test && (
-        <div className="max-w-2xl mx-auto space-y-6">
-          <div>
-            <h1 className="text-2xl font-bold">Review your answers</h1>
-            <p className="text-muted-foreground text-sm">
-              Check your answers before submitting. Use "Change" to go back.
+        <div className="mx-auto max-w-2xl space-y-6 pb-24 sm:pb-0">
+          <div className="space-y-1">
+            <h1 className="text-page-title text-foreground">Review your answers</h1>
+            <p className="text-sm text-muted-foreground">
+              Check your answers before submitting. Use “Change” to go back to a question.
             </p>
           </div>
 
-          <div className="space-y-3">
+          <div className="overflow-hidden rounded-lg border border-border bg-card">
             {test.questions.filter((q) => !q.isReviewHidden).map((question, index) => {
               const answer = state.answers.get(question.id);
               let answerText = "No answer";
@@ -126,60 +127,58 @@ export default function ReviewPage() {
               return (
                 <div
                   key={question.id}
-                  className="flex items-start justify-between gap-4 rounded-lg border border-border p-4"
+                  className="flex items-start justify-between gap-4 border-b border-border p-4 last:border-b-0"
                 >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-muted-foreground mb-1">Q{index + 1}</p>
-                    <p className="text-sm font-medium line-clamp-2">{question.prompt}</p>
-                    <p className="text-sm text-muted-foreground mt-1 truncate">{answerText}</p>
+                  <span className="mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-xs font-semibold tabular-nums text-muted-foreground">
+                    {index + 1}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="line-clamp-2 text-sm font-medium text-foreground">{question.prompt}</p>
+                    <p className="mt-1 truncate text-sm text-muted-foreground">{answerText}</p>
                   </div>
-                  <button
-                    type="button"
+                  <Button
+                    variant="link"
+                    className="shrink-0 self-center"
                     onClick={() => router.push(`/tests/${params.id}/question/${index + 1}`)}
-                    className="shrink-0 text-sm text-primary underline underline-offset-2 min-h-[44px] flex items-center"
                   >
                     Change
-                  </button>
+                  </Button>
                 </div>
               );
             })}
           </div>
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && <Alert>{error}</Alert>}
 
-          <Button
-            className="w-full min-h-[44px]"
-            onClick={handleSubmit}
-            disabled={submitting}
-          >
-            {submitting ? "Submitting…" : "Submit Test"}
-          </Button>
+          <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 px-4 py-3 backdrop-blur sm:static sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
+            <Button size="lg" className="w-full" onClick={handleSubmit} disabled={submitting}>
+              {submitting ? "Submitting…" : "Submit Test"}
+            </Button>
+          </div>
         </div>
       )}
 
-      <Dialog ref={resultDialogRef}>
+      <Dialog ref={resultDialogRef} className="max-w-sm">
         {result && (
           result.isFlagged ? (
-            <div className="space-y-5 p-6 text-center max-w-sm mx-auto">
+            <div className="space-y-5 p-6 text-center">
               <div className="flex flex-col items-center gap-3">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-destructive">
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="12" y1="8" x2="12" y2="12" />
-                    <line x1="12" y1="16" x2="12.01" y2="16" />
-                  </svg>
+                <div className="flex size-14 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+                  <CircleAlert className="size-7" aria-hidden />
                 </div>
-                <h2 className="text-xl font-bold">No points earned</h2>
+                <h2 className="text-xl font-bold text-foreground">No points earned</h2>
                 <p className="text-sm text-muted-foreground">
                   Your response was flagged for quality issues. No points were awarded for this test.
                 </p>
               </div>
 
-              <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-left space-y-2">
-                <p className="text-xs font-semibold text-destructive uppercase tracking-wide">Reason{result.flagReasons.length > 1 ? "s" : ""}</p>
-                <ul className="space-y-1">
+              <div className="space-y-2 rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-left">
+                <p className="text-meta uppercase text-destructive">
+                  Reason{result.flagReasons.length > 1 ? "s" : ""}
+                </p>
+                <ul className="space-y-1.5">
                   {result.flagReasons.map((reason) => (
-                    <li key={reason} className="text-sm text-foreground flex gap-2">
+                    <li key={reason} className="flex gap-2 text-sm text-foreground">
                       <span className="mt-0.5 shrink-0 text-destructive">•</span>
                       <span>
                         {FLAG_REASON_LABELS[reason] ?? reason}
@@ -192,38 +191,28 @@ export default function ReviewPage() {
                 </ul>
               </div>
 
-              <Button
-                className="w-full min-h-[44px]"
-                variant="secondary"
-                onClick={() => router.push("/dashboard")}
-              >
+              <Button className="w-full" variant="secondary" onClick={() => router.push("/dashboard")}>
                 Go to Dashboard
               </Button>
             </div>
           ) : (
-            <div className="space-y-5 p-6 text-center max-w-sm mx-auto">
+            <div className="space-y-5 p-6 text-center">
               <div className="flex flex-col items-center gap-3">
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-primary">
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                    <polyline points="22 4 12 14.01 9 11.01" />
-                  </svg>
+                <div className="flex size-14 items-center justify-center rounded-full bg-success/10 text-success">
+                  <CircleCheck className="size-7" aria-hidden />
                 </div>
-                <h2 className="text-xl font-bold">Test complete!</h2>
+                <h2 className="text-xl font-bold text-foreground">Test complete!</h2>
                 <p className="text-sm text-muted-foreground">
                   Great job! You successfully completed the test.
                 </p>
               </div>
 
-              <div className="rounded-lg border border-border bg-card p-5">
-                <p className="text-sm text-muted-foreground mb-1">Points earned</p>
-                <p className="text-5xl font-bold text-primary">+{result.pointsEarned}</p>
+              <div className="rounded-lg bg-surface p-5">
+                <p className="text-meta uppercase text-muted-foreground">Points earned</p>
+                <p className="mt-1 text-4xl font-bold tabular-nums text-primary">+{result.pointsEarned}</p>
               </div>
 
-              <Button
-                className="w-full min-h-[44px]"
-                onClick={() => router.push("/dashboard")}
-              >
+              <Button className="w-full" onClick={() => router.push("/dashboard")}>
                 Total Points
               </Button>
             </div>

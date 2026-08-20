@@ -2,10 +2,36 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { Award, Clock, ListChecks } from "lucide-react";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@testx/ui";
 import { apiFetch } from "@/lib/api";
 import { useTestSession } from "@/components/test-session-provider";
 import type { TestDetail } from "@/lib/test-types";
+
+function StatTile({
+  icon: Icon,
+  value,
+  label,
+  highlight,
+}: {
+  icon: React.ElementType;
+  value: string;
+  label: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div className="rounded-lg bg-surface p-4 text-center">
+      <Icon
+        className={`mx-auto mb-2 size-5 ${highlight ? "text-primary" : "text-muted-foreground"}`}
+        aria-hidden
+      />
+      <p className={`text-lg font-bold tabular-nums ${highlight ? "text-primary" : "text-foreground"}`}>
+        {value}
+      </p>
+      <p className="text-xs text-muted-foreground">{label}</p>
+    </div>
+  );
+}
 
 export default function TestIntroPage() {
   const params = useParams<{ id: string }>();
@@ -40,15 +66,15 @@ export default function TestIntroPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[40vh]">
-        <p className="text-muted-foreground">Loading test…</p>
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <p className="text-sm text-muted-foreground">Loading test…</p>
       </div>
     );
   }
 
   if (error || !test) {
     return (
-      <Card className="max-w-lg mx-auto">
+      <Card className="mx-auto max-w-lg">
         <CardHeader>
           <CardTitle>Test unavailable</CardTitle>
           <CardDescription>{error ?? "This test could not be loaded."}</CardDescription>
@@ -61,41 +87,32 @@ export default function TestIntroPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="mx-auto max-w-2xl space-y-6">
+      <div className="space-y-2">
+        <p className="text-meta uppercase text-muted-foreground">You are about to start</p>
+        <h1 className="text-2xl font-bold leading-tight tracking-tight text-foreground">{test.title}</h1>
+        {test.description && <p className="text-muted-foreground">{test.description}</p>}
+      </div>
+
       <Card>
-        <CardHeader>
-          <CardTitle className="text-2xl">{test.title}</CardTitle>
-          {test.description && <CardDescription className="text-base">{test.description}</CardDescription>}
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="rounded-lg border border-border bg-card p-4 text-center">
-              <p className="text-2xl font-bold">{test.questionCount}</p>
-              <p className="text-sm text-muted-foreground">Questions</p>
-            </div>
-            <div className="rounded-lg border border-border bg-card p-4 text-center">
-              <p className="text-2xl font-bold">
-                {test.advisoryTimeMin ? `~${test.advisoryTimeMin} min` : "Self-paced"}
-              </p>
-              <p className="text-sm text-muted-foreground">Est. time</p>
-            </div>
-            <div className="rounded-lg border border-border bg-card p-4 text-center">
-              <p className="text-2xl font-bold text-primary">{test.rewardPoints} pts</p>
-              <p className="text-sm text-muted-foreground">Reward</p>
-            </div>
+        <CardContent className="space-y-6 p-5 sm:p-6">
+          <div className="grid grid-cols-3 gap-3">
+            <StatTile icon={ListChecks} value={String(test.questionCount)} label="Questions" />
+            <StatTile
+              icon={Clock}
+              value={test.advisoryTimeMin ? `~${test.advisoryTimeMin} min` : "Self-paced"}
+              label="Est. time"
+            />
+            <StatTile icon={Award} value={`${test.rewardPoints} pts`} label="Reward" highlight />
           </div>
 
-          <div className="flex flex-wrap gap-3">
-            <Button
-              className="min-h-[44px] px-8"
-              onClick={handleBegin}
-              disabled={starting}
-            >
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Button size="lg" className="sm:px-10" onClick={handleBegin} disabled={starting}>
               {starting ? "Starting…" : "Begin Test"}
             </Button>
             <Button
-              variant="secondary"
-              className="min-h-[44px]"
+              variant="ghost"
+              size="lg"
               onClick={() => router.push("/dashboard")}
               disabled={starting}
             >
