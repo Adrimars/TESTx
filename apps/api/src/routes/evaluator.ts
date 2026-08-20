@@ -166,6 +166,8 @@ function serializeQuestion(question: {
   mediaType: string | null;
   order: number;
   config: unknown;
+  isAttentionCheck: boolean;
+  isTrapDuplicate: boolean;
   options: {
     id: string;
     questionId: string;
@@ -190,6 +192,7 @@ function serializeQuestion(question: {
     mediaType: question.mediaType,
     order: question.order,
     config: publicConfig(question.type, question.config),
+    isReviewHidden: question.isAttentionCheck || question.isTrapDuplicate,
     options: question.options.map((opt) => ({
       id: opt.id,
       questionId: opt.questionId,
@@ -238,21 +241,23 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
   app.put("/profile", { preHandler: [authenticateUser] }, async (request, reply) => {
     const body = evaluatorProfileSchema.parse(request.body);
 
+    const profileData = {
+      age: body.age,
+      gender: body.gender,
+      country: body.country,
+      city: body.city ?? null,
+      nativeLanguage: body.nativeLanguage ?? null,
+      foreignLanguages: body.foreignLanguages ?? [],
+      occupation: body.occupation ?? null,
+      educationLevel: body.educationLevel ?? null,
+      aiUseCases: body.aiUseCases ?? [],
+      aiExperience: body.aiExperience ?? null,
+      aiFrequency: body.aiFrequency ?? null,
+    };
     const profile = await app.prisma.evaluatorProfile.upsert({
       where: { userId: request.user!.id },
-      update: {
-        age: body.age,
-        gender: body.gender,
-        country: body.country,
-        city: body.city ?? null,
-      },
-      create: {
-        userId: request.user!.id,
-        age: body.age,
-        gender: body.gender,
-        country: body.country,
-        city: body.city ?? null,
-      },
+      update: profileData,
+      create: { userId: request.user!.id, ...profileData },
     });
 
     return reply.send(profile);
