@@ -108,7 +108,7 @@ export default function ReviewPage() {
       </div>
 
       <div className="space-y-3">
-        {test.questions.map((question, index) => {
+        {test.questions.filter((q) => !q.isReviewHidden).map((question, index) => {
           const answer = state.answers.get(question.id);
           let answerText = "No answer";
 
