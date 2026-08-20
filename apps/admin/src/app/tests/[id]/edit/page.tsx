@@ -92,6 +92,33 @@ function numberOrUndefined(value: string) {
   return value.trim() ? Number(value) : undefined;
 }
 
+/** Compact form of a total minimum, e.g. "45 seconds" / "3 min". */
+function formatTotalMinimum(totalSeconds: number): string {
+  if (totalSeconds < 60) return `${totalSeconds} seconds`;
+  return `${Math.round((totalSeconds / 60) * 10) / 10} min`;
+}
+
+/** Small heading above a settings control, so each field says what it is even once filled in. */
+function Field({
+  label,
+  hint,
+  className,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`space-y-1.5 ${className ?? ""}`}>
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      {children}
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
 
 export default function TestEditorPage() {
   const params = useParams<{ id: string }>();
@@ -380,72 +407,100 @@ export default function TestEditorPage() {
           <CardTitle>Settings</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 lg:grid-cols-2">
-          <Input value={title} onChange={(event) => setTitle(event.target.value)} disabled={!isDraft} />
-          <Input
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            placeholder="Description"
-            disabled={!isDraft}
-          />
-          <Input
-            type="number"
-            min={1}
-            placeholder="Response cap"
-            value={responseCap}
-            onChange={(event) => setResponseCap(event.target.value)}
-            disabled={!isDraft}
-          />
-          <Input
-            type="number"
-            min={1}
-            placeholder="Advisory time in minutes"
-            value={advisoryTimeMin}
-            onChange={(event) => setAdvisoryTimeMin(event.target.value)}
-            disabled={!isDraft}
-          />
-          <Input
-            type="number"
-            min={0}
-            placeholder="Min seconds per question"
-            value={minTimePerQuestion}
-            onChange={(event) => setMinTimePerQuestion(event.target.value)}
-            disabled={!isDraft}
-          />
-          <div className="grid grid-cols-2 gap-2">
-            <Input placeholder="Age min" value={ageMin} onChange={(event) => setAgeMin(event.target.value)} disabled={!isDraft} />
-            <Input placeholder="Age max" value={ageMax} onChange={(event) => setAgeMax(event.target.value)} disabled={!isDraft} />
-          </div>
-          <MultiCombobox
-            options={COUNTRIES}
-            value={countries}
-            onChange={handleCountriesChange}
-            placeholder="Select countries…"
-            disabled={!isDraft}
-          />
-          <MultiCombobox
-            options={cityOptions}
-            value={cities}
-            onChange={setCities}
-            placeholder={countries.length === 0 ? "Select countries first…" : "Select cities…"}
-            disabled={!isDraft || countries.length === 0}
-          />
-          <div className="flex flex-wrap gap-3 lg:col-span-2">
-            {GENDERS.map((gender) => (
-              <label key={gender} className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={selectedGenders.includes(gender)}
-                  disabled={!isDraft}
-                  onChange={(event) => {
-                    setSelectedGenders((current) =>
-                      event.target.checked ? [...current, gender] : current.filter((item) => item !== gender)
-                    );
-                  }}
-                />
-                {gender}
-              </label>
-            ))}
-          </div>
+          <Field label="Title">
+            <Input placeholder="Test title" value={title} onChange={(event) => setTitle(event.target.value)} disabled={!isDraft} />
+          </Field>
+          <Field label="Description">
+            <Input
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder="Description"
+              disabled={!isDraft}
+            />
+          </Field>
+          <Field label="Response cap">
+            <Input
+              type="number"
+              min={1}
+              placeholder="Response cap"
+              value={responseCap}
+              onChange={(event) => setResponseCap(event.target.value)}
+              disabled={!isDraft}
+            />
+          </Field>
+          <Field label="Advisory time (minutes)" hint="Fractional minutes allowed, e.g. 0.5 for 30 seconds.">
+            <Input
+              type="number"
+              min={0.1}
+              step={0.1}
+              placeholder="Advisory time in minutes"
+              value={advisoryTimeMin}
+              onChange={(event) => setAdvisoryTimeMin(event.target.value)}
+              disabled={!isDraft}
+            />
+          </Field>
+          <Field
+            label="Minimum time per question (seconds)"
+            hint={
+              test.questions.length > 0
+                ? `Checked as a total: a response finished in under ${formatTotalMinimum(
+                    Number(minTimePerQuestion || 0) * test.questions.length
+                  )} is flagged and earns no points.`
+                : "Checked as a total across all questions: finishing faster than that earns no points."
+            }
+          >
+            <Input
+              type="number"
+              min={0}
+              placeholder="Min seconds per question"
+              value={minTimePerQuestion}
+              onChange={(event) => setMinTimePerQuestion(event.target.value)}
+              disabled={!isDraft}
+            />
+          </Field>
+          <Field label="Age range">
+            <div className="grid grid-cols-2 gap-2">
+              <Input placeholder="Age min" value={ageMin} onChange={(event) => setAgeMin(event.target.value)} disabled={!isDraft} />
+              <Input placeholder="Age max" value={ageMax} onChange={(event) => setAgeMax(event.target.value)} disabled={!isDraft} />
+            </div>
+          </Field>
+          <Field label="Countries">
+            <MultiCombobox
+              options={COUNTRIES}
+              value={countries}
+              onChange={handleCountriesChange}
+              placeholder="Select countries…"
+              disabled={!isDraft}
+            />
+          </Field>
+          <Field label="Cities">
+            <MultiCombobox
+              options={cityOptions}
+              value={cities}
+              onChange={setCities}
+              placeholder={countries.length === 0 ? "Select countries first…" : "Select cities…"}
+              disabled={!isDraft || countries.length === 0}
+            />
+          </Field>
+          <Field label="Genders" className="lg:col-span-2">
+            <div className="flex flex-wrap gap-3">
+              {GENDERS.map((gender) => (
+                <label key={gender} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={selectedGenders.includes(gender)}
+                    disabled={!isDraft}
+                    onChange={(event) => {
+                      setSelectedGenders((current) =>
+                        event.target.checked ? [...current, gender] : current.filter((item) => item !== gender)
+                      );
+                    }}
+                  />
+                  {gender}
+                </label>
+              ))}
+            </div>
+          </Field>
           {isDraft && (
             <div className="lg:col-span-2">
               <Button onClick={saveSettings} disabled={saving || !title.trim()}>
@@ -574,25 +629,59 @@ export default function TestEditorPage() {
             </div>
           )}
 
-          <div className="grid gap-3 lg:grid-cols-3">
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={draft.isAttentionCheck} onChange={(event) => setDraft((current) => ({ ...current, isAttentionCheck: event.target.checked }))} />
-              Attention check
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={draft.isTrapDuplicate} onChange={(event) => setDraft((current) => ({ ...current, isTrapDuplicate: event.target.checked }))} />
-              Trap duplicate
-            </label>
-            <Select
-              value={draft.trapSourceId}
-              disabled={!draft.isTrapDuplicate}
-              onChange={(event) => setDraft((current) => ({ ...current, trapSourceId: event.target.value }))}
-            >
-              <option value="">Trap source question</option>
-              {test.questions.filter((question) => question.id !== draft.id).map((question) => (
-                <option key={question.id} value={question.id}>#{question.order} {question.prompt}</option>
-              ))}
-            </Select>
+          <div className="space-y-2">
+            <div className="grid gap-3 lg:grid-cols-3">
+              <label
+                className={`flex items-center gap-2 text-sm ${draft.isTrapDuplicate ? "text-muted-foreground" : ""}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={draft.isAttentionCheck}
+                  disabled={draft.isTrapDuplicate}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      isAttentionCheck: event.target.checked,
+                      // The two checks are mutually exclusive; picking one clears the other.
+                      isTrapDuplicate: event.target.checked ? false : current.isTrapDuplicate,
+                      trapSourceId: event.target.checked ? "" : current.trapSourceId,
+                    }))
+                  }
+                />
+                Attention check
+              </label>
+              <label
+                className={`flex items-center gap-2 text-sm ${draft.isAttentionCheck ? "text-muted-foreground" : ""}`}
+              >
+                <input
+                  type="checkbox"
+                  checked={draft.isTrapDuplicate}
+                  disabled={draft.isAttentionCheck}
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      isTrapDuplicate: event.target.checked,
+                      isAttentionCheck: event.target.checked ? false : current.isAttentionCheck,
+                      trapSourceId: event.target.checked ? current.trapSourceId : "",
+                    }))
+                  }
+                />
+                Trap duplicate
+              </label>
+              <Select
+                value={draft.trapSourceId}
+                disabled={!draft.isTrapDuplicate}
+                onChange={(event) => setDraft((current) => ({ ...current, trapSourceId: event.target.value }))}
+              >
+                <option value="">Trap source question</option>
+                {test.questions.filter((question) => question.id !== draft.id).map((question) => (
+                  <option key={question.id} value={question.id}>#{question.order} {question.prompt}</option>
+                ))}
+              </Select>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              A question can be an attention check or a trap duplicate, not both.
+            </p>
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}

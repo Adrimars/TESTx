@@ -13,8 +13,15 @@ type SubmitResult = {
   flagReasons: string[];
 };
 
+/** Seconds as prose for the flag messages, e.g. "45 seconds" / "2.5 minutes". */
+function formatRequiredTime(totalSeconds: number): string {
+  if (totalSeconds < 60) return `${totalSeconds} seconds`;
+  const minutes = Math.round((totalSeconds / 60) * 10) / 10;
+  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+}
+
 const FLAG_REASON_LABELS: Record<string, string> = {
-  SPEED_TOO_FAST: "The test was completed too quickly. Each question must be given adequate time.",
+  SPEED_TOO_FAST: "You finished the test too quickly — the whole test took less than the minimum time it requires.",
   TIMING_UNVERIFIED: "The session was left open for too long before answers were submitted. Response times could not be verified.",
   ATTENTION_CHECK_FAILED: "An attention check question was answered incorrectly.",
   CONSISTENCY_FAILED: "Your answers were inconsistent — a repeated question received a different answer than the original.",
@@ -28,6 +35,8 @@ export default function ReviewPage() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<SubmitResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Captured before the session is cleared, so the flag message can name the minimum. */
+  const [requiredSeconds, setRequiredSeconds] = useState<number | null>(null);
   const resultDialogRef = useRef<HTMLDialogElement>(null);
 
   const test = state.test;
@@ -77,6 +86,7 @@ export default function ReviewPage() {
         }),
       });
       await refreshUser();
+      setRequiredSeconds(test.minTimePerQuestion * test.questions.length);
       resetSession();
       setResult(res);
     } catch (err) {
@@ -171,7 +181,12 @@ export default function ReviewPage() {
                   {result.flagReasons.map((reason) => (
                     <li key={reason} className="text-sm text-foreground flex gap-2">
                       <span className="mt-0.5 shrink-0 text-destructive">•</span>
-                      <span>{FLAG_REASON_LABELS[reason] ?? reason}</span>
+                      <span>
+                        {FLAG_REASON_LABELS[reason] ?? reason}
+                        {reason === "SPEED_TOO_FAST" && requiredSeconds !== null && requiredSeconds > 0 && (
+                          <> This test needs at least {formatRequiredTime(requiredSeconds)} in total.</>
+                        )}
+                      </span>
                     </li>
                   ))}
                 </ul>

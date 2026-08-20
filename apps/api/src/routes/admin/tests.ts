@@ -126,6 +126,15 @@ function assertDraft(test: { status: TestStatus }) {
 }
 
 function validateQuestionShape(input: QuestionInput) {
+  // The two checks measure different things and would contradict each other: the attention
+  // check demands one specific answer, the trap demands the answer given to another question.
+  if (input.isAttentionCheck && input.isTrapDuplicate) {
+    throw Object.assign(
+      new Error("A question cannot be both an attention check and a trap duplicate"),
+      { statusCode: 400 }
+    );
+  }
+
   if (input.type === "SINGLE_SELECT" || input.type === "MULTI_SELECT") {
     if (input.options.length < 2 || input.options.length > 10) {
       throw Object.assign(new Error("Selection questions require 2 to 10 options"), { statusCode: 400 });

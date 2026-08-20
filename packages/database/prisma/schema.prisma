@@ -85,7 +85,7 @@ model Test {
   description        String?
   status             TestStatus     @default(DRAFT)
   responseCap        Int?
-  advisoryTimeMin    Int?
+  advisoryTimeMin    Float?
   minTimePerQuestion Int            @default(60)
   demographicFilters Json?
   rewardPoints       Int            @default(0)

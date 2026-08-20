@@ -18,7 +18,8 @@ export const updateTestSchema = z.object({
   title: z.string().min(1).optional(),
   description: z.string().nullable().optional(),
   responseCap: z.number().int().positive().nullable().optional(),
-  advisoryTimeMin: z.number().int().positive().nullable().optional(),
+  // Fractional minutes are allowed (0.5 = 30 seconds), so this is not an integer.
+  advisoryTimeMin: z.number().positive().nullable().optional(),
   minTimePerQuestion: z.number().int().min(0).optional(),
   demographicFilters: demographicFiltersSchema.nullable().optional(),
 });

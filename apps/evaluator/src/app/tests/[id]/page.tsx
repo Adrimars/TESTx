@@ -85,11 +85,6 @@ export default function TestIntroPage() {
             </div>
           </div>
 
-          <p className="text-sm text-muted-foreground">
-            Answer every question carefully. Responses are checked for consistency and speed.
-            Careless answers will not earn points.
-          </p>
-
           <div className="flex flex-wrap gap-3">
             <Button
               className="min-h-[44px] px-8"
