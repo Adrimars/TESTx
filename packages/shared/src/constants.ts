@@ -8,6 +8,12 @@ export const MEDIA_SOURCE_TYPES = ["UPLOAD", "GOOGLE_DRIVE"] as const;
 
 export const DEFAULT_MIN_TIME_PER_QUESTION_SECONDS = 60;
 
+/**
+ * Number of avatar presets bundled with the mobile app. A User.avatarId must be
+ * an index below this. There is no avatar upload anywhere in TESTx by design.
+ */
+export const AVATAR_COUNT = 10;
+
 export const EDUCATION_LEVELS = [
   { value: "PRIMARY_MIDDLE", label: "Primary School / Middle School" },
   { value: "HIGH_SCHOOL", label: "High School" },

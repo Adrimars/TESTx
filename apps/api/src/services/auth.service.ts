@@ -23,6 +23,7 @@ export function buildCurrentUser(user: UserWithProfile): CurrentUser {
     isVerified: user.isVerified,
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
+    avatarId: user.avatarId,
     evaluatorProfile: user.evaluatorProfile
       ? {
           id: user.evaluatorProfile.id,

@@ -22,6 +22,7 @@ export default function FeedScreen() {
           The swipeable question feed is built in Phase 10 and Phase 11.
         </Text>
         {user ? <Text style={styles.email}>Signed in as {user.email}</Text> : null}
+        <Button label="Profile" onPress={() => router.push("/profile")} />
         <Button label="Sign out" variant="secondary" onPress={handleSignOut} />
       </View>
     </SafeAreaView>

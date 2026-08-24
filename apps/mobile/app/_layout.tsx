@@ -28,6 +28,7 @@ export default function RootLayout() {
               options={{ title: "Your profile", headerBackVisible: false }}
             />
             <Stack.Screen name="feed" options={{ headerShown: false }} />
+            <Stack.Screen name="profile" options={{ title: "Profile" }} />
           </Stack>
         </SafeAreaProvider>
       </SessionProvider>

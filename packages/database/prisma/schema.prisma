@@ -62,6 +62,11 @@ model User {
   aydinlatmaAcknowledgedAt DateTime?
   acikRizaAcceptedAt       DateTime?
 
+  /// Index into the avatar presets bundled with the mobile app. There is no
+  /// upload endpoint and no photo storage by design - this records a choice,
+  /// not an image, which keeps avatars out of KVKK's biometric/photo scope.
+  avatarId Int?
+
   evaluatorProfile EvaluatorProfile?
   responses        TestResponse[]
   mobileAuthCodes  MobileAuthCode[]

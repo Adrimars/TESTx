@@ -7,6 +7,8 @@ export type User = {
   isVerified: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Index into AVATAR_PRESET_IDS, or null if the evaluator has not picked one. */
+  avatarId: number | null;
 };
 
 export type EvaluatorProfile = {
