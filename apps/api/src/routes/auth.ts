@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { registerSchema, loginSchema } from "@testx/shared";
 import {
   hashPassword,
@@ -10,6 +10,30 @@ import {
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../lib/jwt";
 import { setAuthCookies, clearAuthCookies } from "../lib/cookies";
 import { authenticateUser } from "../middleware/authenticate";
+
+const BEARER_PREFIX = /^Bearer /i;
+
+/**
+ * Web sends the refresh token as an httpOnly cookie. The mobile app holds it in
+ * secure storage and presents it in the request body (or as a bearer header),
+ * so both are accepted, cookie first.
+ */
+function extractRefreshToken(request: FastifyRequest): string | undefined {
+  const cookieToken = request.cookies.refresh_token;
+  if (cookieToken) return cookieToken;
+
+  const body = request.body as { refreshToken?: unknown } | undefined;
+  if (typeof body?.refreshToken === "string" && body.refreshToken.trim()) {
+    return body.refreshToken.trim();
+  }
+
+  const header = request.headers.authorization;
+  if (header && BEARER_PREFIX.test(header)) {
+    return header.replace(BEARER_PREFIX, "").trim() || undefined;
+  }
+
+  return undefined;
+}
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
   app.post("/register", async (request, reply) => {
@@ -27,8 +51,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     });
 
     const payload = { sub: user.id, role: user.role };
-    setAuthCookies(reply, signAccessToken(payload), signRefreshToken(payload));
-    return reply.status(201).send(buildCurrentUser(user));
+    const accessToken = signAccessToken(payload);
+    const refreshToken = signRefreshToken(payload);
+    setAuthCookies(reply, accessToken, refreshToken);
+    return reply.status(201).send({ ...buildCurrentUser(user), accessToken, refreshToken });
   });
 
   app.post(
@@ -47,8 +73,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const payload = { sub: user.id, role: user.role };
-      setAuthCookies(reply, signAccessToken(payload), signRefreshToken(payload));
-      return reply.send(buildCurrentUser(user));
+      const accessToken = signAccessToken(payload);
+      const refreshToken = signRefreshToken(payload);
+      setAuthCookies(reply, accessToken, refreshToken);
+      return reply.send({ ...buildCurrentUser(user), accessToken, refreshToken });
     }
   );
 
@@ -58,7 +86,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.post("/refresh", async (request, reply) => {
-    const token = request.cookies.refresh_token;
+    const token = extractRefreshToken(request);
     if (!token) {
       return reply.status(401).send({ error: "UNAUTHORIZED", message: "No refresh token" });
     }
@@ -77,7 +105,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         path: "/",
         maxAge: 15 * 60,
       });
-      return reply.send({ ok: true });
+      // The refresh token is not rotated (web behaviour is unchanged); it is
+      // echoed back so cookie-less clients can keep storing a single pair.
+      return reply.send({ ok: true, accessToken: newAccessToken, refreshToken: token });
     } catch {
       return reply.status(401).send({ error: "UNAUTHORIZED", message: "Invalid refresh token" });
     }
