@@ -71,6 +71,14 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(409).send({ error: "CONFLICT", message: "Email already registered" });
     }
 
+    // A points-for-answers economy invites one person farming rewards through
+    // several accounts. A repeat device is flagged for review, never blocked -
+    // shared and family devices are legitimate, and a false positive here would
+    // lock out a real evaluator.
+    const isDeviceFlagged = input.deviceId
+      ? (await app.prisma.user.count({ where: { registrationDeviceId: input.deviceId } })) > 0
+      : false;
+
     const now = new Date();
     const passwordHash = await hashPassword(input.password);
     const user = await app.prisma.user.create({
@@ -83,9 +91,15 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         // Only stamped when explicit consent was actually given. Declining it
         // must not block registration, so this stays null in that case.
         acikRizaAcceptedAt: input.acikRizaAccepted ? now : null,
+        registrationDeviceId: input.deviceId ?? null,
+        isDeviceFlagged,
       },
       include: { evaluatorProfile: true },
     });
+
+    if (isDeviceFlagged) {
+      app.log.warn({ userId: user.id }, "registration from a device that already has an account");
+    }
 
     const payload = { sub: user.id, role: user.role };
     const accessToken = signAccessToken(payload);

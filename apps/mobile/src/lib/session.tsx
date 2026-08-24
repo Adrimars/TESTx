@@ -12,6 +12,7 @@ export type MobileRegisterPayload = {
   age: number;
   aydinlatmaAcknowledged: true;
   acikRizaAccepted?: boolean;
+  deviceId?: string;
 };
 
 type SessionValue = {

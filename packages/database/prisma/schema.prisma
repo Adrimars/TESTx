@@ -67,11 +67,22 @@ model User {
   /// not an image, which keeps avatars out of KVKK's biometric/photo scope.
   avatarId Int?
 
+  /// Device the account was registered from, when it registered through the
+  /// mobile app. Used only to notice one device creating several accounts in a
+  /// points economy. Deliberately not unique: shared and family devices are
+  /// legitimate, so a repeat is flagged for review rather than blocked.
+  registrationDeviceId String?
+  /// Set when registrationDeviceId already belonged to another account. This
+  /// lives on User rather than EvaluatorProfile (as the plan sketched) because
+  /// it is decided at registration, before any profile row exists.
+  isDeviceFlagged      Boolean @default(false)
+
   evaluatorProfile EvaluatorProfile?
   responses        TestResponse[]
   mobileAuthCodes  MobileAuthCode[]
 
   @@index([role])
+  @@index([registrationDeviceId])
 }
 
 /// One-time code bridging the Google OAuth redirect back into the mobile app.

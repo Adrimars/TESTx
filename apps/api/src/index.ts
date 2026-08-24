@@ -10,6 +10,7 @@ import { adminUsersRoutes } from "./routes/admin/users";
 import { authRoutes } from "./routes/auth";
 import { evaluatorRoutes } from "./routes/evaluator";
 import { userRoutes } from "./routes/users";
+import { mobileRoutes } from "./routes/mobile";
 import { publicMediaRoutes } from "./routes/media";
 import { errorHandlerPlugin } from "./plugins/error-handler";
 import { prismaPlugin } from "./plugins/prisma";
@@ -22,7 +23,9 @@ const app = Fastify({
 await app.register(cors, {
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type"],
+  // Authorization is needed for the bearer scheme added in Phase 9.1; native
+  // clients bypass CORS entirely, but any browser-based client needs it.
+  allowedHeaders: ["Content-Type", "Authorization"],
   origin: [
     process.env.EVALUATOR_APP_URL ?? "http://localhost:3000",
     process.env.ADMIN_APP_URL ?? "http://localhost:3001",
@@ -42,6 +45,7 @@ app.get("/health", async () => ({ status: "ok" }));
 await app.register(authRoutes, { prefix: "/auth" });
 await app.register(evaluatorRoutes, { prefix: "/evaluator" });
 await app.register(userRoutes, { prefix: "/users" });
+await app.register(mobileRoutes, { prefix: "/mobile" });
 await app.register(publicMediaRoutes, { prefix: "/media" });
 await app.register(adminDashboardRoutes, { prefix: "/admin" });
 await app.register(adminTestsRoutes, { prefix: "/admin" });

@@ -5,6 +5,7 @@ import { MOBILE_MIN_AGE } from "@testx/shared";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
 import { useSession } from "@/lib/session";
+import { getDeviceId } from "@/lib/device";
 import { checkField, registerSchema } from "@/lib/validation";
 import { theme } from "@/lib/theme";
 
@@ -62,6 +63,7 @@ export default function RegisterScreen() {
         password,
         age: Number.parseInt(age, 10),
         aydinlatmaAcknowledged: true,
+        deviceId: await getDeviceId(),
         // No acik riza is collected in v1; the plan explicitly says not to build
         // that checkbox speculatively while its legal basis is unconfirmed.
       });

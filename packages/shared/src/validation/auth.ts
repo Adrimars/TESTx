@@ -52,6 +52,12 @@ export const mobileRegisterSchema = registerSchema.extend({
     errorMap: () => ({ message: "The disclosure must be acknowledged before registering" }),
   }),
   acikRizaAccepted: z.boolean().optional(),
+  /**
+   * Stable per-install device identifier. Optional so a client that cannot
+   * produce one still registers - the guard is a detection signal, never a
+   * gate. See plan.md 9.5.
+   */
+  deviceId: z.string().min(1).max(200).optional(),
 });
 
 export type MobileRegisterInput = z.infer<typeof mobileRegisterSchema>;

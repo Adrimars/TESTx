@@ -2,6 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { UpdateRequiredGate } from "@/components/UpdateRequiredGate";
 import { SessionProvider } from "@/lib/session";
 import { queryClient } from "@/lib/queryClient";
 import { theme } from "@/lib/theme";
@@ -12,6 +13,7 @@ export default function RootLayout() {
       <SessionProvider>
         <SafeAreaProvider>
           <StatusBar style="light" />
+          <UpdateRequiredGate>
           <Stack
             screenOptions={{
               headerStyle: { backgroundColor: theme.colors.surfaceBase },
@@ -30,6 +32,7 @@ export default function RootLayout() {
             <Stack.Screen name="feed" options={{ headerShown: false }} />
             <Stack.Screen name="profile" options={{ title: "Profile" }} />
           </Stack>
+          </UpdateRequiredGate>
         </SafeAreaProvider>
       </SessionProvider>
     </QueryClientProvider>
