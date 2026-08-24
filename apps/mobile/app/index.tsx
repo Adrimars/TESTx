@@ -1,37 +1,27 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { getAccessToken } from "@/lib/tokens";
+import { useSession } from "@/lib/session";
 import { theme } from "@/lib/theme";
 
 /**
- * Auth-check splash: decides between the entry screen and the feed before any
- * other screen renders. Phase 9.3 replaces the token presence check with a
- * real session lookup.
+ * Auth-check splash. Routes to the feed, onboarding or the entry screen once
+ * the stored token has been validated against the API.
  */
 export default function SplashScreen() {
   const router = useRouter();
-  const [checking, setChecking] = useState(true);
+  const { initializing, user, hasProfile } = useSession();
 
   useEffect(() => {
-    let cancelled = false;
-
-    void (async () => {
-      const token = await getAccessToken();
-      if (cancelled) return;
-      setChecking(false);
-      router.replace(token ? "/feed" : "/login");
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
+    if (initializing) return;
+    if (!user) router.replace("/login");
+    else router.replace(hasProfile ? "/feed" : "/profile-onboarding");
+  }, [initializing, user, hasProfile, router]);
 
   return (
     <View style={styles.container}>
       <Text style={styles.wordmark}>TESTx</Text>
-      {checking ? <ActivityIndicator color={theme.colors.accent} /> : null}
+      <ActivityIndicator color={theme.colors.accent} />
     </View>
   );
 }
