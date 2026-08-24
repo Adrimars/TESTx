@@ -45,18 +45,44 @@ enum MediaSourceType {
 }
 
 model User {
-  id               String            @id @default(uuid()) @db.Uuid
-  email            String            @unique
-  passwordHash     String?
-  googleId         String?           @unique
-  role             UserRole          @default(EVALUATOR)
-  isVerified       Boolean           @default(false)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String?
+  googleId     String?  @unique
+  role         UserRole @default(EVALUATOR)
+  isVerified   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // KVKK: the Article 10 disclosure (aydinlatma) and any explicit consent
+  // (acik riza) are deliberately two separate timestamps. Kurul Ilke Karari
+  // 2026/347 prohibits collecting them as a single merged action, so they must
+  // never be set from one checkbox. Null means the step was not taken; mobile
+  // registration blocks on the first, and does not block on the second.
+  aydinlatmaAcknowledgedAt DateTime?
+  acikRizaAcceptedAt       DateTime?
+
   evaluatorProfile EvaluatorProfile?
   responses        TestResponse[]
+  mobileAuthCodes  MobileAuthCode[]
 
   @@index([role])
+}
+
+/// One-time code bridging the Google OAuth redirect back into the mobile app.
+/// The app cannot receive cookies, and putting tokens in the deep-link URL
+/// would leak them into OS logs and browser history, so the callback hands over
+/// a short-lived single-use code that is exchanged for the token pair instead.
+model MobileAuthCode {
+  id        String    @id @default(uuid()) @db.Uuid
+  code      String    @unique
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([expiresAt])
 }
 
 model EvaluatorProfile {

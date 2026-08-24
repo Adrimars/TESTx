@@ -54,12 +54,13 @@ function createOAuth2Client() {
   );
 }
 
-export function getGoogleOAuthUrl(): string {
+export function getGoogleOAuthUrl(state?: string): string {
   const client = createOAuth2Client();
   return client.generateAuthUrl({
     access_type: "offline",
     scope: ["profile", "email"],
     prompt: "select_account",
+    ...(state ? { state } : {}),
   });
 }
 
