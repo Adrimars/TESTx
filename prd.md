@@ -195,13 +195,13 @@ Draft → Active → Paused → Active → Closed
 
 ## 8. Evaluator Experience
 
-### 8.1 Dashboard
+### 9.1 Dashboard
 - **Auto-assigned test:** Prominent "Start Next Test" button. System picks the next eligible test.
 - **Points balance** displayed.
 - **Withdraw button** with "Coming Soon" label.
 - If no tests available: friendly empty state ("No tests available right now. Check back later.").
 
-### 8.2 Test-Taking Flow
+### 9.2 Test-Taking Flow
 1. Evaluator clicks "Start Next Test."
 2. System selects the next eligible test (based on demographics, not already taken, within response cap).
 3. Test intro screen: title, description, estimated time, number of questions.
@@ -212,7 +212,7 @@ Draft → Active → Paused → Active → Closed
 8. Final review/submit screen.
 9. On submit: show success + points earned.
 
-### 8.3 Responsive Design
+### 9.3 Responsive Design
 - Equal priority for mobile and desktop.
 - Media cards adapt: grid on desktop, vertical stack on mobile.
 - Touch-friendly controls for mobile (large tap targets for selection).
@@ -221,26 +221,26 @@ Draft → Active → Paused → Active → Closed
 
 ## 9. Quality Control & Anti-Cheat
 
-### 9.1 Minimum Time Per Question
+### 10.1 Minimum Time Per Question
 - **Global default:** 60 seconds per question.
 - If evaluator spends less than the threshold on a question, that response is **flagged**.
 - Admin can **disable** the time check per test (set threshold to 0).
 - Time is tracked per question (recorded as `timeSpentSeconds` per answer).
 
-### 9.2 Attention-Check Questions
+### 10.2 Attention-Check Questions
 - **System auto-generated:** Platform inserts questions like "Select the third option" or "Choose the red image" at random positions.
 - **Admin manual:** Admin can add custom attention-check questions and mark them as such.
 - Attention checks are **not counted** in the evaluator's visible question count.
 - Wrong answer on attention check → entire response **flagged**.
 
-### 9.3 Consistency Checks (Trap Questions)
+### 10.3 Consistency Checks (Trap Questions)
 - A question appears again later in the test (duplicate with same options, potentially reordered).
 - If the evaluator gives a **different answer** to the duplicate, the response is **flagged**.
 - Admin marks which questions should be duplicated as traps when creating the test.
 - System can also auto-insert one duplicate if the test has 8+ questions.
 - Applies to single-select and multi-select questions only. Ranking questions are not eligible as trap duplicates in v1 (comparing two permutations for "close enough" sameness is a separate design problem, deferred).
 
-### 9.4 Flagging Behavior
+### 10.4 Flagging Behavior
 - Flagged responses are **excluded from results** (not counted in aggregation).
 - Flagged responses **do not earn rewards** (points withheld).
 - Evaluator is **not notified** that their response was flagged.
@@ -250,7 +250,7 @@ Draft → Active → Paused → Active → Closed
 
 ## 10. Reward System
 
-### 10.1 Points Model
+### 11.1 Points Model
 - Evaluators earn **points** for valid (non-flagged) test completions.
 - Reward amount is **auto-calculated** based on test characteristics:
   - Base formula: `points = (number_of_questions × question_weight) + time_bonus`
@@ -258,19 +258,19 @@ Draft → Active → Paused → Active → Closed
   - `time_bonus`: additional points if estimated completion time > 5 minutes.
 - Points are displayed as a numeric balance on the evaluator dashboard.
 
-### 10.2 Withdraw / Cash-Out
+### 11.2 Withdraw / Cash-Out
 - "Withdraw" button on the evaluator dashboard.
 - Clicking shows a **"Coming Soon"** message with informational text.
 - **Post-MVP:** Real payment integration (PayPal, bank transfer, gift cards).
 
-### 10.2a Rewards Catalog (Coupons) — Mobile
+### 11.2a Rewards Catalog (Coupons) — Mobile
 - A browsable catalog of coupons/rewards evaluators can eventually spend their points on (e.g., "5,000 pts = 50 TL voucher").
 - **In scope now:** the catalog itself. Admin manages catalog items (title, image, point cost, description, active/inactive) from the admin panel; the mobile app lists them with the evaluator's current balance shown alongside.
 - **Deferred:** the actual redemption/purchase action. Tapping a catalog item's "Redeem" button shows a **"Coming Soon"** state — same pattern as §10.2 Withdraw. No points are deducted, no fulfillment happens, in v1.
 - No App Store/Play Store policy issue with this "browsing only" design (`appstore-playstore-compliance-research.md` §4, §9e) — it's a non-monetary, fixed-point-cost catalog, not sweepstakes- or gambling-shaped. One caveat: store-listing screenshots/copy must not depict or describe redemption as functional, or it risks a metadata-accuracy issue unrelated to the rewards policy itself.
 - See §15.10 and §16 for the mobile screen's requirements and look, and §11.4 for the admin-side catalog management screen.
 
-### 10.3 Balance Display
+### 11.3 Balance Display
 - Evaluator dashboard shows **total accumulated balance** (points).
 - No itemized transaction history for MVP.
 - **Post-MVP:** Detailed transaction log.
@@ -279,13 +279,13 @@ Draft → Active → Paused → Active → Closed
 
 ## 11. Admin Dashboard & Analytics
 
-### 11.1 Admin Dashboard (Overview)
+### 12.1 Admin Dashboard (Overview)
 - **Total Evaluators:** Count of registered evaluators.
 - **Active Tests:** Count of tests in Active status.
 - **Total Responses:** Count of all submitted responses across all tests.
 - **Flagged Responses:** Count of quality-flagged responses.
 
-### 11.2 Test Results / Report View
+### 12.2 Test Results / Report View
 - Available for both **Active tests (live)** and **Closed tests** — admins can watch option choices accumulate in real time, not only after a test closes.
 - Per-question result aggregation:
   - **Selection questions:** Bar/pie chart showing option distribution (e.g., "Photo A: 62%, Photo B: 38%").
@@ -295,12 +295,12 @@ Draft → Active → Paused → Active → Closed
   - Example: "Males 18–25: 70% chose Photo A. Females 26–35: 55% chose Photo B."
 - **Response metadata:** Total responses, valid responses, flagged count, average completion time.
 
-### 11.3 User Management (Minimal)
+### 12.3 User Management (Minimal)
 - View list of registered evaluators (name, email, registration date, total tests completed).
 - **No ban/edit capability for MVP.**
 - **Post-MVP:** Full user management (ban, suspend, view response history).
 
-### 11.4 Rewards Catalog Management (Mobile Coupons)
+### 12.4 Rewards Catalog Management (Mobile Coupons)
 - New admin screen: CRUD over catalog items (title, image upload, point cost, description, active/inactive toggle, display order).
 - No fulfillment/inventory tracking in v1 — this manages what evaluators *see*, not stock or actual coupon codes (see §10.2a).
 
@@ -308,7 +308,7 @@ Draft → Active → Paused → Active → Closed
 
 ## 12. Technical Architecture
 
-### 12.1 Monorepo Structure (Turborepo + pnpm)
+### 13.1 Monorepo Structure (Turborepo + pnpm)
 
 ```
 testx/
@@ -326,7 +326,7 @@ testx/
 └── package.json
 ```
 
-### 12.2 Tech Stack Summary
+### 13.2 Tech Stack Summary
 
 | Layer | Technology |
 |-------|-----------|
@@ -343,7 +343,7 @@ testx/
 | Media Source | Google Drive API |
 | Media Delivery | Backend proxy (MVP) |
 
-### 12.3 API Design
+### 13.3 API Design
 
 #### Auth Endpoints
 | Method | Path | Description |
@@ -382,7 +382,7 @@ testx/
 | GET | `/admin/users` | List evaluators |
 | GET | `/admin/templates` | List available templates |
 
-### 12.4 Database Schema (Key Entities)
+### 13.4 Database Schema (Key Entities)
 
 #### Users
 ```
@@ -519,7 +519,7 @@ Coupon {
 }
 ```
 
-### 12.5 Rate Limiting
+### 13.5 Rate Limiting
 - Basic rate limiting on all API endpoints.
 - Auth endpoints: stricter limits (e.g., 5 requests/minute for login).
 - General endpoints: 60 requests/minute per user.
@@ -639,10 +639,10 @@ Coupon {
 - Attention checks, trap-duplicate consistency checks, and the session-speed check run **unchanged, server-side** (`qualityService.runChecks`) — they operate on submitted answers and timings, not on the UI that produced them.
 - `minTimePerQuestion` is configured per test as today; for swipe-paced tests it needs a much smaller value than the current 60s default, or the speed check fires on every honest completion.
 - **Planned (future) refinement, not required for v1:** replace the flat per-test `minTimePerQuestion` with a computed per-question minimum (roughly `advisoryTimeMin ÷ 4`, exact formula still TBD) summed into the test's total minimum time — invisible to the evaluator, evaluated only server-side. Repeated speed-check failures (3–4 times) and/or a consistency/trap-check failure would withhold that test's reward. Needs its own design pass before implementation.
-- **Device-based multi-account guard:** a points-for-answers economy invites farming via multiple fake accounts, which web can't detect beyond email/Google-ID uniqueness. Mobile registration additionally sends a device identifier; a repeat-device signup is flagged for review (not hard-blocked, to avoid false positives on shared/family devices) rather than silently trusted. See plan.md Phase 8.5.
+- **Device-based multi-account guard:** a points-for-answers economy invites farming via multiple fake accounts, which web can't detect beyond email/Google-ID uniqueness. Mobile registration additionally sends a device identifier; a repeat-device signup is flagged for review (not hard-blocked, to avoid false positives on shared/family devices) rather than silently trusted. See plan.md Phase 9.5.
 
 ### 15.8a Forced Update on New Question Types
-- The question-type set grows over time (Ranking now, more later). An old app build that doesn't know how to render a new `QuestionType` must never silently break or crash mid-feed. On launch, the app checks a server-provided minimum supported version; a build below it sees a non-dismissible update screen linking to the store, with no partial access to the feed. Whenever a new question type ships, the enforced minimum version is bumped as part of that rollout. See plan.md Phase 8.6.
+- The question-type set grows over time (Ranking now, more later). An old app build that doesn't know how to render a new `QuestionType` must never silently break or crash mid-feed. On launch, the app checks a server-provided minimum supported version; a build below it sees a non-dismissible update screen linking to the store, with no partial access to the feed. Whenever a new question type ships, the enforced minimum version is bumped as part of that rollout. See plan.md Phase 9.6.
 
 ### 15.9 Auth Screens & Account / Profile
 - **Entry screen:** classic email/password login + register, with **Google sign-in surfaced as a primary, equally-prominent option** (not buried) — front-loading it now avoids a disruptive migration later. Reuses the existing `/auth/google` web OAuth flow via an in-app browser (`expo-web-browser`/`expo-auth-session`), landing back in the app authenticated. **On iOS, Sign in with Apple is a required third option** alongside Google — Apple's Guideline 4.8 requires an equivalent third-party login whenever another one is offered, and the existing email/password option does not exempt this (`appstore-playstore-compliance-research.md` §6).
@@ -730,6 +730,6 @@ Rationale: one saturated accent against near-black neutrals is the same formula 
 ### 16.7 Accessibility & Constraints
 - Dark-only in v1 (explicit scope decision — no light theme; revisit later if requested).
 - Minimum 44×44pt touch target on every tappable element, including target pills at rest size.
-- Every swipe/drag interaction has a tap-based fallback (Phase 11, plan.md) — full functionality stays reachable without any gesture, both for accessibility and for the OS-level "Reduce Motion" setting.
+- Every swipe/drag interaction has a tap-based fallback (Phase 12, plan.md) — full functionality stays reachable without any gesture, both for accessibility and for the OS-level "Reduce Motion" setting.
 - `text-primary`/`text-secondary` against `surface-base`/`surface-raised` meet WCAG AA at their defined sizes.
 - All edge-anchored chrome (the Rating/Ranking target column in particular) respects the device safe area (`react-native-safe-area-context`) — verified on a notched iPhone and a gesture-nav Android device, not just default-inset simulators.
