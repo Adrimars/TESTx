@@ -18,7 +18,7 @@ export type QuestionOption = {
 export type Question = {
   id: string;
   testId: string;
-  type: "SINGLE_SELECT" | "MULTI_SELECT" | "RATING";
+  type: "SINGLE_SELECT" | "MULTI_SELECT" | "RATING" | "RANKING";
   prompt: string;
   mediaType: string | null;
   order: number;
