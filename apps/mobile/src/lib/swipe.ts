@@ -155,3 +155,24 @@ export function resolveDropTarget(
 
   return best;
 }
+
+/**
+ * Reads a ranking's slot map into the ordered array the API expects: index 0 is slot 1,
+ * the best. Slots are filled in whatever order the evaluator chose to place cards, so the
+ * map is not built in slot order and has to be read back in it.
+ *
+ * Returns null while any slot is still empty. A partial ranking is not a lesser answer,
+ * it is one the API rejects outright, so it must never be submitted as if it were done.
+ */
+export function orderPlacements(
+  placements: Record<number, string>,
+  slotCount: number
+): string[] | null {
+  const ordered: string[] = [];
+  for (let slot = 1; slot <= slotCount; slot += 1) {
+    const id = placements[slot];
+    if (id === undefined) return null;
+    ordered.push(id);
+  }
+  return ordered;
+}

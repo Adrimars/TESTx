@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from "react-native";
 import { MultiSelectCard } from "./MultiSelectCard";
 import { OptionListCard } from "./OptionListCard";
+import { RankingCard } from "./RankingCard";
 import { RatingCard } from "./RatingCard";
 import { TwoOptionCard } from "./TwoOptionCard";
 import type { DeckAnswer } from "@/lib/deck";
@@ -67,6 +68,18 @@ export function QuestionCard({ question, isActive, onAnswer }: QuestionCardProps
         isActive={isActive}
         onAnswer={(ratingValue) =>
           onAnswer({ questionId: question.id, selectedOptionIds: [], ratingValue })
+        }
+      />
+    );
+  }
+
+  if (question.type === "RANKING") {
+    return (
+      <RankingCard
+        question={question}
+        isActive={isActive}
+        onAnswer={(orderedOptionIds) =>
+          onAnswer({ questionId: question.id, selectedOptionIds: orderedOptionIds })
         }
       />
     );
