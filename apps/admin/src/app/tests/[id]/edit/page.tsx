@@ -16,7 +16,7 @@ import {
   PauseCircle,
 } from "lucide-react";
 import type { Gender, MediaType, QuestionType, TestStatus } from "@testx/shared";
-import { COUNTRIES, CITIES_BY_COUNTRY } from "@testx/shared";
+import { COUNTRIES, CITIES_BY_COUNTRY, autoAttentionCheckCount } from "@testx/shared";
 import {
   Alert,
   Badge,
@@ -415,6 +415,17 @@ export default function TestEditorPage() {
 
   const totalMinimum = Number(minTimePerQuestion || 0) * test.questions.length;
 
+  // Activation tops the test up to the attention-check quota its length earns. Admins had no
+  // way to know a question they never wrote was about to appear, so it is stated up front.
+  const scoredQuestionCount = test.questions.filter(
+    (question) => !question.isAttentionCheck && !question.isTrapDuplicate
+  ).length;
+  const attentionCheckCount = test.questions.filter((question) => question.isAttentionCheck).length;
+  const plannedAttentionChecks = Math.max(
+    0,
+    autoAttentionCheckCount(scoredQuestionCount) - attentionCheckCount
+  );
+
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -745,7 +756,25 @@ export default function TestEditorPage() {
                   <dd className="tabular-nums">{formatTotalMinimum(totalMinimum)}</dd>
                 </div>
               )}
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">Attention checks</dt>
+                <dd className="tabular-nums">{attentionCheckCount}</dd>
+              </div>
             </dl>
+
+            {isDraft && (
+              <p className="text-xs text-muted-foreground">
+                {plannedAttentionChecks > 0
+                  ? `${plannedAttentionChecks} attention check${
+                      plannedAttentionChecks === 1 ? "" : "s"
+                    } will be added on activation (${scoredQuestionCount} scored question${
+                      scoredQuestionCount === 1 ? "" : "s"
+                    }).`
+                  : `No attention checks will be added on activation (${scoredQuestionCount} scored question${
+                      scoredQuestionCount === 1 ? "" : "s"
+                    }).`}
+              </p>
+            )}
 
             <div className="flex flex-col gap-2 border-t border-border pt-4">
               {isDraft && (
@@ -827,9 +856,16 @@ export default function TestEditorPage() {
                 <Select
                   aria-label="Question type"
                   value={draft.type}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, type: event.target.value as QuestionType }))
-                  }
+                  onChange={(event) => {
+                    const type = event.target.value as QuestionType;
+                    setDraft((current) => ({
+                      ...current,
+                      type,
+                      // Rating and ordering questions cannot carry an attention check's
+                      // "pick this exact option" key, so the flag goes with the type.
+                      isAttentionCheck: canBeAttentionCheck(type) ? current.isAttentionCheck : false,
+                    }));
+                  }}
                 >
                   <option value="SINGLE_SELECT">Single select</option>
                   <option value="MULTI_SELECT">Multi select</option>
@@ -1064,18 +1100,20 @@ export default function TestEditorPage() {
             <h3 className="text-meta uppercase text-muted-foreground">Quality control</h3>
             <p className="text-sm text-muted-foreground">
               A question can be an attention check or a trap duplicate, not both.
+              {!canBeAttentionCheck(draft.type) &&
+                " Only single and multi select questions can be attention checks."}
             </p>
             <div className="grid gap-4 lg:grid-cols-3">
               <label
                 className={`flex min-h-11 items-center gap-2 text-sm ${
-                  draft.isTrapDuplicate ? "text-muted-foreground" : ""
+                  draft.isTrapDuplicate || !canBeAttentionCheck(draft.type) ? "text-muted-foreground" : ""
                 }`}
               >
                 <input
                   type="checkbox"
                   className="size-4 rounded border-input accent-primary"
                   checked={draft.isAttentionCheck}
-                  disabled={draft.isTrapDuplicate}
+                  disabled={draft.isTrapDuplicate || !canBeAttentionCheck(draft.type)}
                   onChange={(event) =>
                     setDraft((current) => ({
                       ...current,

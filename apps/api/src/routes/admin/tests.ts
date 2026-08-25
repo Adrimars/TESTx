@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import type { MediaType, QuestionInput, QuestionType, TestStatus } from "@testx/shared";
 import {
+  autoAttentionCheckCount,
   calculateTestReward,
   createTestSchema,
   questionSchema,
@@ -252,82 +253,138 @@ function buildOptionCreates(input: QuestionInput) {
   }));
 }
 
-async function ensureAttentionCheck(app: Parameters<FastifyPluginAsync>[0], testId: string) {
+/**
+ * Interior positions only — a check never opens or closes a test, where it is most obvious.
+ * With 0 or 1 existing questions the only slot available is the final position.
+ */
+function interiorOrders(totalAfterInsert: number): number[] {
+  const min = Math.min(2, totalAfterInsert);
+  const max = Math.max(min, totalAfterInsert - 1);
+  const orders: number[] = [];
+  for (let order = min; order <= max; order += 1) orders.push(order);
+  return orders;
+}
+
+/**
+ * Positions that would not land the new check next to an existing one. Inserting at `order`
+ * shifts everything from `order` down by one, so the neighbours of the new question are the
+ * questions currently sitting at `order - 1` and `order`.
+ */
+function spacedOrders(candidates: number[], checkOrders: number[]): number[] {
+  const taken = new Set(checkOrders);
+  const spaced = candidates.filter((order) => !taken.has(order - 1) && !taken.has(order));
+  return spaced.length > 0 ? spaced : candidates;
+}
+
+function pickRandom<T>(items: T[]): T {
+  return items[Math.floor(Math.random() * items.length)]!;
+}
+
+type AttentionCheckSource = Prisma.QuestionGetPayload<{ include: { options: true } }>;
+
+/**
+ * A generated check copies an existing question's options and asks for one of them by name,
+ * so it has to come from a question whose options *are* the answer set. Ordering and rating
+ * questions cannot carry that shape.
+ */
+function attentionCheckSources(questions: AttentionCheckSource[]): AttentionCheckSource[] {
+  return questions.filter(
+    (question) =>
+      !question.isAttentionCheck &&
+      !question.isTrapDuplicate &&
+      (question.type === "SINGLE_SELECT" || question.type === "MULTI_SELECT") &&
+      question.options.length >= 2
+  );
+}
+
+/**
+ * Tops a test up to the attention-check quota its length earns (see `autoAttentionCheckCount`).
+ *
+ * Counts what is already there — manual checks included — and inserts only the shortfall, so
+ * activating, pausing and reactivating a test does not stack up checks, and an admin who wrote
+ * their own is left alone. Never removes anything.
+ */
+async function ensureAttentionChecks(app: Parameters<FastifyPluginAsync>[0], testId: string) {
   const questions = await app.prisma.question.findMany({
     where: { testId },
     orderBy: { order: "asc" },
     include: { options: { orderBy: { order: "asc" } } },
   });
-  if (questions.some((question) => question.isAttentionCheck)) return;
 
-  const source = questions.find((question) => question.options.length >= 2);
+  const scoredCount = questions.filter((q) => !q.isAttentionCheck && !q.isTrapDuplicate).length;
+  const existing = questions.filter((question) => question.isAttentionCheck);
+  const missing = autoAttentionCheckCount(scoredCount) - existing.length;
+  if (missing <= 0) return;
 
-  // Insert at a random interior position (not first, not last) so the check is
-  // less predictable. With 0 or 1 existing questions the only available slot
-  // is the final position, which is acceptable.
-  const totalAfterInsert = questions.length + 1;
-  const minPos = Math.min(2, totalAfterInsert);
-  const maxPos = Math.max(minPos, totalAfterInsert - 1);
-  const insertOrder = Math.floor(Math.random() * (maxPos - minPos + 1)) + minPos;
+  const sources = attentionCheckSources(questions);
+  // Live view of the test as we insert; positions shift under each insertion.
+  let orders = questions.map((question) => question.order);
+  let checkOrders = existing.map((question) => question.order);
 
-  // Shift questions at or after the chosen position to make room.
-  const toShift = questions.filter((q) => q.order >= insertOrder);
-  // Use negative intermediates to avoid unique-constraint collisions during update.
-  if (toShift.length > 0) {
-    await app.prisma.$transaction([
-      ...toShift.map((q) =>
-        app.prisma.question.update({ where: { id: q.id }, data: { order: -(q.order + 1) } })
-      ),
-      ...toShift.map((q) =>
-        app.prisma.question.update({ where: { id: q.id }, data: { order: q.order + 1 } })
-      ),
-    ]);
-  }
+  for (let index = 0; index < missing; index += 1) {
+    const totalAfterInsert = orders.length + 1;
+    const insertOrder = pickRandom(spacedOrders(interiorOrders(totalAfterInsert), checkOrders));
 
-  if (source) {
-    const correctOption = source.options[0];
+    // Shift questions at or after the chosen position to make room. Negative intermediates
+    // avoid tripping the (testId, order) unique constraint mid-update.
+    const toShift = orders.filter((order) => order >= insertOrder);
+    if (toShift.length > 0) {
+      await app.prisma.$transaction([
+        ...toShift.map((order) =>
+          app.prisma.question.updateMany({ where: { testId, order }, data: { order: -(order + 1) } })
+        ),
+        ...toShift.map((order) =>
+          app.prisma.question.updateMany({ where: { testId, order: -(order + 1) }, data: { order: order + 1 } })
+        ),
+      ]);
+    }
+
+    // Different sources per check where the test offers them, so two checks never read alike.
+    const source = sources.length > 0 ? sources[index % sources.length]! : undefined;
     await app.prisma.question.create({
-      data: {
-        testId,
-        type: "SINGLE_SELECT",
-        prompt: `Attention check: select "${correctOption?.label ?? "the first option"}".`,
-        mediaType: source.mediaType,
-        order: insertOrder,
-        isAttentionCheck: true,
-        config: {
-          autoGenerated: true,
-          correctOptionOrder: correctOption?.order ?? 1,
-          correctOptionLabel: correctOption?.label ?? null,
-        },
-        options: {
-          create: source.options.map((option) => ({
-            label: option.label,
-            mediaId: option.mediaId,
-            order: option.order,
-          })),
-        },
-      },
+      data: source
+        ? {
+            testId,
+            type: "SINGLE_SELECT",
+            prompt: `Attention check: select "${source.options[0]?.label ?? "the first option"}".`,
+            mediaType: source.mediaType,
+            order: insertOrder,
+            isAttentionCheck: true,
+            config: {
+              autoGenerated: true,
+              correctOptionOrder: source.options[0]?.order ?? 1,
+              correctOptionLabel: source.options[0]?.label ?? null,
+            },
+            options: {
+              create: source.options.map((option) => ({
+                label: option.label,
+                mediaId: option.mediaId,
+                order: option.order,
+              })),
+            },
+          }
+        : {
+            testId,
+            type: "SINGLE_SELECT",
+            prompt: "Attention check: select the option that says I am paying attention.",
+            mediaType: "TEXT",
+            order: insertOrder,
+            isAttentionCheck: true,
+            config: { autoGenerated: true, correctOptionLabel: "I am paying attention" },
+            options: {
+              create: [
+                { label: "I am paying attention", order: 1 },
+                { label: "Skip this option", order: 2 },
+              ],
+            },
+          },
     });
-    return;
-  }
 
-  await app.prisma.question.create({
-    data: {
-      testId,
-      type: "SINGLE_SELECT",
-      prompt: "Attention check: select the option that says I am paying attention.",
-      mediaType: "TEXT",
-      order: insertOrder,
-      isAttentionCheck: true,
-      config: { autoGenerated: true, correctOptionLabel: "I am paying attention" },
-      options: {
-        create: [
-          { label: "I am paying attention", order: 1 },
-          { label: "Skip this option", order: 2 },
-        ],
-      },
-    },
-  });
+    checkOrders = [...checkOrders.map((order) => (order >= insertOrder ? order + 1 : order)), insertOrder];
+    orders = [...orders.map((order) => (order >= insertOrder ? order + 1 : order)), insertOrder].sort(
+      (a, b) => a - b
+    );
+  }
 }
 
 type TemplateQuestion = {
@@ -444,7 +501,7 @@ export const adminTestsRoutes: FastifyPluginAsync = async (app) => {
     }
 
     if (status === "ACTIVE") {
-      await ensureAttentionCheck(app, existing.id);
+      await ensureAttentionChecks(app, existing.id);
     }
     const rewardPoints = await recalculateReward(app, existing.id);
     const test = await app.prisma.test.update({
