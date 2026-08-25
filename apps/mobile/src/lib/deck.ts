@@ -26,10 +26,11 @@ export type Deck = {
  * Owns the deck cursor and the in-memory answers map for one test.
  *
  * Phase 11 layers submission, progress and rewards on top; this deliberately knows
- * nothing about either, so the card components can be exercised on their own.
+ * nothing about either, beyond accepting a starting state so a persisted in-progress
+ * test (11.4) can resume instead of restarting blank.
  */
-export function useDeck(questions: EvaluatorQuestion[]): Deck {
-  const [state, setState] = useState<DeckState>(initialDeckState);
+export function useDeck(questions: EvaluatorQuestion[], initialState?: DeckState): Deck {
+  const [state, setState] = useState<DeckState>(() => initialState ?? initialDeckState);
 
   // Per-question timing is measured from when the card became active, not from when the
   // test was opened, so a pause on one question does not inflate the next one.

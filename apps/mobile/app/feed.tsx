@@ -5,6 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
 import { TestDeck } from "@/components/feed/TestDeck";
 import { useSession } from "@/lib/session";
+import { useInProgressTest } from "@/lib/submissionQueue";
 import { useEvaluatorTest, useNextTest } from "@/lib/test";
 import { theme } from "@/lib/theme";
 
@@ -24,13 +25,19 @@ export default function FeedScreen() {
   }, [testId, nextTest.data]);
 
   const test = useEvaluatorTest(testId);
+  // A test finished-but-abandoned answer set (11.4) - only ever offered back when it
+  // matches the test actually being opened, never a leftover from a different one.
+  const inProgress = useInProgressTest(testId);
 
   async function handleSignOut() {
     await signOut();
     router.replace("/login");
   }
 
-  if ((!testId && nextTest.isPending) || (Boolean(testId) && test.isPending)) {
+  if (
+    (!testId && nextTest.isPending) ||
+    (Boolean(testId) && (test.isPending || inProgress.isPending))
+  ) {
     return (
       <Shell>
         <ActivityIndicator color={theme.colors.textSecondary} />
@@ -67,7 +74,14 @@ export default function FeedScreen() {
     );
   }
 
-  return <TestDeck key={testId} test={test.data} onContinue={setTestId} />;
+  return (
+    <TestDeck
+      key={testId}
+      test={test.data}
+      initialDeckState={inProgress.data ?? undefined}
+      onContinue={setTestId}
+    />
+  );
 }
 
 function Shell({ children }: { children: React.ReactNode }) {

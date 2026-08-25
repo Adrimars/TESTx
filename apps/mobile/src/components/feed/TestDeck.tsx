@@ -8,29 +8,21 @@ import { CardStack } from "@/components/cards/CardStack";
 import { QuestionCard } from "@/components/cards/QuestionCard";
 import { ApiError } from "@/lib/api";
 import { useDeck } from "@/lib/deck";
+import type { DeckState } from "@/lib/deckState";
 import { resolveMediaUrl } from "@/lib/env";
 import { useSession } from "@/lib/session";
 import {
-  prefetchNextTest,
-  prefetchTest,
-  useSubmitTest,
-  type EvaluatorTest,
-  type SubmitResult,
-} from "@/lib/test";
+  clearInProgressTest,
+  submitWithBackoff,
+  writeInProgressTest,
+  writePendingSubmission,
+} from "@/lib/submissionQueue";
+import { prefetchNextTest, prefetchTest, type EvaluatorTest, type SubmitResult } from "@/lib/test";
 import { theme } from "@/lib/theme";
 import { ProgressBar } from "./ProgressBar";
 
 /** Fire the background next-test lookup with this many questions left to answer. */
 const PREFETCH_WINDOW = 2;
-
-/** Submit errors that mean this test is already settled - never worth retrying. */
-const SETTLED_SUBMIT_CODES = new Set([
-  "ALREADY_SUBMITTED",
-  "TEST_PAUSED",
-  "TEST_CLOSED",
-  "NOT_AVAILABLE",
-  "CAPACITY_REACHED",
-]);
 
 /**
  * A test `/next-test` just offered can still turn out unopenable by the time the full
@@ -58,10 +50,19 @@ async function findNextTest(queryClient: QueryClient): Promise<string | null> {
   return null;
 }
 
-type Phase = "answering" | "submitting" | "popup" | "checkingNext" | "empty" | "error";
+type Phase =
+  | "answering"
+  | "submitting"
+  | "popup"
+  | "pendingSync"
+  | "checkingNext"
+  | "empty"
+  | "error";
 
 type TestDeckProps = {
   test: EvaluatorTest;
+  /** A persisted in-progress answer set for this exact test, if a kill left one behind. */
+  initialDeckState?: DeckState;
   /** Opens the next test in the same feed, with no navigation and no loading gap. */
   onContinue: (nextTestId: string) => void;
 };
@@ -74,12 +75,11 @@ type TestDeckProps = {
  * instead of one carrying over the previous test's index and answers - the deck-cursor
  * bug that would otherwise show on every test-to-test transition.
  */
-export function TestDeck({ test, onContinue }: TestDeckProps) {
+export function TestDeck({ test, initialDeckState, onContinue }: TestDeckProps) {
   const router = useRouter();
   const { signOut } = useSession();
   const queryClient = useQueryClient();
-  const deck = useDeck(test.questions);
-  const submit = useSubmitTest();
+  const deck = useDeck(test.questions, initialDeckState);
 
   const [phase, setPhase] = useState<Phase>("answering");
   const [result, setResult] = useState<SubmitResult | null>(null);
@@ -99,6 +99,21 @@ export function TestDeck({ test, onContinue }: TestDeckProps) {
     prefetchRef.current = findNextTest(queryClient);
   }, [remaining, queryClient]);
 
+  // Persists the in-progress answers map as the evaluator moves through the deck (11.4),
+  // so a killed app resumes an almost-finished test instead of losing it. Stops the
+  // moment the deck completes - from there the finished-but-unconfirmed payload below is
+  // the thing worth protecting, not the now-superseded in-progress record.
+  useEffect(() => {
+    if (deck.isComplete) return;
+    void writeInProgressTest({
+      testId: test.id,
+      sessionToken: test.sessionToken,
+      index: deck.index,
+      answers: deck.answers,
+      canGoBack: deck.canGoBack,
+    });
+  }, [test.id, test.sessionToken, deck.index, deck.answers, deck.canGoBack, deck.isComplete]);
+
   useEffect(() => {
     if (!deck.isComplete || phase !== "answering") return;
     setPhase("submitting");
@@ -114,27 +129,40 @@ export function TestDeck({ test, onContinue }: TestDeckProps) {
           timeSpentSeconds: 0,
         }
     );
+    const payload = { testId: test.id, sessionToken: test.sessionToken, answers };
 
-    submit.mutate(
-      { testId: test.id, sessionToken: test.sessionToken, answers },
-      {
-        onSuccess: (data) => {
-          setResult(data);
+    void (async () => {
+      // The test is finished; what needs protecting from here on is this payload, not
+      // the answers-in-progress record it has just replaced. Written before the backoff
+      // loop even starts, so a kill mid-retry still has it queued for next launch.
+      await clearInProgressTest();
+      await writePendingSubmission(payload);
+      const outcome = await submitWithBackoff(queryClient, payload);
+
+      switch (outcome.status) {
+        case "success":
+          setResult(outcome.result);
           setPhase("popup");
-        },
-        onError: (error) => {
-          if (error instanceof ApiError && SETTLED_SUBMIT_CODES.has(error.code ?? "")) {
-            // The test is decided one way or another already (submitted, paused, closed,
-            // full) - nothing here is fixed by showing an error, so just move on.
-            setResult(null);
-            void advance();
-            return;
-          }
-          setErrorMessage(error instanceof Error ? error.message : "Could not submit your answers.");
+          break;
+        case "settled":
+          // The test is decided one way or another already (submitted, paused, closed,
+          // full) - nothing here is fixed by showing an error, so just move on.
+          setResult(null);
+          void advance();
+          break;
+        case "rejected":
+          setErrorMessage(outcome.message);
           setPhase("error");
-        },
+          break;
+        case "pending":
+          // Backoff exhausted on network failures alone. The payload stays queued on
+          // device and gets one more attempt on next launch (`retryPendingSubmissionOnce`
+          // in _layout.tsx) - showing a fake success now would risk the flagged-zero-
+          // points outcome this whole path exists to avoid.
+          setPhase("pendingSync");
+          break;
       }
-    );
+    })();
   }, [deck.isComplete, phase]);
 
   /** Moves the feed into whatever test comes next, or ends it. */
@@ -176,6 +204,20 @@ export function TestDeck({ test, onContinue }: TestDeckProps) {
         <Text style={styles.title}>Could not submit your answers</Text>
         <Text style={styles.subtitle}>{errorMessage ?? "Something went wrong."}</Text>
         <Button label="Try again" onPress={retrySubmit} />
+      </Shell>
+    );
+  }
+
+  if (phase === "pendingSync") {
+    return (
+      <Shell>
+        <Text style={styles.title}>Still saving your answers</Text>
+        <Text style={styles.subtitle}>
+          Your answers are safe on this device. They'll be submitted automatically the
+          next time you open the app with a connection, or you can try again now.
+        </Text>
+        <Button label="Try now" onPress={retrySubmit} />
+        <Button label="Profile" variant="secondary" onPress={() => router.push("/profile")} />
       </Shell>
     );
   }
