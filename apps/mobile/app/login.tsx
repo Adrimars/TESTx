@@ -11,12 +11,6 @@ import { theme } from "@/lib/theme";
 /**
  * Entry screen. Email/password and Google are equally prominent and both live
  * on this first screen rather than behind an "other options" tap.
- *
- * TODO(ios): Sign in with Apple is required by App Store Guideline 4.8 before
- * any iOS submission, because Google sign-in is offered here. It is not built
- * yet - it cannot be compiled or tested on this Windows workstation - and must
- * land, using expo-apple-authentication, before the iOS build ships. The slot
- * below is reserved for it. See appstore-playstore-compliance-research.md 6.
  */
 export default function LoginScreen() {
   const router = useRouter();
