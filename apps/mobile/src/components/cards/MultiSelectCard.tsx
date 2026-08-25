@@ -214,7 +214,9 @@ const styles = StyleSheet.create({
     borderWidth: 3,
   },
   stampSkip: { left: theme.spacing(2), borderColor: theme.colors.danger },
-  stampInclude: { right: theme.spacing(2), borderColor: theme.colors.accent },
+  // Right-swipe/include gets its own hue (success), distinct from the generic accent -
+  // see prd.md §16.2's rationale for why swipe direction never leans on "accent = good".
+  stampInclude: { right: theme.spacing(2), borderColor: theme.colors.success },
   stampText: { color: theme.colors.textPrimary, fontSize: 20, fontWeight: "800", letterSpacing: 1 },
   captionBar: {
     position: "absolute",
@@ -226,7 +228,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: theme.spacing(1),
     padding: theme.spacing(1.5),
-    backgroundColor: "rgba(11, 11, 15, 0.72)",
+    backgroundColor: theme.withAlpha(theme.colors.surfaceBase, 0.72),
   },
   captionSide: { color: theme.colors.textSecondary, fontSize: 13, fontWeight: "600" },
   captionLabel: { color: theme.colors.textPrimary, fontSize: 14, fontWeight: "600", flexShrink: 1 },

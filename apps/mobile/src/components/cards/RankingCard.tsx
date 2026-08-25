@@ -352,7 +352,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 2,
     borderStyle: "dashed",
-    backgroundColor: theme.colors.surfaceRaised,
+    // Target pill at rest, per prd.md §16.6 - matches RatingCard's pill.
+    backgroundColor: theme.colors.surfaceOverlay,
     overflow: "hidden",
   },
   slotFilled: {

@@ -249,7 +249,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: PILL_HEIGHT / 2,
     borderWidth: 2,
-    backgroundColor: theme.colors.surfaceRaised,
+    // Target pill at rest, per prd.md §16.6.
+    backgroundColor: theme.colors.surfaceOverlay,
     overflow: "hidden",
   },
   // Sits under the number so the active pill reads as filled rather than merely outlined.

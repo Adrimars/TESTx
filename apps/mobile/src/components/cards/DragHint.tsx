@@ -73,7 +73,7 @@ const styles = StyleSheet.create({
     left: 0,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(11, 11, 15, 0.55)",
+    backgroundColor: theme.withAlpha(theme.colors.surfaceBase, 0.55),
   },
   messageWrap: {
     position: "absolute",

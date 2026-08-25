@@ -169,11 +169,11 @@ const styles = StyleSheet.create({
     borderWidth: 3,
   },
   highlightLeft: {
-    backgroundColor: "rgba(108, 92, 231, 0.28)",
+    backgroundColor: theme.withAlpha(theme.colors.accent, 0.28),
     borderColor: theme.colors.accent,
   },
   highlightRight: {
-    backgroundColor: "rgba(108, 92, 231, 0.28)",
+    backgroundColor: theme.withAlpha(theme.colors.accent, 0.28),
     borderColor: theme.colors.accent,
   },
   caption: {
@@ -186,7 +186,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: theme.spacing(0.5),
     padding: theme.spacing(1),
-    backgroundColor: "rgba(11, 11, 15, 0.72)",
+    backgroundColor: theme.withAlpha(theme.colors.surfaceBase, 0.72),
   },
   captionArrow: { color: theme.colors.textSecondary, fontSize: 18, fontWeight: "700" },
   captionLabel: { color: theme.colors.textPrimary, fontSize: 14, fontWeight: "600", flexShrink: 1 },

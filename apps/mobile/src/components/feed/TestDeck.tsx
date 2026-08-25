@@ -420,7 +420,7 @@ const styles = StyleSheet.create({
     left: 0,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(11, 11, 15, 0.72)",
+    backgroundColor: theme.withAlpha(theme.colors.surfaceBase, 0.72),
     padding: theme.spacing(3),
   },
   popupCard: {
@@ -430,7 +430,8 @@ const styles = StyleSheet.create({
     gap: theme.spacing(1),
     padding: theme.spacing(3.5),
     borderRadius: 24,
-    backgroundColor: theme.colors.surfaceRaised,
+    // A popup, per prd.md §16.6's component patterns - one step lighter than a card.
+    backgroundColor: theme.colors.surfaceOverlay,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.borderHairline,
   },

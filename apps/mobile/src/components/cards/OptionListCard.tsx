@@ -140,7 +140,10 @@ const styles = StyleSheet.create({
   // 48 is the minimum comfortable touch target; rows can grow past it for long labels.
   optionRow: { minHeight: 48, justifyContent: "center", padding: theme.spacing(1.5) },
   optionTile: { width: "48%", aspectRatio: 0.85 },
-  optionSelected: { borderColor: theme.colors.accent, backgroundColor: "rgba(108, 92, 231, 0.14)" },
+  optionSelected: {
+    borderColor: theme.colors.accent,
+    backgroundColor: theme.withAlpha(theme.colors.accent, 0.14),
+  },
   optionPressed: { opacity: 0.75 },
   tileImage: { flex: 1, width: "100%" },
   optionLabel: { color: theme.colors.textPrimary, fontSize: 15, fontWeight: "500" },
