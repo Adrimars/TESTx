@@ -1,12 +1,18 @@
 import { useMemo } from "react";
 import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import Animated, {
+  runOnJS,
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useSharedValue,
+} from "react-native-reanimated";
 import type { SharedValue } from "react-native-reanimated";
 import { CardMedia } from "./CardMedia";
 import { DragHint } from "./DragHint";
 import { SwipeCard } from "./SwipeCard";
 import type { ReleaseGesture } from "./SwipeCard";
+import { triggerTargetHaptic } from "@/lib/motion";
 import { activeTargetValue, resolveDropTarget, targetProximity } from "@/lib/swipe";
 import type { DropTarget } from "@/lib/swipe";
 import type { EvaluatorQuestion } from "@/lib/test";
@@ -90,6 +96,20 @@ export function RatingCard({ question, isActive, onAnswer }: RatingCardProps) {
   // hints on screen at once would be worse than none.
   const tutorial = useGestureTutorial("rating", isActive);
   const hintTarget = targets[Math.floor(targets.length / 2)];
+
+  // A light tick the moment the drag crosses into a new pill's commit radius (prd.md
+  // §16.4), not just on release - `activeTargetValue` is the same "which pill is armed"
+  // read TargetPill's own scale animation uses, so the tick and the visual arming can
+  // never disagree about which pill is about to commit.
+  useAnimatedReaction(
+    () => (isActive ? activeTargetValue(pointerX.value, pointerY.value, targets) : 0),
+    (armed, previouslyArmed) => {
+      if (armed !== 0 && armed !== previouslyArmed) {
+        runOnJS(triggerTargetHaptic)();
+      }
+    },
+    [isActive, targets]
+  );
 
   const onRelease = (gesture: ReleaseGesture) => {
     "worklet";

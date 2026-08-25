@@ -11,6 +11,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import type { SharedValue } from "react-native-reanimated";
+import { CARD_COMMIT_MS, CARD_REJECT_SPRING } from "@/lib/motion";
 import { theme } from "@/lib/theme";
 
 /** Card offset from its resting position, in pixels. Lives on the UI thread. */
@@ -46,9 +47,6 @@ export type ReleaseGesture = {
 export type ReleaseDecision =
   | { commit: false }
   | { commit: true; value: number; flyTo?: { x: number; y: number } };
-
-const RETURN_SPRING = { damping: 18, stiffness: 220, mass: 0.7 } as const;
-const FLY_AWAY_MS = 180;
 
 /** How far a committed card travels before it stops being drawn. */
 const DEFAULT_FLY_DISTANCE = 700;
@@ -168,12 +166,12 @@ export function SwipeCard({
       });
 
       if (!decision.commit) {
-        translateX.value = withSpring(0, RETURN_SPRING);
-        translateY.value = withSpring(0, RETURN_SPRING);
+        translateX.value = withSpring(0, CARD_REJECT_SPRING);
+        translateY.value = withSpring(0, CARD_REJECT_SPRING);
         // The highlight has to leave with the card, or the last target stays lit after a
         // miss and reads as a selection that was never made.
-        pointerX.value = withSpring(0, RETURN_SPRING);
-        pointerY.value = withSpring(0, RETURN_SPRING);
+        pointerX.value = withSpring(0, CARD_REJECT_SPRING);
+        pointerY.value = withSpring(0, CARD_REJECT_SPRING);
         return;
       }
 
@@ -184,11 +182,11 @@ export function SwipeCard({
       };
       const committed = decision.value;
 
-      translateX.value = withTiming(target.x, { duration: FLY_AWAY_MS });
-      translateY.value = withTiming(target.y, { duration: FLY_AWAY_MS });
+      translateX.value = withTiming(target.x, { duration: CARD_COMMIT_MS });
+      translateY.value = withTiming(target.y, { duration: CARD_COMMIT_MS });
 
       settleProgress.value = 0;
-      settleProgress.value = withTiming(1, { duration: FLY_AWAY_MS }, (finished) => {
+      settleProgress.value = withTiming(1, { duration: CARD_COMMIT_MS }, (finished) => {
         if (finished && onCommit) {
           runOnJS(onCommit)(committed);
         }

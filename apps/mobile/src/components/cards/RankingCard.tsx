@@ -1,7 +1,12 @@
 import { useMemo, useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import Animated, {
+  runOnJS,
+  useAnimatedReaction,
+  useAnimatedStyle,
+  useSharedValue,
+} from "react-native-reanimated";
 import type { SharedValue } from "react-native-reanimated";
 import { DEFAULT_RANKING_BEST_LABEL, DEFAULT_RANKING_WORST_LABEL } from "@testx/shared";
 import { CardMedia } from "./CardMedia";
@@ -9,6 +14,7 @@ import { DragHint } from "./DragHint";
 import { SwipeCard } from "./SwipeCard";
 import type { ReleaseGesture } from "./SwipeCard";
 import { resolveMediaUrl } from "@/lib/env";
+import { triggerTargetHaptic } from "@/lib/motion";
 import {
   activeTargetValue,
   orderPlacements,
@@ -98,6 +104,18 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
 
   const tutorial = useGestureTutorial("ranking", isActive);
   const hintTarget = targets.find((target) => target.enabled);
+
+  // Same tick as RatingCard's, at the same moment: when the drag crosses into an open
+  // slot's commit radius, not just at release.
+  useAnimatedReaction(
+    () => (isActive ? activeTargetValue(pointerX.value, pointerY.value, targets) : 0),
+    (armed, previouslyArmed) => {
+      if (armed !== 0 && armed !== previouslyArmed) {
+        runOnJS(triggerTargetHaptic)();
+      }
+    },
+    [isActive, targets]
+  );
 
   const onRelease = (gesture: ReleaseGesture) => {
     "worklet";

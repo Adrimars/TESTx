@@ -2,6 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import Animated, {
+  interpolate,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withSequence,
+  withSpring,
+} from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
 import { CardStack } from "@/components/cards/CardStack";
@@ -9,6 +17,7 @@ import { QuestionCard } from "@/components/cards/QuestionCard";
 import { ApiError } from "@/lib/api";
 import { useDeck } from "@/lib/deck";
 import { resolveMediaUrl } from "@/lib/env";
+import { POPUP_ENTRANCE_SPRING } from "@/lib/motion";
 import { useSession } from "@/lib/session";
 import {
   clearInProgressTest,
@@ -323,9 +332,32 @@ function CompletionPopup({
     return () => clearTimeout(timer);
   }, [onDismiss]);
 
+  // Scale + fade in with a spring overshoot (prd.md §16.4), plus a small pulse on the
+  // points number once the card has mostly landed, so the two don't visually blend into
+  // one bigger overshoot.
+  const entrance = useSharedValue(0);
+  const pointsPulse = useSharedValue(1);
+  useEffect(() => {
+    entrance.value = withSpring(1, POPUP_ENTRANCE_SPRING);
+    if (!result.isFlagged) {
+      pointsPulse.value = withDelay(
+        220,
+        withSequence(withSpring(1.18, POPUP_ENTRANCE_SPRING), withSpring(1, POPUP_ENTRANCE_SPRING))
+      );
+    }
+  }, [entrance, pointsPulse, result.isFlagged]);
+
+  const cardStyle = useAnimatedStyle(() => ({
+    opacity: entrance.value,
+    transform: [{ scale: interpolate(entrance.value, [0, 1], [0.85, 1]) }],
+  }));
+  const pointsStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pointsPulse.value }],
+  }));
+
   return (
     <Pressable style={styles.popupBackdrop} onPress={onDismiss}>
-      <View style={styles.popupCard}>
+      <Animated.View style={[styles.popupCard, cardStyle]}>
         {result.isFlagged ? (
           <>
             <Text style={styles.popupTitle}>Test complete</Text>
@@ -336,10 +368,12 @@ function CompletionPopup({
         ) : (
           <>
             <Text style={styles.popupTitle}>Test complete</Text>
-            <Text style={styles.popupPoints}>+{result.pointsEarned} pts</Text>
+            <Animated.Text style={[styles.popupPoints, pointsStyle]}>
+              +{result.pointsEarned} pts
+            </Animated.Text>
           </>
         )}
-      </View>
+      </Animated.View>
     </Pressable>
   );
 }
