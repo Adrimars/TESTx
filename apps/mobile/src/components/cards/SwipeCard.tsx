@@ -53,6 +53,11 @@ type SwipeCardProps = {
   /** Runs on the JS thread once a committed card has finished flying away. */
   onCommit?: (value: number) => void;
   /**
+   * Runs on the JS thread the moment a drag begins. Used to retire the first-run gesture
+   * hint: the evaluator dismisses it by performing the gesture it is teaching.
+   */
+  onDragStart?: () => void;
+  /**
    * Drag offset, owned by the parent when it needs to react to the card's position —
    * target proximity in Rating and Ranking. Omit for cards nothing else tracks.
    *
@@ -73,6 +78,7 @@ export function SwipeCard({
   children,
   onRelease,
   onCommit,
+  onDragStart,
   position,
   enabled = true,
   maxTiltDeg = 8,
@@ -97,6 +103,10 @@ export function SwipeCard({
 
   const pan = Gesture.Pan()
     .enabled(enabled)
+    .onStart(() => {
+      if (isSettling.value) return;
+      if (onDragStart) runOnJS(onDragStart)();
+    })
     .onUpdate((event) => {
       if (isSettling.value) return;
       translateX.value = event.translationX;

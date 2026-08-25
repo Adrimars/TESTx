@@ -4,11 +4,13 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import type { SharedValue } from "react-native-reanimated";
 import { CardMedia } from "./CardMedia";
+import { DragHint } from "./DragHint";
 import { SwipeCard } from "./SwipeCard";
 import type { ReleaseGesture } from "./SwipeCard";
 import { resolveDropTarget, targetProximity } from "@/lib/swipe";
 import type { DropTarget } from "@/lib/swipe";
 import type { EvaluatorQuestion } from "@/lib/test";
+import { useGestureTutorial } from "@/lib/tutorial";
 import { theme } from "@/lib/theme";
 
 const PILL_WIDTH = 56;
@@ -82,6 +84,11 @@ export function RatingCard({ question, isActive, onAnswer }: RatingCardProps) {
     }));
   }, [insets.top, insets.bottom, insets.right, values, width]);
 
+  // Only the active card may teach; a peeking card is not being interacted with, and two
+  // hints on screen at once would be worse than none.
+  const tutorial = useGestureTutorial("rating", isActive);
+  const hintTarget = targets[Math.floor(targets.length / 2)];
+
   const onRelease = (gesture: ReleaseGesture) => {
     "worklet";
     const target = resolveDropTarget(gesture.x, gesture.y, targets);
@@ -101,6 +108,7 @@ export function RatingCard({ question, isActive, onAnswer }: RatingCardProps) {
         position={isActive ? { x, y } : undefined}
         onRelease={onRelease}
         onCommit={onAnswer}
+        onDragStart={tutorial.shouldShow ? tutorial.dismiss : undefined}
         maxTiltDeg={0}
       >
         <View style={styles.body}>
@@ -116,6 +124,14 @@ export function RatingCard({ question, isActive, onAnswer }: RatingCardProps) {
           <Text style={styles.hint}>Drag onto a number to rate</Text>
         </View>
       </SwipeCard>
+
+      {tutorial.shouldShow && hintTarget ? (
+        <DragHint
+          toX={hintTarget.centerX}
+          toY={hintTarget.centerY}
+          message="Drag the card onto a number to rate it. Let go anywhere else to start over."
+        />
+      ) : null}
 
       <View
         style={[

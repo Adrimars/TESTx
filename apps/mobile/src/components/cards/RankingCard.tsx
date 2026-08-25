@@ -5,11 +5,13 @@ import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanima
 import type { SharedValue } from "react-native-reanimated";
 import { DEFAULT_RANKING_BEST_LABEL, DEFAULT_RANKING_WORST_LABEL } from "@testx/shared";
 import { CardMedia } from "./CardMedia";
+import { DragHint } from "./DragHint";
 import { SwipeCard } from "./SwipeCard";
 import type { ReleaseGesture } from "./SwipeCard";
 import { orderPlacements, resolveDropTarget, targetProximity } from "@/lib/swipe";
 import type { DropTarget } from "@/lib/swipe";
 import type { EvaluatorQuestion } from "@/lib/test";
+import { useGestureTutorial } from "@/lib/tutorial";
 import { theme } from "@/lib/theme";
 
 const SLOT_WIDTH = 56;
@@ -73,6 +75,9 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
 
   const current = options[cursor];
 
+  const tutorial = useGestureTutorial("ranking", isActive);
+  const hintTarget = targets.find((target) => target.enabled);
+
   const onRelease = (gesture: ReleaseGesture) => {
     "worklet";
     const target = resolveDropTarget(gesture.x, gesture.y, targets);
@@ -121,6 +126,7 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
         position={isActive ? { x, y } : undefined}
         onRelease={onRelease}
         onCommit={place}
+        onDragStart={tutorial.shouldShow ? tutorial.dismiss : undefined}
         maxTiltDeg={0}
       >
         <View style={styles.body}>
@@ -138,6 +144,14 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
           </View>
         </View>
       </SwipeCard>
+
+      {tutorial.shouldShow && hintTarget ? (
+        <DragHint
+          toX={hintTarget.centerX}
+          toY={hintTarget.centerY}
+          message="Drag each card onto an open slot. 1 is best. A filled slot will not take another."
+        />
+      ) : null}
 
       <View
         style={[
