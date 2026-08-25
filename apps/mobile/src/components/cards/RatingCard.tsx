@@ -254,9 +254,7 @@ const styles = StyleSheet.create({
   body: { flex: 1 },
   prompt: {
     color: theme.colors.textPrimary,
-    fontSize: 18,
-    fontWeight: "600",
-    lineHeight: 24,
+    ...theme.type.prompt,
     padding: theme.spacing(2),
     // Keep the prompt clear of the target column so long prompts do not run under it.
     paddingRight: PILL_WIDTH + COLUMN_RIGHT_MARGIN + theme.spacing(2),

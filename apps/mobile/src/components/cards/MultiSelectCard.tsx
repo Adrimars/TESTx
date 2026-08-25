@@ -221,7 +221,7 @@ const NO_TOUCH = { pointerEvents: "none" } as const;
 const styles = StyleSheet.create({
   wrapper: { flex: 1 },
   header: { gap: theme.spacing(0.5), paddingHorizontal: theme.spacing(2) },
-  prompt: { color: theme.colors.textPrimary, fontSize: 18, fontWeight: "600", lineHeight: 24 },
+  prompt: { color: theme.colors.textPrimary, ...theme.type.prompt },
   status: { color: theme.colors.textSecondary, fontSize: 13 },
   notice: { color: theme.colors.accent, fontSize: 13, fontWeight: "600" },
   optionBody: { flex: 1 },

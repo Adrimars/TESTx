@@ -121,8 +121,7 @@ const styles = StyleSheet.create({
   },
   prompt: {
     color: theme.colors.textPrimary,
-    fontSize: 18,
-    fontWeight: "600",
+    ...theme.type.prompt,
     textAlign: "center",
   },
   note: { color: theme.colors.textSecondary, fontSize: 13, textAlign: "center" },

@@ -196,9 +196,7 @@ const styles = StyleSheet.create({
   body: { flex: 1 },
   prompt: {
     color: theme.colors.textPrimary,
-    fontSize: 18,
-    fontWeight: "600",
-    lineHeight: 24,
+    ...theme.type.prompt,
     padding: theme.spacing(2),
   },
   halves: { flex: 1, flexDirection: "row" },

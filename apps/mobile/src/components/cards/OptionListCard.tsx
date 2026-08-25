@@ -153,9 +153,7 @@ const styles = StyleSheet.create({
   card: theme.card.surface,
   prompt: {
     color: theme.colors.textPrimary,
-    fontSize: 18,
-    fontWeight: "600",
-    lineHeight: 24,
+    ...theme.type.prompt,
     padding: theme.spacing(2),
   },
   scroll: { flex: 1 },

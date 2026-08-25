@@ -356,9 +356,7 @@ const styles = StyleSheet.create({
   body: { flex: 1 },
   prompt: {
     color: theme.colors.textPrimary,
-    fontSize: 18,
-    fontWeight: "600",
-    lineHeight: 24,
+    ...theme.type.prompt,
     paddingHorizontal: theme.spacing(2),
     paddingTop: theme.spacing(2),
     // Keep the prompt clear of the slot column so long prompts do not run under it.
