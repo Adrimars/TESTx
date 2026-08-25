@@ -117,10 +117,14 @@ export default function ReviewPage() {
                 if (question.type === "RATING" && answer.ratingValue !== null) {
                   answerText = `Rating: ${answer.ratingValue}`;
                 } else if (answer.selectedOptionIds.length > 0) {
-                  const labels = answer.selectedOptionIds
-                    .map((id) => question.options.find((o) => o.id === id)?.label ?? id)
-                    .join(", ");
-                  answerText = labels;
+                  const labels = answer.selectedOptionIds.map(
+                    (id) => question.options.find((o) => o.id === id)?.label ?? id
+                  );
+                  // An ordering answer is a ranking, so the positions are part of the answer.
+                  answerText =
+                    question.type === "ORDERING"
+                      ? labels.map((label, position) => `${position + 1}. ${label}`).join("  ")
+                      : labels.join(", ");
                 }
               }
 

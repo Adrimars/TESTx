@@ -33,7 +33,10 @@ type QualityResult = {
 };
 
 /** Only option-based answers can be compared for consistency; see the trap check below. */
-const COMPARABLE_TRAP_TYPES = new Set(["SINGLE_SELECT", "MULTI_SELECT"]);
+const COMPARABLE_TRAP_TYPES = new Set(["SINGLE_SELECT", "MULTI_SELECT", "ORDERING"]);
+
+/** Types whose answer is a ranking, where the order of `selectedOptions` is the answer. */
+const ORDERED_TYPES = new Set(["ORDERING"]);
 
 /**
  * A session may legitimately run longer than the work it contains — an evaluator gets
@@ -64,14 +67,18 @@ function optionKey(option: QuestionOptionRow): string {
   return `order:${option.order}`;
 }
 
-function selectionKey(selectedIds: string[], options: QuestionOptionRow[]): string {
+/**
+ * The comparable form of an answer. Selections are a set, so the keys are sorted before
+ * comparison; a ranking is a sequence, where the order the evaluator chose *is* the answer
+ * and sorting it would call every ranking consistent.
+ */
+function answerKey(selectedIds: string[], options: QuestionOptionRow[], ordered: boolean): string {
   const byId = new Map(options.map((option) => [option.id, option]));
-  return selectedIds
+  const keys = selectedIds
     .map((id) => byId.get(id))
     .filter((option): option is QuestionOptionRow => option !== undefined)
-    .map(optionKey)
-    .sort()
-    .join(",");
+    .map(optionKey);
+  return (ordered ? keys : [...keys].sort()).join(",");
 }
 
 function sameOptionSet(a: QuestionOptionRow[], b: QuestionOptionRow[]): boolean {
@@ -149,8 +156,15 @@ export const qualityService = {
           );
         } else if (!COMPARABLE_TRAP_TYPES.has(question.type)) {
           warnings.push(
-            `Trap duplicate ${question.id} is a ${question.type} question; only select questions ` +
-              `can be compared for consistency, check skipped`
+            `Trap duplicate ${question.id} is a ${question.type} question; only select and ordering ` +
+              `questions can be compared for consistency, check skipped`
+          );
+        } else if (question.type !== sourceQuestion.type) {
+          // Ranking three options and picking one of them are different answers; comparing
+          // them would flag an evaluator for the author's mistake.
+          warnings.push(
+            `Trap duplicate ${question.id} is a ${question.type} question but its source ` +
+              `${sourceQuestion.id} is a ${sourceQuestion.type} question; check skipped`
           );
         } else if (!sameOptionSet(question.options, sourceQuestion.options)) {
           // Not a real duplicate — comparing them would flag an evaluator for the author's mistake.
@@ -159,10 +173,12 @@ export const qualityService = {
               `${sourceQuestion.id}; check skipped`
           );
         } else {
-          const trapSelection = selectionKey(answer.selectedOptionIds ?? [], question.options);
-          const sourceSelection = selectionKey(
+          const ordered = ORDERED_TYPES.has(question.type);
+          const trapSelection = answerKey(answer.selectedOptionIds ?? [], question.options, ordered);
+          const sourceSelection = answerKey(
             sourceAnswer.selectedOptionIds ?? [],
-            sourceQuestion.options
+            sourceQuestion.options,
+            ordered
           );
           if (trapSelection !== sourceSelection) {
             flagReasons.add("CONSISTENCY_FAILED");

@@ -46,6 +46,7 @@ const PUBLIC_CONFIG_KEYS: Record<string, readonly string[]> = {
   SINGLE_SELECT: [],
   MULTI_SELECT: ["minSelections", "maxSelections"],
   RATING: ["min", "max", "minLabel", "maxLabel"],
+  ORDERING: ["topLabel", "bottomLabel"],
 };
 
 function toConfig(raw: unknown): Record<string, unknown> {
@@ -135,6 +136,16 @@ function validateAnswers(
       const maxSelections = numberOr(config.maxSelections, question.options.length);
       if (selected.length > maxSelections) {
         return { message: `Question ${questionId} accepts at most ${maxSelections} options` };
+      }
+      answers.push({ ...base, selectedOptionIds: selected });
+      continue;
+    }
+
+    if (question.type === "ORDERING") {
+      // The ranking *is* the answer, so a partial one is not an under-filled answer the
+      // quality service could judge — it is a payload an honest client cannot produce.
+      if (selected.length !== question.options.length) {
+        return { message: `Question ${questionId} must rank every option exactly once` };
       }
       answers.push({ ...base, selectedOptionIds: selected });
       continue;

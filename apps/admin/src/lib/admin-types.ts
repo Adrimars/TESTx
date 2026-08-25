@@ -112,6 +112,19 @@ export type RatingAggregation = {
   distribution: Array<{ value: number; count: number }>;
 };
 
+export type OrderingAggregation = {
+  /** One entry per option, best average rank first. */
+  ranks: Array<{
+    optionId: string;
+    label: string | null;
+    mediaId: string | null;
+    mediaUrl: string | null;
+    averageRank: number | null;
+    /** How many evaluators put this option in each position, index 0 = first place. */
+    positionCounts: number[];
+  }>;
+};
+
 export type QuestionResult = {
   questionId: string;
   prompt: string;
@@ -120,6 +133,7 @@ export type QuestionResult = {
   answeredCount: number;
   options?: OptionAggregation[];
   rating?: RatingAggregation;
+  ordering?: OrderingAggregation;
 };
 
 export type TestResults = {

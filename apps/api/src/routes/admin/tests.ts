@@ -135,13 +135,27 @@ function validateQuestionShape(input: QuestionInput) {
     );
   }
 
-  if (input.type === "SINGLE_SELECT" || input.type === "MULTI_SELECT") {
+  // An attention check is graded by "was this exact option picked", which only a selection
+  // answer can express: a rating has no options, and an ordering answer contains every one.
+  if (input.isAttentionCheck && input.type !== "SINGLE_SELECT" && input.type !== "MULTI_SELECT") {
+    throw Object.assign(
+      new Error("Only single and multi select questions can be attention checks"),
+      { statusCode: 400 }
+    );
+  }
+
+  // An ordering question is answered by ranking its options, so it needs the same option
+  // shape a selection question does.
+  if (input.type === "SINGLE_SELECT" || input.type === "MULTI_SELECT" || input.type === "ORDERING") {
+    const noun = input.type === "ORDERING" ? "Ordering" : "Selection";
     if (input.options.length < 2 || input.options.length > 10) {
-      throw Object.assign(new Error("Selection questions require 2 to 10 options"), { statusCode: 400 });
+      throw Object.assign(new Error(`${noun} questions require 2 to 10 options`), { statusCode: 400 });
     }
     for (const option of input.options) {
       if (!option.label && !option.mediaId) {
-        throw Object.assign(new Error("Each selection option needs a label or media item"), { statusCode: 400 });
+        throw Object.assign(new Error(`Each ${noun.toLowerCase()} option needs a label or media item`), {
+          statusCode: 400,
+        });
       }
     }
     return;

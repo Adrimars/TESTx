@@ -24,7 +24,34 @@ const initialAnswer: AnswerData = {
   selectedOptionIds: [],
   ratingValue: null,
   timeSpentSeconds: 0,
+  orderTouched: false,
 };
+
+function shuffled<T>(items: T[]): T[] {
+  const result = [...items];
+  for (let i = result.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j]!, result[i]!];
+  }
+  return result;
+}
+
+/**
+ * Ordering questions open on a shuffled ranking rather than the author's order, which would
+ * otherwise anchor every evaluator to the same starting point. The shuffle is drawn once per
+ * session so navigating back to a question does not reshuffle what the evaluator arranged.
+ */
+function seedOrderingAnswers(test: TestDetail): Map<string, AnswerData> {
+  const answers = new Map<string, AnswerData>();
+  for (const question of test.questions) {
+    if (question.type !== "ORDERING") continue;
+    answers.set(question.id, {
+      ...initialAnswer,
+      selectedOptionIds: shuffled(question.options.map((option) => option.id)),
+    });
+  }
+  return answers;
+}
 
 const TestSessionContext = createContext<TestSessionContextValue | null>(null);
 
@@ -39,7 +66,7 @@ export function TestSessionProvider({ children }: { children: React.ReactNode })
   const startSession = useCallback((test: TestDetail) => {
     setState({
       test,
-      answers: new Map(),
+      answers: seedOrderingAnswers(test),
       sessionToken: test.sessionToken,
       questionTimers: new Map(),
     });

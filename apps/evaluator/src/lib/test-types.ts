@@ -18,7 +18,7 @@ export type QuestionOption = {
 export type Question = {
   id: string;
   testId: string;
-  type: "SINGLE_SELECT" | "MULTI_SELECT" | "RATING";
+  type: "SINGLE_SELECT" | "MULTI_SELECT" | "RATING" | "ORDERING";
   prompt: string;
   mediaType: string | null;
   order: number;
@@ -52,7 +52,14 @@ export type NextTest = {
 };
 
 export type AnswerData = {
+  /** For ORDERING questions this is the ranking, best first; the array order is the answer. */
   selectedOptionIds: string[];
   ratingValue: number | null;
   timeSpentSeconds: number;
+  /**
+   * Whether the evaluator has actually rearranged an ordering question. Its ranking starts
+   * pre-filled with a shuffle, so without this an untouched random order would count as an
+   * answer. Local to the session; never submitted.
+   */
+  orderTouched: boolean;
 };

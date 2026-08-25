@@ -58,6 +58,8 @@ type QuestionDraft = {
   ratingMax: string;
   minLabel: string;
   maxLabel: string;
+  topLabel: string;
+  bottomLabel: string;
 };
 
 const EMPTY_QUESTION: QuestionDraft = {
@@ -74,7 +76,19 @@ const EMPTY_QUESTION: QuestionDraft = {
   ratingMax: "5",
   minLabel: "",
   maxLabel: "",
+  topLabel: "",
+  bottomLabel: "",
 };
+
+/** Types answered through a list of options — selection questions and ordering alike. */
+function usesOptions(type: QuestionType) {
+  return type === "SINGLE_SELECT" || type === "MULTI_SELECT" || type === "ORDERING";
+}
+
+/** Only select questions can carry an attention check's "pick this exact option" grading key. */
+function canBeAttentionCheck(type: QuestionType) {
+  return type === "SINGLE_SELECT" || type === "MULTI_SELECT";
+}
 
 const GENDERS: Gender[] = ["MALE", "FEMALE", "OTHER", "UNDISCLOSED"];
 const FILE_MEDIA_TYPES: Array<Exclude<MediaType, "TEXT">> = ["IMAGE", "VIDEO", "AUDIO"];
@@ -115,6 +129,8 @@ function toDraft(question?: AdminQuestion): QuestionDraft {
     ratingMax: configNumber(question.config.max, "5"),
     minLabel: configString(question.config.minLabel),
     maxLabel: configString(question.config.maxLabel),
+    topLabel: configString(question.config.topLabel),
+    bottomLabel: configString(question.config.bottomLabel),
   };
 }
 
@@ -241,15 +257,18 @@ export default function TestEditorPage() {
       if (draft.minLabel.trim()) config.minLabel = draft.minLabel.trim();
       if (draft.maxLabel.trim()) config.maxLabel = draft.maxLabel.trim();
     }
+    if (draft.type === "ORDERING") {
+      if (draft.topLabel.trim()) config.topLabel = draft.topLabel.trim();
+      if (draft.bottomLabel.trim()) config.bottomLabel = draft.bottomLabel.trim();
+    }
 
-    const options =
-      draft.type === "SINGLE_SELECT" || draft.type === "MULTI_SELECT"
-        ? draft.options.map((option, index) => ({
-            label: option.label.trim() || undefined,
-            mediaId: option.mediaId || undefined,
-            order: index + 1,
-          }))
-        : [];
+    const options = usesOptions(draft.type)
+      ? draft.options.map((option, index) => ({
+          label: option.label.trim() || undefined,
+          mediaId: option.mediaId || undefined,
+          order: index + 1,
+        }))
+      : [];
 
     return {
       type: draft.type,
@@ -804,6 +823,7 @@ export default function TestEditorPage() {
                   <option value="SINGLE_SELECT">Single select</option>
                   <option value="MULTI_SELECT">Multi select</option>
                   <option value="RATING">Rating</option>
+                  <option value="ORDERING">Ordering</option>
                 </Select>
               </Field>
               <Field label="Option media" hint="Changing this clears the options.">
@@ -836,7 +856,7 @@ export default function TestEditorPage() {
             </div>
           </section>
 
-          {(draft.type === "SINGLE_SELECT" || draft.type === "MULTI_SELECT") && (
+          {usesOptions(draft.type) && (
             <section className="space-y-3 border-t border-border pt-5">
               <div className="flex items-center justify-between">
                 <h3 className="text-meta uppercase text-muted-foreground">
@@ -953,6 +973,34 @@ export default function TestEditorPage() {
                     placeholder="e.g. Very likely"
                     value={draft.maxLabel}
                     onChange={(event) => setDraft((current) => ({ ...current, maxLabel: event.target.value }))}
+                  />
+                </Field>
+              </div>
+            </section>
+          )}
+
+          {draft.type === "ORDERING" && (
+            <section className="space-y-3 border-t border-border pt-5">
+              <h3 className="text-meta uppercase text-muted-foreground">Ranking labels</h3>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field
+                  label="Instruction"
+                  optional
+                  hint="Shown above the list. Defaults to “Drag the options into order — best first.”"
+                >
+                  <Input
+                    placeholder="e.g. Rank these from most to least realistic"
+                    value={draft.topLabel}
+                    onChange={(event) => setDraft((current) => ({ ...current, topLabel: event.target.value }))}
+                  />
+                </Field>
+                <Field label="Note below the list" optional>
+                  <Input
+                    placeholder="e.g. Last place is the least realistic"
+                    value={draft.bottomLabel}
+                    onChange={(event) =>
+                      setDraft((current) => ({ ...current, bottomLabel: event.target.value }))
+                    }
                   />
                 </Field>
               </div>

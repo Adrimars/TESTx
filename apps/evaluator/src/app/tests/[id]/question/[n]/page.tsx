@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, ArrowRight, Check } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, GripVertical } from "lucide-react";
 import { Button } from "@testx/ui";
 import { useTestSession } from "@/components/test-session-provider";
 import { resolveMediaUrl } from "@/lib/api";
@@ -216,6 +216,173 @@ function RatingQuestion({
   );
 }
 
+/**
+ * A drag-to-rank list. Dragging is the whole interaction: grab a row anywhere and the rows
+ * under it move aside live, so the list always reads as its current ranking. Keyboard users
+ * get the same thing through the grip, which is focusable and moves its row with the arrow
+ * keys — and that path is what makes the list usable without a pointer at all.
+ */
+function OrderingQuestion({
+  question,
+  order,
+  onReorder,
+}: {
+  question: Question;
+  order: string[];
+  onReorder: (ids: string[]) => void;
+}) {
+  const config = question.config as { topLabel?: string; bottomLabel?: string };
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [announcement, setAnnouncement] = useState("");
+  /** Pointer position the current drag is measured from; shifts as rows swap under it. */
+  const grabY = useRef(0);
+  const rowRefs = useRef(new Map<string, HTMLLIElement>());
+
+  const byId = new Map(question.options.map((option) => [option.id, option]));
+  // The session seeds a shuffled order; fall back to the authored one if it is ever missing.
+  const ranked = order.length === question.options.length
+    ? order.map((id) => byId.get(id)).filter((option): option is QuestionOption => option !== undefined)
+    : question.options;
+
+  function optionName(option: QuestionOption, index: number) {
+    return option.label ?? option.media?.fileName ?? `Option ${index + 1}`;
+  }
+
+  function moveTo(from: number, to: number) {
+    if (to < 0 || to >= ranked.length || to === from) return;
+    const next = ranked.map((option) => option.id);
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved!);
+    onReorder(next);
+  }
+
+  function startDrag(event: React.PointerEvent, id: string) {
+    // Ignore secondary buttons so a right-click never leaves a row stuck to the pointer.
+    if (event.button !== 0) return;
+    // Capture on the row, not the grip: the row is what carries the move handlers, and it
+    // keeps receiving them even when the pointer runs past the end of the list.
+    rowRefs.current.get(id)?.setPointerCapture(event.pointerId);
+    setDraggingId(id);
+    setDragOffset(0);
+    grabY.current = event.clientY;
+  }
+
+  function onDrag(event: React.PointerEvent) {
+    if (!draggingId) return;
+    const index = ranked.findIndex((option) => option.id === draggingId);
+    if (index < 0) return;
+
+    // Neighbours are measured live: their rows are not translated, so their midpoints are
+    // where the dragged row would land if it were dropped now.
+    const goingDown = event.clientY > grabY.current;
+    const neighbour = ranked[goingDown ? index + 1 : index - 1];
+    const rect = neighbour ? rowRefs.current.get(neighbour.id)?.getBoundingClientRect() : undefined;
+    const draggedRect = rowRefs.current.get(draggingId)?.getBoundingClientRect();
+
+    if (rect && draggedRect) {
+      const midpoint = rect.top + rect.height / 2;
+      if ((goingDown && event.clientY > midpoint) || (!goingDown && event.clientY < midpoint)) {
+        // Shift the reference point by the distance the row just travelled — measured between
+        // slots rather than by row height, so the gap between rows is accounted for and the
+        // row keeps sitting under the pointer instead of drifting away from it.
+        const slotTop = draggedRect.top - dragOffset;
+        grabY.current += rect.top - slotTop;
+        moveTo(index, goingDown ? index + 1 : index - 1);
+      }
+    }
+
+    setDragOffset(event.clientY - grabY.current);
+  }
+
+  function endDrag(event: React.PointerEvent) {
+    if (!draggingId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setDraggingId(null);
+    setDragOffset(0);
+  }
+
+  function onGripKeyDown(event: React.KeyboardEvent, index: number, option: QuestionOption) {
+    const direction = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+    if (direction === 0) return;
+    const target = index + direction;
+    if (target < 0 || target >= ranked.length) return;
+    event.preventDefault();
+    moveTo(index, target);
+    setAnnouncement(`${optionName(option, index)} moved to position ${target + 1} of ${ranked.length}.`);
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">
+        {config.topLabel ?? "Drag the options into order — best first."}
+      </p>
+
+      <ol className="grid gap-2.5">
+        {ranked.map((option, index) => {
+          const dragging = draggingId === option.id;
+          return (
+            <li
+              key={option.id}
+              ref={(element) => {
+                if (element) rowRefs.current.set(option.id, element);
+                else rowRefs.current.delete(option.id);
+              }}
+              onPointerMove={onDrag}
+              onPointerUp={endDrag}
+              onPointerCancel={endDrag}
+              style={dragging ? { transform: `translateY(${dragOffset}px)` } : undefined}
+              className={`flex select-none items-center gap-3 rounded-lg border-2 bg-card p-2.5 ${
+                dragging ? "z-10 border-primary shadow-lg" : "border-border hover:border-primary/40"
+              }`}
+            >
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-sm font-bold tabular-nums text-muted-foreground">
+                {index + 1}
+              </span>
+
+              {option.mediaUrl && (
+                <div className="w-24 shrink-0 overflow-hidden rounded-md">
+                  <OptionMedia option={option} />
+                </div>
+              )}
+              <span className="min-w-0 flex-1 text-sm font-medium text-foreground">
+                {optionName(option, index)}
+              </span>
+
+              {/*
+                Dragging starts here rather than anywhere on the row for two reasons: a row can
+                hold a video or audio player whose controls need the same presses, and on a
+                phone a row-wide drag target would eat the scroll gesture.
+              */}
+              <button
+                type="button"
+                aria-label={`Reorder ${optionName(option, index)}, position ${index + 1} of ${
+                  ranked.length
+                }. Use the arrow keys to move it.`}
+                onPointerDown={(event) => startDrag(event, option.id)}
+                onKeyDown={(event) => onGripKeyDown(event, index, option)}
+                className={`flex min-h-11 w-11 shrink-0 touch-none items-center justify-center self-stretch rounded-md text-muted-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 ${
+                  dragging ? "cursor-grabbing bg-primary/10 text-primary" : "cursor-grab hover:bg-accent"
+                }`}
+              >
+                <GripVertical className="size-5" aria-hidden />
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+
+      <p aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
+
+      {config.bottomLabel && <p className="text-sm text-muted-foreground">{config.bottomLabel}</p>}
+    </div>
+  );
+}
+
 export default function QuestionPage() {
   const params = useParams<{ id: string; n: string }>();
   const router = useRouter();
@@ -276,6 +443,10 @@ export default function QuestionPage() {
       return selected.length >= (config.minSelections ?? 1);
     }
     if (question!.type === "RATING") return ratingValue !== null;
+    if (question!.type === "ORDERING") {
+      // The list arrives pre-filled with a shuffle, so only a deliberate rearrangement counts.
+      return selected.length === question!.options.length && answer?.orderTouched === true;
+    }
     return false;
   }
 
@@ -339,6 +510,13 @@ export default function QuestionPage() {
           question={question}
           value={ratingValue}
           onRate={(v) => setAnswer(question.id, { ratingValue: v })}
+        />
+      )}
+      {question.type === "ORDERING" && (
+        <OrderingQuestion
+          question={question}
+          order={selected}
+          onReorder={(ids) => setAnswer(question.id, { selectedOptionIds: ids, orderTouched: true })}
         />
       )}
 

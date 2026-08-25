@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, GripVertical } from "lucide-react";
 import {
   Alert,
   Badge,
@@ -39,6 +39,43 @@ function QuestionPreview({ question }: { question: AdminQuestion }) {
             {value}
           </button>
         ))}
+      </div>
+    );
+  }
+
+  if (question.type === "ORDERING") {
+    // Evaluators see the options shuffled and rank them; the preview shows the authored order.
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          {typeof question.config.topLabel === "string"
+            ? question.config.topLabel
+            : "Drag the options into order — best first."}
+        </p>
+        <ol className="grid gap-2.5">
+          {question.options.map((option, index) => (
+            <li
+              key={option.id}
+              className="flex items-center gap-3 rounded-lg border-2 border-border p-2.5"
+            >
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-sm font-bold tabular-nums text-muted-foreground">
+                {index + 1}
+              </span>
+              {option.mediaId && question.mediaType === "IMAGE" && (
+                <img
+                  src={`${API_URL}/media/${option.mediaId}/file`}
+                  alt={optionLabel(question, index)}
+                  className="h-12 w-20 shrink-0 rounded-md bg-muted object-cover"
+                />
+              )}
+              <span className="min-w-0 flex-1 text-sm font-medium">{optionLabel(question, index)}</span>
+              <GripVertical className="size-5 shrink-0 text-muted-foreground" aria-hidden />
+            </li>
+          ))}
+        </ol>
+        {typeof question.config.bottomLabel === "string" && (
+          <p className="text-sm text-muted-foreground">{question.config.bottomLabel}</p>
+        )}
       </div>
     );
   }

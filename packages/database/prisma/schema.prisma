@@ -30,6 +30,7 @@ enum QuestionType {
   SINGLE_SELECT
   MULTI_SELECT
   RATING
+  ORDERING
 }
 
 enum MediaType {
@@ -173,6 +174,8 @@ model Answer {
   response         TestResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
   questionId       String       @db.Uuid
   question         Question     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  /// Selected option IDs. For ORDERING questions this is the evaluator's ranking: a full
+  /// permutation of the question's options, best-first — the array order carries the answer.
   selectedOptions  String[]     @default([]) @db.Uuid
   ratingValue      Int?
   timeSpentSeconds Int

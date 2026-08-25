@@ -121,11 +121,74 @@ function RatingResult({ result }: { result: QuestionResult }) {
   );
 }
 
+/**
+ * Ordering questions are summarised by where each option landed on average — a lower number
+ * is a better rank — with the spread of positions behind it, since two options can share an
+ * average while one was divisive and the other consistently middling.
+ */
+function OrderingResult({ result }: { result: QuestionResult }) {
+  const ranks = result.ordering?.ranks ?? [];
+  if (ranks.length === 0) return null;
+  const positionCount = ranks[0]?.positionCounts.length ?? 0;
+
+  return (
+    <div className="space-y-3">
+      {ranks.map((rank, index) => {
+        const total = rank.positionCounts.reduce((sum, count) => sum + count, 0);
+        return (
+          <div key={rank.optionId} className="space-y-1.5">
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted text-xs font-semibold tabular-nums text-muted-foreground">
+                  {index + 1}
+                </span>
+                {rank.mediaId && (
+                  <img
+                    src={`${API_URL}/media/${rank.mediaId}/file`}
+                    alt={rank.label ?? `Option ${index + 1}`}
+                    className="size-8 shrink-0 rounded object-cover"
+                  />
+                )}
+                <span className="truncate font-medium text-foreground">
+                  {rank.label ?? (rank.mediaId ? `Media ${index + 1}` : `Option ${index + 1}`)}
+                </span>
+              </span>
+              <span className="shrink-0 tabular-nums text-muted-foreground">
+                avg. rank {rank.averageRank ?? "—"}
+              </span>
+            </div>
+            <div className="flex gap-1" aria-hidden>
+              {rank.positionCounts.map((count, position) => (
+                <div
+                  key={position}
+                  title={`Position ${position + 1}: ${count}`}
+                  className="h-2 flex-1 overflow-hidden rounded-full bg-muted"
+                >
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{ width: total > 0 ? `${(count / total) * 100}%` : "0%" }}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+      {positionCount > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Each bar is one position, first place on the left.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function QuestionBody({ result }: { result: QuestionResult }) {
   if (result.answeredCount === 0) {
     return <p className="text-sm text-muted-foreground">No responses yet.</p>;
   }
   if (result.type === "RATING") return <RatingResult result={result} />;
+  if (result.type === "ORDERING") return <OrderingResult result={result} />;
   return <OptionBars result={result} />;
 }
 
