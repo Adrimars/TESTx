@@ -12,6 +12,7 @@ import { resolveMediaUrl } from "@/lib/env";
 import { useSession } from "@/lib/session";
 import {
   clearInProgressTest,
+  prefetchInProgressTest,
   submitWithBackoff,
   writeInProgressTest,
   writePendingSubmission,
@@ -55,7 +56,13 @@ async function findNextTest(queryClient: QueryClient, currentTestId: string): Pr
     if (!next) return null;
 
     try {
-      const full = await prefetchTest(queryClient, next.id);
+      // The in-progress lookup is primed here too, not just the test itself - both are
+      // what `feed.tsx` gates its loading spinner on, so both need to be a cache hit by
+      // the time `onContinue` swaps `key={testId}` or the gap just moves one gate later.
+      const [full] = await Promise.all([
+        prefetchTest(queryClient, next.id),
+        prefetchInProgressTest(queryClient, next.id),
+      ]);
       prefetchFirstCardMedia(full);
       return next.id;
     } catch (error) {

@@ -69,19 +69,38 @@ export const writePendingSubmission = (value: PendingSubmission): Promise<void> 
 export const clearPendingSubmission = (): Promise<void> => removeJson(PENDING_SUBMISSION_KEY);
 
 /**
- * Only ever resumes a record for the exact test currently being opened - a different
- * test id means this is a leftover from an abandoned session, not a match, so it isn't
- * offered back to `useDeck`. Composed the same way `useEvaluatorTest` gates on `testId`,
- * so it slots into `feed.tsx`'s existing pending/error/empty gate.
+ * Only ever resumes a record for the exact test being asked about - a different test id
+ * means this is a leftover from an abandoned session, not a match.
+ */
+async function fetchInProgressForTest(testId: string): Promise<InProgressTest | null> {
+  const stored = await readInProgressTest();
+  return stored && stored.testId === testId ? stored : null;
+}
+
+/**
+ * Composed the same way `useEvaluatorTest` gates on `testId`, so it slots into
+ * `feed.tsx`'s existing pending/error/empty gate.
  */
 export function useInProgressTest(testId: string | undefined) {
   return useQuery({
     queryKey: ["in-progress-test", testId],
     enabled: Boolean(testId),
-    queryFn: async () => {
-      const stored = await readInProgressTest();
-      return stored && stored.testId === testId ? stored : null;
-    },
+    queryFn: () => fetchInProgressForTest(testId!),
+  });
+}
+
+/**
+ * Primes the same query cache entry for a test that's only been prefetched, not opened
+ * yet (11.1's continuous-feed prefetch). Without this, `useInProgressTest` mounts with a
+ * cold cache the instant the feed continues into that test, and `feed.tsx`'s loading gate
+ * shows a second, whole-screen spinner right after the completion popup - the exact
+ * loading gap 11.1's prefetch exists to avoid. A prefetched test has never been opened,
+ * so this always resolves to `null`, but the gate has no way to know that without asking.
+ */
+export function prefetchInProgressTest(queryClient: QueryClient, testId: string) {
+  return queryClient.fetchQuery({
+    queryKey: ["in-progress-test", testId],
+    queryFn: () => fetchInProgressForTest(testId),
   });
 }
 
