@@ -41,27 +41,29 @@ export function OptionListCard({
   const isMedia = question.mediaType != null && question.mediaType !== "TEXT";
 
   return (
-    <View style={styles.card}>
-      <Text style={styles.prompt}>{question.prompt}</Text>
+    <View style={styles.shadow}>
+      <View style={styles.card}>
+        <Text style={styles.prompt}>{question.prompt}</Text>
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={[styles.list, isMedia && styles.grid]}
-        showsVerticalScrollIndicator={false}
-      >
-        {question.options.map((option) => (
-          <OptionShell
-            key={option.id}
-            option={option}
-            isMedia={isMedia}
-            selected={selectedIds.includes(option.id)}
-            disabled={!isActive}
-            onPress={() => onToggle(option.id)}
-          />
-        ))}
-      </ScrollView>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[styles.list, isMedia && styles.grid]}
+          showsVerticalScrollIndicator={false}
+        >
+          {question.options.map((option) => (
+            <OptionShell
+              key={option.id}
+              option={option}
+              isMedia={isMedia}
+              selected={selectedIds.includes(option.id)}
+              disabled={!isActive}
+              onPress={() => onToggle(option.id)}
+            />
+          ))}
+        </ScrollView>
 
-      {footer ? <View style={styles.footer}>{footer}</View> : null}
+        {footer ? <View style={styles.footer}>{footer}</View> : null}
+      </View>
     </View>
   );
 }
@@ -136,14 +138,11 @@ function OptionShell({
 const NO_TOUCH = { pointerEvents: "none" } as const;
 
 const styles = StyleSheet.create({
-  card: {
-    flex: 1,
-    borderRadius: 24,
-    backgroundColor: theme.colors.surfaceRaised,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.colors.borderHairline,
-    overflow: "hidden",
-  },
+  // Split the same way SwipeCard splits it: shadow on the outer, unclipped box; the
+  // radius/background/clip on an inner one, since iOS clips a shadow at its own
+  // overflow:"hidden" bounds.
+  shadow: { flex: 1, ...theme.card.shadow },
+  card: theme.card.surface,
   prompt: {
     color: theme.colors.textPrimary,
     fontSize: 18,

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { StyleSheet } from "react-native";
+import { StyleSheet, View } from "react-native";
 import type { LayoutChangeEvent, StyleProp, ViewStyle } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -215,20 +215,16 @@ export function SwipeCard({
 
   return (
     <GestureDetector gesture={pan}>
-      <Animated.View onLayout={onLayout} style={[styles.card, style, animatedStyle]}>
-        {children}
+      {/* Shadow lives on this outer, unclipped box; onLayout measures it too, since it's
+          the same size as the inner surface that fills it. */}
+      <Animated.View onLayout={onLayout} style={[styles.shadow, style, animatedStyle]}>
+        <View style={styles.surface}>{children}</View>
       </Animated.View>
     </GestureDetector>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    flex: 1,
-    borderRadius: 24,
-    backgroundColor: theme.colors.surfaceRaised,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.colors.borderHairline,
-    overflow: "hidden",
-  },
+  shadow: { flex: 1, ...theme.card.shadow },
+  surface: theme.card.surface,
 });

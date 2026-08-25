@@ -41,15 +41,16 @@ export function ProgressBar({ total, index }: ProgressBarProps) {
 const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
-    gap: 4,
+    // Progress segments, per prd.md §16.6: 2px bars, 2px gaps.
+    gap: 2,
     paddingHorizontal: theme.spacing(2),
   },
   track: {
     flex: 1,
-    height: 3,
-    borderRadius: 1.5,
+    height: 2,
+    borderRadius: 1,
     overflow: "hidden",
-    backgroundColor: theme.colors.borderHairline,
+    backgroundColor: theme.colors.surfaceOverlay,
   },
   fill: {
     flex: 1,

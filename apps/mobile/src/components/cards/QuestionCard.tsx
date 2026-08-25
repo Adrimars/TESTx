@@ -99,26 +99,25 @@ export function QuestionCard({ question, isActive, onAnswer }: QuestionCardProps
  */
 function UnsupportedCard({ question }: { question: EvaluatorQuestion }) {
   return (
-    <View style={styles.card}>
-      <Text style={styles.prompt}>{question.prompt}</Text>
-      <Text style={styles.note}>
-        This version of the app cannot show this question. Update TESTx to answer it.
-      </Text>
+    <View style={styles.shadow}>
+      <View style={styles.card}>
+        <Text style={styles.prompt}>{question.prompt}</Text>
+        <Text style={styles.note}>
+          This version of the app cannot show this question. Update TESTx to answer it.
+        </Text>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  shadow: { flex: 1, ...theme.card.shadow },
   card: {
-    flex: 1,
+    ...theme.card.surface,
     alignItems: "center",
     justifyContent: "center",
     gap: theme.spacing(1.5),
     padding: theme.spacing(3),
-    borderRadius: 24,
-    backgroundColor: theme.colors.surfaceRaised,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.colors.borderHairline,
   },
   prompt: {
     color: theme.colors.textPrimary,

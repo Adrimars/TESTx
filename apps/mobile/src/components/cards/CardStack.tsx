@@ -112,14 +112,14 @@ const styles = StyleSheet.create({
     bottom: theme.spacing(2),
     left: theme.spacing(2),
   },
-  // Matches SwipeCard's own corner radius so the scrim never peeks past the card's edge.
+  // Matches the shared Card radius so the scrim never peeks past the card's edge.
   scrim: {
     position: "absolute",
     top: 0,
     right: 0,
     bottom: 0,
     left: 0,
-    borderRadius: 24,
+    borderRadius: theme.card.shadow.borderRadius,
     backgroundColor: theme.colors.surfaceBase,
   },
 });

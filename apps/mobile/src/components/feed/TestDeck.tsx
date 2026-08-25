@@ -12,6 +12,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
+import { CounterChip } from "@/components/CounterChip";
 import { CardStack } from "@/components/cards/CardStack";
 import { QuestionCard } from "@/components/cards/QuestionCard";
 import { ApiError } from "@/lib/api";
@@ -292,7 +293,7 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
           >
             <Text style={styles.backLabel}>{"← Back"}</Text>
           </Pressable>
-          <Text style={styles.counter}>{Math.max(remaining, 0)} left</Text>
+          <CounterChip count={Math.max(remaining, 0)} label="left" />
         </View>
       </View>
 
@@ -434,7 +435,6 @@ const styles = StyleSheet.create({
   backDisabled: { opacity: 0.35 },
   backPressed: { opacity: 0.7 },
   backLabel: { color: theme.colors.textPrimary, fontSize: 14, fontWeight: "600" },
-  counter: { color: theme.colors.textSecondary, fontSize: 14, fontVariant: ["tabular-nums"] },
   title: { color: theme.colors.textPrimary, fontSize: 22, fontWeight: "700", textAlign: "center" },
   subtitle: { color: theme.colors.textSecondary, fontSize: 15, textAlign: "center" },
   overlay: {
