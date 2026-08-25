@@ -85,14 +85,3 @@ export function useGestureTutorial(gesture: TutorialGesture, enabled: boolean): 
 
   return { shouldShow, dismiss };
 }
-
-/** Test/support affordance: forget both flags so the hints show again. */
-export async function resetGestureTutorials(): Promise<void> {
-  for (const key of Object.values(KEYS)) {
-    if (isWeb) {
-      webStorage()?.removeItem(key);
-      continue;
-    }
-    await SecureStore.deleteItemAsync(key).catch(() => undefined);
-  }
-}

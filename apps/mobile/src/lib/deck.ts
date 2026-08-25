@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   initialDeckState,
   isDeckComplete,
@@ -40,6 +40,18 @@ export function useDeck(questions: EvaluatorQuestion[]): Deck {
   // question for time the last one took. That feeds straight into the speed check that
   // withholds rewards, so it has to be read at call time.
   const shownAt = useRef(Date.now());
+
+  // The hook mounts with an empty question list while the test is still being fetched, so
+  // this clock starts before there is a card to look at. Restart it when the first card
+  // actually appears, or the fetch gets billed to question one - and that lands on the
+  // idle signal the quality service reads.
+  const started = useRef(false);
+  const questionCount = questions.length;
+  useEffect(() => {
+    if (started.current || questionCount === 0) return;
+    started.current = true;
+    shownAt.current = Date.now();
+  }, [questionCount]);
 
   const answer = useCallback((next: Omit<DeckAnswer, "timeSpentSeconds">) => {
     const now = Date.now();
