@@ -250,7 +250,9 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
             pointerY={pointerY}
             option={optionsById.get(placements[target.value] ?? "")}
             mediaType={question.mediaType}
+            disabled={!isActive}
             onReclaim={reclaim}
+            onPlace={place}
           />
         ))}
       </View>
@@ -266,7 +268,9 @@ function RankSlot({
   pointerY,
   option,
   mediaType,
+  disabled,
   onReclaim,
+  onPlace,
 }: {
   target: DropTarget;
   endLabel?: string;
@@ -275,7 +279,9 @@ function RankSlot({
   pointerY: SharedValue<number>;
   option: EvaluatorOption | undefined;
   mediaType: string | null;
+  disabled: boolean;
   onReclaim: (slotNumber: number) => void;
+  onPlace: (slotNumber: number) => void;
 }) {
   const filled = !target.enabled;
 
@@ -305,6 +311,7 @@ function RankSlot({
         {filled && option ? (
           <Pressable
             style={styles.slotThumbnailPressable}
+            disabled={disabled}
             onPress={() => onReclaim(target.value)}
             accessibilityRole="button"
             accessibilityLabel={`Remove ${option.label ?? "this card"} from rank ${target.value}, to place it again`}
@@ -312,7 +319,17 @@ function RankSlot({
             <SlotThumbnail option={option} mediaType={mediaType} />
           </Pressable>
         ) : (
-          <Text style={styles.slotText}>{target.value}</Text>
+          // Tap-based fallback for the drag-to-slot gesture (prd.md §16.7): places the
+          // current card here directly, same as dragging it onto this slot would.
+          <Pressable
+            style={styles.slotThumbnailPressable}
+            disabled={disabled}
+            onPress={() => onPlace(target.value)}
+            accessibilityRole="button"
+            accessibilityLabel={`Place the current card at rank ${target.value}`}
+          >
+            <Text style={styles.slotText}>{target.value}</Text>
+          </Pressable>
         )}
       </Animated.View>
     </View>

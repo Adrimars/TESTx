@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   runOnJS,
@@ -164,8 +164,11 @@ export function RatingCard({ question, isActive, onAnswer }: RatingCardProps) {
         style={[
           styles.column,
           { right: insets.right + COLUMN_RIGHT_MARGIN, top: insets.top, bottom: insets.bottom },
-          NO_TOUCH,
         ]}
+        // "box-none": the column stays inert for the drag gesture beneath it, but each
+        // pill's own Pressable can still take a direct tap - the tap-based fallback every
+        // gesture-driven interaction needs (prd.md §16.7).
+        pointerEvents="box-none"
       >
         {targets.map((target, index) => (
           <TargetPill
@@ -178,6 +181,8 @@ export function RatingCard({ question, isActive, onAnswer }: RatingCardProps) {
             targets={targets}
             pointerX={pointerX}
             pointerY={pointerY}
+            disabled={!isActive}
+            onPress={() => onAnswer(target.value)}
           />
         ))}
       </View>
@@ -192,6 +197,8 @@ function TargetPill({
   targets,
   pointerX,
   pointerY,
+  disabled,
+  onPress,
 }: {
   target: DropTarget;
   label: string;
@@ -199,6 +206,8 @@ function TargetPill({
   targets: DropTarget[];
   pointerX: SharedValue<number>;
   pointerY: SharedValue<number>;
+  disabled: boolean;
+  onPress: () => void;
 }) {
   const animated = useAnimatedStyle(() => {
     // Exactly one pill can be active, because only one target can be under the finger.
@@ -226,14 +235,19 @@ function TargetPill({
       {endLabel ? <Text style={styles.endLabel} numberOfLines={1}>{endLabel}</Text> : null}
       <Animated.View style={[styles.pill, animated]}>
         <Animated.View style={[styles.pillFill, fill]} />
-        <Text style={styles.pillText}>{label}</Text>
+        <Pressable
+          style={styles.pillPressable}
+          disabled={disabled}
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={`Rate ${label}`}
+        >
+          <Text style={styles.pillText}>{label}</Text>
+        </Pressable>
       </Animated.View>
     </View>
   );
 }
-
-/** Inert overlay: the deprecated pointerEvents prop moved onto style. */
-const NO_TOUCH = { pointerEvents: "none" } as const;
 
 const styles = StyleSheet.create({
   wrapper: { flex: 1 },
@@ -283,6 +297,15 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.accent,
   },
   pillText: { color: theme.colors.textPrimary, fontSize: 18, fontWeight: "700" },
+  pillPressable: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   endLabel: {
     position: "absolute",
     right: PILL_WIDTH + theme.spacing(0.5),

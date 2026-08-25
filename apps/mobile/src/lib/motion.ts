@@ -21,6 +21,10 @@ export const CARD_COMMIT_MS = 180;
  * more pronounced overshoot reads as celebratory rather than jittery. */
 export const POPUP_ENTRANCE_SPRING = { damping: 14, stiffness: 180, mass: 0.9 } as const;
 
+/** Under OS Reduce Motion (prd.md §16.4/§16.7), every spring above collapses to this
+ * instead - an instant/short fade, never a translate/rotate/scale/overshoot. */
+export const REDUCED_MOTION_FADE_MS = 120;
+
 /** A light tick, fired the moment a drag crosses a target's commit threshold (prd.md
  * §16.4's Rating/Ranking proximity spec) - not at final release, which already has its
  * own commit animation. Swallows the rejection expo-haptics raises on hardware/simulators

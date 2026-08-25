@@ -3,6 +3,7 @@ import { Image, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } 
 import { X } from "lucide-react-native";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Button } from "@/components/Button";
 import { CardMedia } from "./CardMedia";
 import { SwipeCard } from "./SwipeCard";
 import type { ReleaseGesture } from "./SwipeCard";
@@ -74,6 +75,22 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
     if (chosen) onAnswer(chosen.id);
   }
 
+  /**
+   * Tap-based fallback for the swipe gesture (prd.md §16.7). For an IMAGE question, a tap
+   * opens the full-photo preview (12.1) rather than committing immediately - the whole
+   * point of that preview is seeing the photo uncropped *before* choosing it, so the
+   * preview's own "Choose this" button is what actually commits. Any other media type has
+   * no cropping problem to solve first, so a tap there commits directly.
+   */
+  function handleHalfPress(option: EvaluatorOption | undefined) {
+    if (!option) return;
+    if (canPreview) {
+      setPreviewOption(option);
+    } else {
+      onAnswer(option.id);
+    }
+  }
+
   return (
     <SwipeCard
       width={width}
@@ -88,8 +105,10 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
         <View style={styles.halves}>
           <Pressable
             style={styles.half}
-            disabled={!canPreview || !leftOption}
-            onPress={() => leftOption && setPreviewOption(leftOption)}
+            disabled={!isActive || !leftOption}
+            onPress={() => handleHalfPress(leftOption)}
+            accessibilityRole="button"
+            accessibilityLabel={leftOption?.label ?? "Choose this side"}
           >
             <CardMedia
               mediaType={question.mediaType}
@@ -110,8 +129,10 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
 
           <Pressable
             style={styles.half}
-            disabled={!canPreview || !rightOption}
-            onPress={() => rightOption && setPreviewOption(rightOption)}
+            disabled={!isActive || !rightOption}
+            onPress={() => handleHalfPress(rightOption)}
+            accessibilityRole="button"
+            accessibilityLabel={rightOption?.label ?? "Choose this side"}
           >
             <CardMedia
               mediaType={question.mediaType}
@@ -150,6 +171,18 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
           >
             <X size={22} color={theme.colors.textPrimary} strokeWidth={1.5} />
           </Pressable>
+
+          {/* The preview only shows the photo - this is what actually commits the
+              evaluator's choice, once they've seen it uncropped. */}
+          <View style={[styles.previewActions, { paddingBottom: insets.bottom + theme.spacing(2) }]}>
+            <Button
+              label={`Choose ${previewOption?.label ?? "this photo"}`}
+              onPress={() => {
+                if (previewOption) onAnswer(previewOption.id);
+                setPreviewOption(null);
+              }}
+            />
+          </View>
         </Pressable>
       </Modal>
     </SwipeCard>
@@ -211,11 +244,19 @@ const styles = StyleSheet.create({
   previewClose: {
     position: "absolute",
     right: theme.spacing(2),
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    // 44pt minimum touch target (prd.md §16.7).
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: theme.colors.surfaceOverlay,
+  },
+  previewActions: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: theme.spacing(3),
   },
 });

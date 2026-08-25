@@ -5,11 +5,13 @@ import Animated, {
   Extrapolation,
   interpolate,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withSpring,
+  withTiming,
 } from "react-native-reanimated";
 import { resolveMediaUrl } from "@/lib/env";
-import { CARD_REJECT_SPRING } from "@/lib/motion";
+import { CARD_REJECT_SPRING, REDUCED_MOTION_FADE_MS } from "@/lib/motion";
 import type { EvaluatorOption, EvaluatorQuestion } from "@/lib/test";
 import { theme } from "@/lib/theme";
 
@@ -89,17 +91,22 @@ function OptionShell({
   // interaction in the deck with no motion at all (swipe/drag cards already have it).
   // Reuses the card-reject spring rather than a one-off timing: a single spring value
   // drives both the scale bump and the checkmark's fade-in, so there's nothing new to tune.
+  const reducedMotion = useReducedMotion();
   const selectProgress = useSharedValue(selected ? 1 : 0);
   useEffect(() => {
-    selectProgress.value = withSpring(selected ? 1 : 0, CARD_REJECT_SPRING);
-  }, [selected, selectProgress]);
+    selectProgress.value = reducedMotion
+      ? withTiming(selected ? 1 : 0, { duration: REDUCED_MOTION_FADE_MS })
+      : withSpring(selected ? 1 : 0, CARD_REJECT_SPRING);
+  }, [selected, selectProgress, reducedMotion]);
 
   const bump = useAnimatedStyle(() => ({
-    transform: [{ scale: interpolate(selectProgress.value, [0, 1], [1, 1.04]) }],
+    transform: [{ scale: reducedMotion ? 1 : interpolate(selectProgress.value, [0, 1], [1, 1.04]) }],
   }));
   const checkStyle = useAnimatedStyle(() => ({
+    // The fade stays under reduced motion (prd.md §16.4 collapses motion to a fade, not to
+    // nothing) - only the pop-in scale goes.
     opacity: interpolate(selectProgress.value, [0, 1], [0, 1], Extrapolation.CLAMP),
-    transform: [{ scale: interpolate(selectProgress.value, [0, 1], [0.6, 1]) }],
+    transform: [{ scale: reducedMotion ? 1 : interpolate(selectProgress.value, [0, 1], [0.6, 1]) }],
   }));
 
   return (

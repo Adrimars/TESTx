@@ -6,10 +6,12 @@ import { ChevronLeft, CircleAlert, Inbox, UploadCloud } from "lucide-react-nativ
 import Animated, {
   interpolate,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withDelay,
   withSequence,
   withSpring,
+  withTiming,
 } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
@@ -19,7 +21,7 @@ import { QuestionCard } from "@/components/cards/QuestionCard";
 import { ApiError } from "@/lib/api";
 import { useDeck } from "@/lib/deck";
 import { resolveMediaUrl } from "@/lib/env";
-import { POPUP_ENTRANCE_SPRING } from "@/lib/motion";
+import { POPUP_ENTRANCE_SPRING, REDUCED_MOTION_FADE_MS } from "@/lib/motion";
 import { useSession } from "@/lib/session";
 import {
   clearInProgressTest,
@@ -337,22 +339,26 @@ function CompletionPopup({
 
   // Scale + fade in with a spring overshoot (prd.md §16.4), plus a small pulse on the
   // points number once the card has mostly landed, so the two don't visually blend into
-  // one bigger overshoot.
+  // one bigger overshoot. Reduced motion keeps the fade but drops both scales entirely -
+  // the pulse in particular is pure flourish with no state it's carrying.
+  const reducedMotion = useReducedMotion();
   const entrance = useSharedValue(0);
   const pointsPulse = useSharedValue(1);
   useEffect(() => {
-    entrance.value = withSpring(1, POPUP_ENTRANCE_SPRING);
-    if (!result.isFlagged) {
+    entrance.value = reducedMotion
+      ? withTiming(1, { duration: REDUCED_MOTION_FADE_MS })
+      : withSpring(1, POPUP_ENTRANCE_SPRING);
+    if (!result.isFlagged && !reducedMotion) {
       pointsPulse.value = withDelay(
         220,
         withSequence(withSpring(1.18, POPUP_ENTRANCE_SPRING), withSpring(1, POPUP_ENTRANCE_SPRING))
       );
     }
-  }, [entrance, pointsPulse, result.isFlagged]);
+  }, [entrance, pointsPulse, result.isFlagged, reducedMotion]);
 
   const cardStyle = useAnimatedStyle(() => ({
     opacity: entrance.value,
-    transform: [{ scale: interpolate(entrance.value, [0, 1], [0.85, 1]) }],
+    transform: [{ scale: reducedMotion ? 1 : interpolate(entrance.value, [0, 1], [0.85, 1]) }],
   }));
   const pointsStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pointsPulse.value }],
@@ -442,7 +448,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing(0.5),
-    minHeight: 36,
+    // 44pt minimum touch target (prd.md §16.7).
+    minHeight: 44,
     justifyContent: "center",
     paddingHorizontal: theme.spacing(1.5),
     borderRadius: 10,

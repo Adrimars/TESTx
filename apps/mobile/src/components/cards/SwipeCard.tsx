@@ -6,12 +6,13 @@ import Animated, {
   interpolate,
   runOnJS,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
 import type { SharedValue } from "react-native-reanimated";
-import { CARD_COMMIT_MS, CARD_REJECT_SPRING } from "@/lib/motion";
+import { CARD_COMMIT_MS, CARD_REJECT_SPRING, REDUCED_MOTION_FADE_MS } from "@/lib/motion";
 import { theme } from "@/lib/theme";
 
 /** Card offset from its resting position, in pixels. Lives on the UI thread. */
@@ -134,6 +135,13 @@ export function SwipeCard({
   // callback firing. This always runs 0 to 1.
   const settleProgress = useSharedValue(0);
 
+  // Only read once (see useReducedMotion's own doc) - fine here, since this affects how a
+  // release animates, not something that needs to react mid-gesture.
+  const reducedMotion = useReducedMotion();
+  // Only reduced motion ever touches this - the translate/rotate transform carries the
+  // card everywhere else, so a fly-off there is a fade instead of a slide.
+  const opacity = useSharedValue(1);
+
   const pan = Gesture.Pan()
     .enabled(enabled)
     .onStart((event) => {
@@ -166,21 +174,41 @@ export function SwipeCard({
       });
 
       if (!decision.commit) {
-        translateX.value = withSpring(0, CARD_REJECT_SPRING);
-        translateY.value = withSpring(0, CARD_REJECT_SPRING);
-        // The highlight has to leave with the card, or the last target stays lit after a
-        // miss and reads as a selection that was never made.
-        pointerX.value = withSpring(0, CARD_REJECT_SPRING);
-        pointerY.value = withSpring(0, CARD_REJECT_SPRING);
+        if (reducedMotion) {
+          // No overshoot, no bounce - the card and its highlight just snap back.
+          translateX.value = 0;
+          translateY.value = 0;
+          pointerX.value = 0;
+          pointerY.value = 0;
+        } else {
+          translateX.value = withSpring(0, CARD_REJECT_SPRING);
+          translateY.value = withSpring(0, CARD_REJECT_SPRING);
+          // The highlight has to leave with the card, or the last target stays lit after a
+          // miss and reads as a selection that was never made.
+          pointerX.value = withSpring(0, CARD_REJECT_SPRING);
+          pointerY.value = withSpring(0, CARD_REJECT_SPRING);
+        }
         return;
       }
 
       isSettling.value = true;
+      const committed = decision.value;
+
+      if (reducedMotion) {
+        // Collapses the directional fly-off/rotation into a plain fade, per prd.md §16.4 -
+        // the card stays put and disappears instead of sliding away.
+        opacity.value = withTiming(0, { duration: REDUCED_MOTION_FADE_MS }, (finished) => {
+          if (finished && onCommit) {
+            runOnJS(onCommit)(committed);
+          }
+        });
+        return;
+      }
+
       const target = decision.flyTo ?? {
         x: Math.sign(translateX.value || event.velocityX || 1) * DEFAULT_FLY_DISTANCE,
         y: translateY.value,
       };
-      const committed = decision.value;
 
       translateX.value = withTiming(target.x, { duration: CARD_COMMIT_MS });
       translateY.value = withTiming(target.y, { duration: CARD_COMMIT_MS });
@@ -195,11 +223,12 @@ export function SwipeCard({
 
   const animatedStyle = useAnimatedStyle(() => {
     const tilt =
-      maxTiltDeg === 0
+      maxTiltDeg === 0 || reducedMotion
         ? 0
         : interpolate(translateX.value, [-width, 0, width], [-maxTiltDeg, 0, maxTiltDeg]);
 
     return {
+      opacity: opacity.value,
       transform: [
         { translateX: translateX.value },
         { translateY: translateY.value },

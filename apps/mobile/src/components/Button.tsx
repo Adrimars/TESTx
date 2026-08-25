@@ -63,7 +63,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.borderHairline,
   },
-  quiet: { backgroundColor: "transparent", minHeight: 40 },
+  // 44pt minimum touch target (prd.md §16.7), even for the visually lighter variant.
+  quiet: { backgroundColor: "transparent", minHeight: 44 },
   pressed: { opacity: 0.75 },
   disabled: { opacity: 0.5 },
   label: { fontSize: 16, fontWeight: "600" },

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { CardMedia } from "./CardMedia";
 import { CardStack } from "./CardStack";
@@ -183,12 +183,32 @@ function OptionSwipeCard({
           <Text style={styles.stampText}>PICK</Text>
         </Animated.View>
 
-        <View style={[styles.captionBar, NO_TOUCH]}>
-          <Text style={styles.captionSide}>{"← Skip"}</Text>
+        <View style={styles.captionBar}>
+          {/* Tap-based fallback for the swipe gesture (prd.md §16.7): calls the same
+              onDecide the swipe commit does, directly. */}
+          <Pressable
+            style={styles.captionButton}
+            disabled={!isActive}
+            onPress={() => onDecide(false)}
+            accessibilityRole="button"
+            accessibilityLabel={`Skip ${option.label ?? "this option"}`}
+          >
+            <Text style={styles.captionSide}>{"← Skip"}</Text>
+          </Pressable>
           <Text style={styles.captionLabel} numberOfLines={1}>
             {option.label ?? ""}
           </Text>
-          <Text style={styles.captionSide}>{atMax ? "Max reached" : "Pick →"}</Text>
+          <Pressable
+            style={styles.captionButton}
+            disabled={!isActive || atMax}
+            onPress={() => onDecide(true)}
+            accessibilityRole="button"
+            accessibilityLabel={atMax ? "Maximum reached" : `Pick ${option.label ?? "this option"}`}
+          >
+            <Text style={[styles.captionSide, atMax && styles.captionSideDisabled]}>
+              {atMax ? "Max reached" : "Pick →"}
+            </Text>
+          </Pressable>
         </View>
       </View>
     </SwipeCard>
@@ -230,6 +250,9 @@ const styles = StyleSheet.create({
     padding: theme.spacing(1.5),
     backgroundColor: theme.withAlpha(theme.colors.surfaceBase, 0.72),
   },
+  // 44pt minimum touch target (prd.md §16.7), even though the visible label is small.
+  captionButton: { minHeight: 44, minWidth: 44, justifyContent: "center" },
   captionSide: { color: theme.colors.textSecondary, fontSize: 13, fontWeight: "600" },
+  captionSideDisabled: { opacity: 0.5 },
   captionLabel: { color: theme.colors.textPrimary, fontSize: 14, fontWeight: "600", flexShrink: 1 },
 });
