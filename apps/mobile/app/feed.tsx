@@ -1,4 +1,4 @@
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
@@ -76,9 +76,25 @@ export default function FeedScreen() {
         <Text style={styles.testTitle} numberOfLines={1}>
           {test.data.title}
         </Text>
-        <Text style={styles.counter}>
-          {deck.index + 1} / {test.data.questions.length}
-        </Text>
+        <View style={styles.headerRight}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back to the previous question"
+            accessibilityState={{ disabled: !deck.canGoBack }}
+            disabled={!deck.canGoBack}
+            onPress={deck.back}
+            style={({ pressed }) => [
+              styles.backButton,
+              !deck.canGoBack && styles.backDisabled,
+              pressed && deck.canGoBack && styles.backPressed,
+            ]}
+          >
+            <Text style={styles.backLabel}>{"← Back"}</Text>
+          </Pressable>
+          <Text style={styles.counter}>
+            {deck.index + 1} / {test.data.questions.length}
+          </Text>
+        </View>
       </View>
 
       <CardStack
@@ -119,6 +135,17 @@ const styles = StyleSheet.create({
     paddingVertical: theme.spacing(1.5),
   },
   testTitle: { color: theme.colors.textPrimary, fontSize: 16, fontWeight: "600", flexShrink: 1 },
+  headerRight: { flexDirection: "row", alignItems: "center", gap: theme.spacing(1.5) },
+  backButton: {
+    minHeight: 36,
+    justifyContent: "center",
+    paddingHorizontal: theme.spacing(1.5),
+    borderRadius: 10,
+    backgroundColor: theme.colors.surfaceRaised,
+  },
+  backDisabled: { opacity: 0.35 },
+  backPressed: { opacity: 0.7 },
+  backLabel: { color: theme.colors.textPrimary, fontSize: 14, fontWeight: "600" },
   counter: { color: theme.colors.textSecondary, fontSize: 14, fontVariant: ["tabular-nums"] },
   title: { color: theme.colors.textPrimary, fontSize: 22, fontWeight: "700", textAlign: "center" },
   subtitle: { color: theme.colors.textSecondary, fontSize: 15, textAlign: "center" },
