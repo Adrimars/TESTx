@@ -945,6 +945,53 @@ Phase 0 (Scaffolding) ──→ Phase 1 (Auth) ──→ Phase 2 (Media) ──�
 
 ---
 
+## Phase 15: Mobile App — Rating/Ranking Redesign, Free-Form Multi-Select & First-Test Onboarding
+
+> Field feedback after Phase 12 shipped its design system and gesture fallbacks: Rating and Ranking read as the same component wearing two labels, the answer column sits on top of the photo instead of beside it, Ranking's revise flow needs a shortcut, Multi-Select's min forces a retry-loop nobody asked for, and a first-time evaluator gets no walkthrough at all before their first real test.
+
+### 15.1 Multi-Select: Independent Like/Dislike, No Forced Minimum
+- Each option in a Multi-Select sub-deck should be a fully independent "did you like this one or not" decision — swiping through and liking zero, some, or all of them is a complete, valid answer. Nothing about the flow should nudge the evaluator toward a middle-ground count.
+- `apps/mobile/src/lib/swipe.ts`'s `advanceSubDeck`: drop the `"reconsider"` step entirely — reaching the end of the queue always completes the question with whatever got included, never re-offers the skipped options to force a minimum. Confirmed safe: `apps/api/src/routes/evaluator.ts`'s `validateAnswers()` never enforced `minSelections` server-side in the first place (only `maxSelections` is checked) — this was a mobile-only UX choice, not a contract the API depends on, so removing it has no server-side follow-up.
+- `maxSelections` stays respected where an admin has actually set one (the API does enforce that upper bound, so mobile still has to pre-empt it exactly as `MultiSelectCard.tsx`'s `atMax` guard does today) — the difference is there's no floor, only an optional ceiling.
+- Out of scope for this phase: whether `minSelections` should be removed from the admin authoring UI (`apps/admin`) and web evaluator (`apps/evaluator`) entirely, or just stop being treated as a mobile retry-trigger. Decide at implementation time; don't silently change what other apps store/expect from the same config key.
+
+### 15.2 Rating vs. Ranking: Distinct Shapes, Not the Same Component Twice
+- Right now `RatingCard`'s pill (`borderRadius: PILL_HEIGHT / 2`, a capsule) and `RankingCard`'s slot (`borderRadius: 12`, a rounded square) already differ slightly, but share the same size, background, border, and column layout closely enough to read as one component reused with different numbers inside.
+- Make the shape difference deliberate and legible at a glance: Rating's targets read as **score pills** (the existing capsule shape, kept circular/pill-like — a scale, not a ranking); Ranking's targets read as **rank tags** — a distinct shape (e.g. a flagged/notched tag, or a numbered badge with a corner cut) that visually says "this is a strict order," not "this is a score."
+- Keep both still built on the same underlying target-column mechanics (`DropTarget`, `resolveDropTarget`, `targetProximity` in `lib/swipe.ts`) — the shape change is presentational (each component's own pill/slot render), not a rewrite of the drag-to-target math.
+
+### 15.3 Ranking's Column Flips; Rating's Stays, But Reads Unambiguously
+- **Ranking only**: reverse the column so slot 1 (best) sits at the **bottom** of the target column and the last slot (worst) sits at the **top** — the opposite of today's top-to-bottom 1→N. `RankingCard`'s `centerY` derivation and the `bestLabel`/`worstLabel` end-label placement both need to flip together, so the labels stay next to the slots they describe.
+- **Rating stays top-to-bottom, low-to-high, unchanged** — it is a scale, not a best/worst ordering, and must not start looking like Ranking's new convention just because they sit in similar columns. What does need to improve: right now direction only reads clearly if the admin bothers to set `minLabel`/`maxLabel` (prd.md's own coffee-study seed does, but nothing requires it). Make the "which end is better" direction unambiguous by default — e.g., a persistent low→high visual cue (arrow, gradient, or always-on end labels with sensible defaults like "Low"/"High" when the admin didn't set any) rather than relying entirely on optional admin-authored text.
+
+### 15.4 Drag Scoped to the Photo, Not the Whole Card (Rating & Ranking)
+- Currently `SwipeCard` wraps the entire card — prompt text included — in one draggable surface for every question type. For Rating and Ranking specifically, the prompt should be static chrome that never moves; only the photo/media area should be the grabbable, draggable surface.
+- Restructure `RatingCard`/`RankingCard` so the prompt (and Ranking's "N of M" status line) render **outside** the `SwipeCard`, with only `CardMedia` and its immediate frame inside the gesture-detecting surface. TwoOptionCard is unaffected — its whole-card swipe is the intended Tinder-style gesture there and wasn't part of this complaint.
+
+### 15.5 A Real Answer Gutter, Not an Overlay on the Photo (Rating & Ranking)
+- The target pill/slot column is currently an absolutely-positioned overlay drawn on top of part of the photo (`COLUMN_RIGHT_MARGIN`/`PILL_WIDTH` eating into the card's right edge). Give it dedicated, reserved space instead: the photo should be narrower and the column should sit beside it in real layout space, never covering any part of the image.
+- This pairs naturally with 15.4 — once the column has its own space and the drag surface is scoped to just the photo, the two changes together produce the intended layout: fixed prompt on top, draggable photo and static answer column side by side below it.
+
+### 15.6 Ranking: Hold One Placed Card, Swap It With Another Directly
+- Today, revising a ranking requires two steps: tap a filled slot to reclaim its card back to "current," then drag or tap it into a (possibly different) slot — see 12.1/12.6. Add a direct shortcut alongside that flow, not instead of it: press and hold an already-placed card's thumbnail and drag it onto a different filled slot to swap the two cards' positions in one motion (e.g. moving "Coffee 1" from slot 2 straight to where "Coffee 4" sits, and "Coffee 4" takes slot 2 in the same gesture) — no need to reclaim first.
+- Both paths must produce the same result: reclaim-then-place and hold-and-swap are two ways to reach the same `placements` map, not two different answer shapes.
+
+### 15.7 First-Test Onboarding Tutorial (Instagram-Style, Every Question Type)
+- New evaluators currently get no orientation at all before their first real test — the only teaching that exists is `lib/tutorial.ts`'s `useGestureTutorial`, and that's scoped narrowly to the Rating/Ranking drag gesture (10.8/12.1), shown mid-test on first encounter with each of those two types specifically.
+- Build a proper first-run walkthrough, shown once before a brand-new evaluator's very first test (tracked on-device, same durable-flag pattern as the existing gesture hints): a short, guided sequence — in the spirit of Instagram's own first-run/story-style tutorials — that demonstrates how to resolve *every* question type the evaluator is about to encounter (swipe-select, tap-list, multi-select swipe, drag-to-rate, drag-to-rank), not just the two gesture-novel ones.
+- Decide at implementation time whether this supersedes or wraps the existing per-type `useGestureTutorial` hints, since the two now cover overlapping ground.
+
+### Phase 15 Exit Criteria
+- [ ] A Multi-Select question can be completed having liked zero, some, or all options, with no forced re-offering of skipped ones
+- [ ] Rating's pills and Ranking's slots are visually distinct shapes at a glance, not the same component with different labels
+- [ ] Ranking's column shows slot 1 (best) at the bottom and the last slot (worst) at the top; Rating's column is unchanged and unambiguous about which end is better
+- [ ] Dragging a Rating or Ranking card only responds to touches on the photo — the prompt text never moves
+- [ ] The answer column sits beside the photo in its own space on Rating and Ranking cards, never overlapping the image
+- [ ] Holding a placed Ranking card and dragging it onto another filled slot swaps the two, without first tapping to reclaim
+- [ ] A brand-new evaluator sees a first-test walkthrough covering every question type exactly once, before their first real test begins
+
+---
+
 ## Future / Backlog (Post-Mobile-MVP)
 
 Not scheduled into the phases above — tracked here so they aren't lost:
