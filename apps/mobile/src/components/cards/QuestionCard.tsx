@@ -85,20 +85,24 @@ export function QuestionCard({ question, isActive, onAnswer }: QuestionCardProps
     );
   }
 
-  return <UnbuiltCard question={question} />;
+  return <UnsupportedCard question={question} />;
 }
 
 /**
- * Placeholder for the question types whose cards land later in phase 10. It renders the
- * real question so the deck can still be walked end to end, and is removed type by type
- * as 10.3 through 10.6 land.
+ * Fallback for a question type this build has no card for.
+ *
+ * Every type the API can currently return is handled above, so reaching this means the
+ * server has shipped a new one - which the minimum-version gate is meant to catch on
+ * launch. This is the second line of that defence: if a build ever does meet a question
+ * it cannot render, it says so and leaves the rest of the deck usable, rather than
+ * crashing partway through a test the evaluator has already spent time on.
  */
-function UnbuiltCard({ question }: { question: EvaluatorQuestion }) {
+function UnsupportedCard({ question }: { question: EvaluatorQuestion }) {
   return (
     <View style={styles.card}>
       <Text style={styles.prompt}>{question.prompt}</Text>
       <Text style={styles.note}>
-        {question.type} with {question.options.length} options — card not built yet
+        This version of the app cannot show this question. Update TESTx to answer it.
       </Text>
     </View>
   );

@@ -9,6 +9,13 @@ import { resolveMediaUrl } from "@/lib/api";
 import type { Question, QuestionOption } from "@/lib/test-types";
 
 /** Shared frame for a selectable option, so text and media options behave the same. */
+/**
+ * Question types this page knows how to render. RANKING is deliberately absent until its
+ * drag-to-reorder control lands (plan.md 13.3) - the type already exists server-side and
+ * can appear in an active test, so this page has to cope with meeting one.
+ */
+const RENDERABLE_TYPES = new Set(["SINGLE_SELECT", "MULTI_SELECT", "RATING"]);
+
 function OptionShell({
   selected,
   onClick,
@@ -276,7 +283,10 @@ export default function QuestionPage() {
       return selected.length >= (config.minSelections ?? 1);
     }
     if (question!.type === "RATING") return ratingValue !== null;
-    return false;
+    // A type this app cannot render yet must not trap the evaluator on a dead question
+    // with Next disabled forever. Treating it as answerable lets them move past it, and
+    // the empty answer submits as a skip, which the API accepts.
+    return !RENDERABLE_TYPES.has(question!.type);
   }
 
   function goNext() {
@@ -340,6 +350,12 @@ export default function QuestionPage() {
           value={ratingValue}
           onRate={(v) => setAnswer(question.id, { ratingValue: v })}
         />
+      )}
+      {!RENDERABLE_TYPES.has(question.type) && (
+        <div className="rounded-lg border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+          This question type is not available on the web yet. Skip it here, or answer it in
+          the TESTx mobile app.
+        </div>
       )}
 
       {/* Pinned to the bottom on phones, inline on desktop. */}
