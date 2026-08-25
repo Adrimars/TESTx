@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
+import { existsSync, readdirSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
@@ -23,6 +24,27 @@ const PLACEHOLDER_COLORS: [number, number, number][] = [
 
 const IMAGE_WIDTH = 400;
 const IMAGE_HEIGHT = 300;
+
+/**
+ * Where the committed seed imagery lives. Drop real photographs into a `custom/` folder
+ * beside it and they are used instead - the generated mockups are a fallback for a fresh
+ * clone, not a preference.
+ */
+function getSeedAssetDir(): { dir: string; isCustom: boolean } {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const custom = path.resolve(here, "seed-assets", "custom");
+  if (existsSync(custom) && readdirSync(custom).some((f) => /\.(png|jpe?g|webp)$/i.test(f))) {
+    return { dir: custom, isCustom: true };
+  }
+  return { dir: path.resolve(here, "seed-assets"), isCustom: false };
+}
+
+const MIME_BY_EXT: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+};
 
 function getSeedUploadDir(): string {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -200,6 +222,49 @@ async function main() {
     )
   );
 
+  // ── Studio imagery for the brand study ───────────────────────────────────
+  // Copied out of the repo rather than generated here: the tiny PNG encoder above can
+  // draw a gradient and nothing else, and a preference test whose options are four flat
+  // gradients cannot tell you anything about a preference.
+  const assets = getSeedAssetDir();
+  const assetFiles = readdirSync(assets.dir)
+    .filter((f) => /\.(png|jpe?g|webp)$/i.test(f))
+    .sort();
+
+  const studioMedia = await Promise.all(
+    assetFiles.map(async (fileName, index) => {
+      const id = `10000000-0000-0000-0000-${String(index + 1).padStart(12, "0")}`;
+      const target = path.join(uploadDir, fileName);
+      await fs.copyFile(path.join(assets.dir, fileName), target);
+      const { size } = await fs.stat(target);
+      const ext = path.extname(fileName).toLowerCase();
+
+      return prisma.media.upsert({
+        where: { id },
+        // Stored relative to the upload root so the row survives the project moving.
+        update: { sourceUrl: path.posix.join("seed", fileName), fileSize: size },
+        create: {
+          id,
+          fileName,
+          fileType: "IMAGE",
+          mimeType: MIME_BY_EXT[ext] ?? "image/png",
+          fileSize: size,
+          sourceType: "UPLOAD",
+          sourceUrl: path.posix.join("seed", fileName),
+          thumbnailUrl: `/media/${id}/file`,
+          tags: ["seed", "studio"],
+        },
+      });
+    })
+  );
+
+  /** Looks a studio image up by filename, so the questions read by what they show. */
+  const shot = (name: string) => {
+    const found = studioMedia.find((m) => m.fileName === name) ?? studioMedia[0];
+    if (!found) throw new Error("No seed imagery found - run generate-seed-images.py");
+    return found.id;
+  };
+
   // ── Test 1: ACTIVE — Photo Comparison ────────────────────────────────────
   const existingPhotoTest = await prisma.test.findFirst({
     where: { title: "Photo Preference Study", status: "ACTIVE" },
@@ -318,95 +383,98 @@ async function main() {
     });
   }
 
-  // ── Test 3: ACTIVE — Swipe Engine Sampler (one question per type) ─────────
-  // Fixture for the mobile swipe engine: every question type the feed can render,
-  // in one ACTIVE test, so each card interaction can be exercised against real
-  // `/evaluator/tests/:id` data. RANKING has no admin authoring UI yet (plan 13.2),
-  // which is exactly why it has to be seeded here.
-  const existingSamplerTest = await prisma.test.findFirst({
-    where: { title: "Swipe Engine Sampler", status: "ACTIVE" },
+  // ── Test 3: ACTIVE — Coffee Brand Study (one question per type) ───────────
+  // The fixture for the mobile swipe engine. Every question type in one active test, on
+  // imagery you can actually form a preference about, because a card interaction can only
+  // really be judged against a question worth answering.
+  const existingStudy = await prisma.test.findFirst({
+    where: { title: "Coffee Brand Study", status: "ACTIVE" },
   });
 
-  let samplerTest = existingSamplerTest;
-  if (!samplerTest) {
-    samplerTest = await prisma.test.create({
+  let studyTest = existingStudy;
+  if (!studyTest) {
+    studyTest = await prisma.test.create({
       data: {
-        title: "Swipe Engine Sampler",
-        description: "One question of every type, for exercising the mobile card interactions.",
+        title: "Coffee Brand Study",
+        description:
+          "We are naming and packaging a new single-origin roaster. Tell us which designs land.",
         status: "ACTIVE",
-        advisoryTimeMin: 3,
-        minTimePerQuestion: 60,
+        advisoryTimeMin: 4,
+        minTimePerQuestion: 8,
         rewardPoints: 10,
         questions: {
           create: [
             {
               // Two options: the swipe-right / swipe-left card.
               type: "SINGLE_SELECT",
-              prompt: "Which packaging would you pick up first?",
+              prompt: "Which bag would you rather pick up off the shelf?",
               mediaType: "IMAGE",
               order: 1,
               config: {},
               options: {
                 create: [
                   // Order matters: the first option is the swipe-right choice.
-                  { label: "Bold packaging", mediaId: medias[0]!.id, order: 1 },
-                  { label: "Minimal packaging", mediaId: medias[1]!.id, order: 2 },
+                  { label: "Vertex", mediaId: shot("bag-modern.png"), order: 1 },
+                  { label: "Alder", mediaId: shot("bag-heritage.png"), order: 2 },
                 ],
               },
             },
             {
               // Three or more options: the docked tap list, no swipe-to-choose.
               type: "SINGLE_SELECT",
-              prompt: "Which of these best describes the brand's tone?",
+              prompt: "Which name sounds most like a coffee you would pay extra for?",
               mediaType: "TEXT",
               order: 2,
               config: {},
               options: {
                 create: [
-                  { label: "Playful", order: 1 },
-                  { label: "Serious", order: 2 },
-                  { label: "Premium", order: 3 },
-                  { label: "Approachable", order: 4 },
+                  { label: "Alder", order: 1 },
+                  { label: "Vertex", order: 2 },
+                  { label: "Foundry", order: 3 },
+                  { label: "Meridian", order: 4 },
                 ],
               },
             },
             {
               // Sub-deck: one card per option, include/skip, bounded by min/max.
               type: "MULTI_SELECT",
-              prompt: "Which of these images fit the brand? Pick 2 to 3.",
+              prompt: "Which of these feel like the same brand? Pick 2 to 3.",
               mediaType: "IMAGE",
               order: 3,
               config: { minSelections: 2, maxSelections: 3 },
               options: {
                 create: [
-                  { label: "Image 1", mediaId: medias[2]!.id, order: 1 },
-                  { label: "Image 2", mediaId: medias[3]!.id, order: 2 },
-                  { label: "Image 3", mediaId: medias[4]!.id, order: 3 },
-                  { label: "Image 4", mediaId: medias[5]!.id, order: 4 },
+                  { label: "Golden hour", mediaId: shot("mood-warm.png"), order: 1 },
+                  { label: "Early morning", mediaId: shot("mood-cool.png"), order: 2 },
+                  { label: "After hours", mediaId: shot("mood-dark.png"), order: 3 },
+                  { label: "First light", mediaId: shot("mood-fresh.png"), order: 4 },
                 ],
               },
             },
             {
               // Drag-to-target: five pills down the right edge.
               type: "RATING",
-              prompt: "How much do you like this image?",
+              prompt: "How premium does this packaging look to you?",
               mediaType: "IMAGE",
               order: 4,
-              config: { min: 1, max: 5, minLabel: "Not at all", maxLabel: "A lot" },
+              config: { min: 1, max: 5, minLabel: "Supermarket", maxLabel: "Specialty" },
+              options: {
+                create: [{ label: "Foundry", mediaId: shot("bag-stamp.png"), order: 1 }],
+              },
             },
             {
               // Drag-to-slot: four cards, four slots, strict order.
               type: "RANKING",
-              prompt: "Rank these lifestyle images from best to worst fit.",
+              prompt: "Rank these four bags from best to worst.",
               mediaType: "IMAGE",
               order: 5,
-              config: { bestLabel: "Best fit", worstLabel: "Worst fit" },
+              config: { bestLabel: "Best", worstLabel: "Worst" },
               options: {
                 create: [
-                  { label: "Lifestyle A", mediaId: medias[6]!.id, order: 1 },
-                  { label: "Lifestyle B", mediaId: medias[7]!.id, order: 2 },
-                  { label: "Lifestyle C", mediaId: medias[8]!.id, order: 3 },
-                  { label: "Lifestyle D", mediaId: medias[9]!.id, order: 4 },
+                  { label: "Alder", mediaId: shot("bag-heritage.png"), order: 1 },
+                  { label: "Marlow", mediaId: shot("bag-blush.png"), order: 2 },
+                  { label: "Thicket", mediaId: shot("bag-forest.png"), order: 3 },
+                  { label: "Meridian", mediaId: shot("bag-cobalt.png"), order: 4 },
                 ],
               },
             },
@@ -664,10 +732,11 @@ async function main() {
     tests: {
       photoTest: photoTest.title,
       ratingTest: ratingTest.title,
-      samplerTest: samplerTest.title,
+      studyTest: studyTest.title,
       closedTest: closedTest.title,
     },
-    media: medias.length,
+    media: medias.length + studioMedia.length,
+    imagery: assets.isCustom ? "custom photos" : "generated mockups",
   });
 }
 

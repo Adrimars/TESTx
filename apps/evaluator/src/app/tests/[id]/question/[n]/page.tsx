@@ -193,9 +193,16 @@ function RatingQuestion({
   const min = config.min ?? 1;
   const max = config.max ?? 5;
   const values = Array.from({ length: max - min + 1 }, (_, i) => min + i);
+  // A rating question carries at most one option: the item being rated.
+  const subject = question.options[0];
 
   return (
     <div className="space-y-3">
+      {subject ? (
+        <div className="overflow-hidden rounded-lg border border-border bg-card">
+          <OptionMedia option={subject} />
+        </div>
+      ) : null}
       <div className="flex flex-wrap gap-2">
         {values.map((v) => (
           <button

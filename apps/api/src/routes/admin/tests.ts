@@ -171,8 +171,14 @@ function validateQuestionShape(input: QuestionInput) {
     return;
   }
 
-  if (input.options.length > 0) {
-    throw Object.assign(new Error("Rating questions cannot have options"), { statusCode: 400 });
+  // A rating question may carry exactly one option: the thing being rated. Without it a
+  // rating can only ever be about the prompt text, since a question has no media of its
+  // own - the renderers read the subject from options[0].
+  if (input.options.length > 1) {
+    throw Object.assign(
+      new Error("Rating questions take at most one option, the item being rated"),
+      { statusCode: 400 }
+    );
   }
 }
 
