@@ -64,6 +64,23 @@ export type NextTestSummary = {
   questionCount: number;
 } | null;
 
+export type AvailableTest = {
+  id: string;
+  title: string;
+  description: string | null;
+  rewardPoints: number;
+  questionCount: number;
+  advisoryTimeMin: number | null;
+};
+
+/** Everything on offer, for the home screen. */
+export function useAvailableTests() {
+  return useQuery({
+    queryKey: ["available-tests"],
+    queryFn: () => apiFetch<AvailableTest[]>("/evaluator/available-tests"),
+  });
+}
+
 export function useNextTest() {
   return useQuery({
     queryKey: ["next-test"],

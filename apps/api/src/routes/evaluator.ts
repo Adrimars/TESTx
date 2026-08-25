@@ -318,6 +318,53 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
     return reply.send(null);
   });
 
+  /**
+   * Every test this evaluator could take right now.
+   *
+   * `/next-test` answers "what should I do next", which is all a one-at-a-time feed needs.
+   * A home screen has to show what is on offer before anyone commits to answering, so it
+   * needs the list - same eligibility rules, no cap on how many come back.
+   */
+  app.get("/available-tests", authEval, async (request, reply) => {
+    const profile = await app.prisma.evaluatorProfile.findUnique({
+      where: { userId: request.user!.id },
+    });
+    if (!profile) return reply.status(400).send({ error: "PROFILE_REQUIRED", message: "Complete your profile first" });
+
+    const activeTests = await app.prisma.test.findMany({
+      where: { status: "ACTIVE" },
+      orderBy: { createdAt: "asc" },
+      include: {
+        _count: { select: { responses: true, questions: true } },
+      },
+    });
+
+    const alreadyResponded = await app.prisma.testResponse.findMany({
+      where: { userId: request.user!.id },
+      select: { testId: true },
+    });
+    const respondedIds = new Set(alreadyResponded.map((r) => r.testId));
+
+    const available = activeTests
+      .filter((test) => {
+        if (respondedIds.has(test.id)) return false;
+        if (test.responseCap !== null && test._count.responses >= test.responseCap) return false;
+        return matchesDemographics(profile, test.demographicFilters);
+      })
+      .map((test) => ({
+        id: test.id,
+        title: test.title,
+        description: test.description,
+        status: test.status,
+        advisoryTimeMin: test.advisoryTimeMin,
+        rewardPoints: test.rewardPoints,
+        minTimePerQuestion: test.minTimePerQuestion,
+        questionCount: test._count.questions,
+      }));
+
+    return reply.send(available);
+  });
+
   app.get<{ Params: { id: string } }>("/tests/:id", authEval, async (request, reply) => {
     const profile = await app.prisma.evaluatorProfile.findUnique({
       where: { userId: request.user!.id },

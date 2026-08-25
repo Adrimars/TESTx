@@ -5,8 +5,8 @@ import { useSession } from "@/lib/session";
 import { theme } from "@/lib/theme";
 
 /**
- * Auth-check splash. Routes to the feed, onboarding or the entry screen once
- * the stored token has been validated against the API.
+ * Auth-check splash. Routes to the home screen, onboarding or the entry screen
+ * once the stored token has been validated against the API.
  */
 export default function SplashScreen() {
   const router = useRouter();
@@ -15,7 +15,7 @@ export default function SplashScreen() {
   useEffect(() => {
     if (initializing) return;
     if (!user) router.replace("/login");
-    else router.replace(hasProfile ? "/feed" : "/profile-onboarding");
+    else router.replace(hasProfile ? "/home" : "/profile-onboarding");
   }, [initializing, user, hasProfile, router]);
 
   return (

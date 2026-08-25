@@ -72,7 +72,7 @@ export default function ProfileOnboardingScreen() {
         body: JSON.stringify(parsed.data),
       });
       await refreshUser();
-      router.replace("/feed");
+      router.replace("/home");
     } catch (error) {
       Alert.alert(
         "Could not save profile",
