@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BarChart3, Eye, Pencil, Play, Plus, Square, PauseCircle } from "lucide-react";
 import {
@@ -11,13 +10,6 @@ import {
   Card,
   CardContent,
   ConfirmDialog,
-  Dialog,
-  DialogBody,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  Field,
-  Input,
   PageHeader,
   Table,
   TableBody,
@@ -29,22 +21,16 @@ import {
 import type { TestStatus } from "@testx/shared";
 import { apiFetch } from "@/lib/api";
 import { formatDate, statusVariant } from "@/lib/status";
-import type { AdminTestDetail, AdminTestListItem, Paginated, TemplateItem } from "@/lib/admin-types";
+import type { AdminTestListItem, Paginated } from "@/lib/admin-types";
 
 const STATUSES: Array<"ALL" | TestStatus> = ["ALL", "DRAFT", "ACTIVE", "PAUSED", "CLOSED"];
 
 export default function TestsPage() {
-  const router = useRouter();
-  const createDialogRef = useRef<HTMLDialogElement>(null);
   const closeTestDialogRef = useRef<HTMLDialogElement>(null);
   const [pendingCloseId, setPendingCloseId] = useState<string | null>(null);
   const [tests, setTests] = useState<AdminTestListItem[]>([]);
-  const [templates, setTemplates] = useState<TemplateItem[]>([]);
   const [status, setStatus] = useState<"ALL" | TestStatus>("ALL");
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
 
   const fetchTests = useCallback(async () => {
@@ -67,37 +53,6 @@ export default function TestsPage() {
     void fetchTests();
   }, [fetchTests]);
 
-  async function openCreateDialog() {
-    setTitle("");
-    setDescription("");
-    setError("");
-    createDialogRef.current?.showModal();
-    try {
-      const data = await apiFetch<{ items: TemplateItem[] }>("/admin/templates");
-      setTemplates(data.items);
-    } catch {
-      setTemplates([]);
-    }
-  }
-
-  async function createBlank() {
-    if (!title.trim()) return;
-    setCreating(true);
-    setError("");
-    try {
-      const test = await apiFetch<AdminTestDetail>("/admin/tests", {
-        method: "POST",
-        body: JSON.stringify({ title: title.trim(), description: description.trim() || undefined }),
-      });
-      createDialogRef.current?.close();
-      router.push(`/tests/${test.id}/edit`);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to create test");
-    } finally {
-      setCreating(false);
-    }
-  }
-
   async function changeStatus(testId: string, newStatus: TestStatus) {
     try {
       await apiFetch(`/admin/tests/${testId}/status`, {
@@ -110,30 +65,18 @@ export default function TestsPage() {
     }
   }
 
-  async function createFromTemplate(templateId: string) {
-    setCreating(true);
-    setError("");
-    try {
-      const test = await apiFetch<AdminTestDetail>(`/admin/tests/from-template/${templateId}`, { method: "POST" });
-      createDialogRef.current?.close();
-      router.push(`/tests/${test.id}/edit`);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to create test from template");
-    } finally {
-      setCreating(false);
-    }
-  }
-
   return (
     <div className="space-y-6">
       <PageHeader
         title="Tests"
         description="Create and manage evaluation tests."
         actions={
-          <Button onClick={openCreateDialog}>
-            <Plus className="size-4" aria-hidden />
-            Create Test
-          </Button>
+          <Link href="/tests/new">
+            <Button>
+              <Plus className="size-4" aria-hidden />
+              Create Test
+            </Button>
+          </Link>
         }
       />
 
@@ -277,71 +220,6 @@ export default function TestsPage() {
           setPendingCloseId(null);
         }}
       />
-
-      <Dialog ref={createDialogRef} className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Create test</DialogTitle>
-        </DialogHeader>
-
-        <DialogBody>
-          <div className="grid gap-4 sm:grid-cols-[1fr_2fr]">
-            <Field label="Title" htmlFor="test-title">
-              <Input
-                id="test-title"
-                placeholder="Test title"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-              />
-            </Field>
-            <Field label="Description" htmlFor="test-description" optional>
-              <Input
-                id="test-description"
-                placeholder="What evaluators will see under the title"
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-              />
-            </Field>
-          </div>
-
-          {error && <Alert>{error}</Alert>}
-
-          <div className="flex justify-end">
-            <Button onClick={createBlank} disabled={!title.trim() || creating}>
-              {creating ? "Creating…" : "Create Blank"}
-            </Button>
-          </div>
-
-          <div className="border-t border-border pt-5">
-            <h3 className="mb-1 text-card-title">Start from template</h3>
-            <p className="mb-3 text-sm text-muted-foreground">
-              Creates a test with the template&rsquo;s questions already filled in.
-            </p>
-            <div className="grid gap-3 sm:grid-cols-3">
-              {templates.map((template) => (
-                <button
-                  key={template.id}
-                  type="button"
-                  onClick={() => createFromTemplate(template.id)}
-                  disabled={creating}
-                  className="rounded-lg border border-border p-4 text-left text-sm transition-colors hover:border-primary/40 hover:bg-accent disabled:opacity-50"
-                >
-                  <span className="block font-medium text-foreground">{template.name}</span>
-                  <span className="mt-1 block text-muted-foreground">{template.description}</span>
-                </button>
-              ))}
-              {templates.length === 0 && (
-                <p className="text-sm text-muted-foreground">No templates loaded.</p>
-              )}
-            </div>
-          </div>
-        </DialogBody>
-
-        <DialogFooter>
-          <Button variant="secondary" onClick={() => createDialogRef.current?.close()} disabled={creating}>
-            Cancel
-          </Button>
-        </DialogFooter>
-      </Dialog>
     </div>
   );
 }

@@ -39,7 +39,7 @@ import {
   Select,
 } from "@testx/ui";
 import { apiFetch } from "@/lib/api";
-import { statusVariant } from "@/lib/status";
+import { UNTITLED_TEST, statusVariant } from "@/lib/status";
 import type { AdminMedia, AdminQuestion, AdminTestDetail, Paginated } from "@/lib/admin-types";
 
 type OptionDraft = { label: string; mediaId: string };
@@ -156,6 +156,7 @@ export default function TestEditorPage() {
   const deactivateDialogRef = useRef<HTMLDialogElement>(null);
   const deleteDraftDialogRef = useRef<HTMLDialogElement>(null);
   const deleteQuestionDialogRef = useRef<HTMLDialogElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
   const [pendingDeleteQuestionId, setPendingDeleteQuestionId] = useState<string | null>(null);
   const [test, setTest] = useState<AdminTestDetail | null>(null);
   const [media, setMedia] = useState<AdminMedia[]>([]);
@@ -222,6 +223,14 @@ export default function TestEditorPage() {
   useEffect(() => {
     void fetchTest();
   }, [fetchTest]);
+
+  // A blank test arrives here straight from the picker, still called "Untitled test" —
+  // so naming it is the first thing waiting for the cursor.
+  useEffect(() => {
+    if (!loading && test?.status === "DRAFT" && test.title === UNTITLED_TEST) {
+      titleInputRef.current?.select();
+    }
+  }, [loading, test?.status, test?.title]);
 
   async function fetchMedia(mediaType: MediaType) {
     if (mediaType === "TEXT") {
@@ -478,6 +487,7 @@ export default function TestEditorPage() {
                 <div className="grid gap-4 lg:grid-cols-2">
                   <Field label="Title" htmlFor="title">
                     <Input
+                      ref={titleInputRef}
                       id="title"
                       placeholder="Test title"
                       value={title}

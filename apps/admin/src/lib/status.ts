@@ -1,5 +1,11 @@
 import type { BadgeVariant } from "@testx/ui";
 
+/**
+ * Name a blank test carries from the picker until its author renames it. The editor selects
+ * the title field on arrival when it still reads this.
+ */
+export const UNTITLED_TEST = "Untitled test";
+
 /** Test status → badge tone, so a status reads the same on every screen. */
 export function statusVariant(status: string): BadgeVariant {
   switch (status) {
