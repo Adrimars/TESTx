@@ -27,6 +27,7 @@ const testDetailInclude = {
   questions: {
     orderBy: { order: "asc" },
     include: {
+      media: true,
       options: {
         orderBy: { order: "asc" },
         include: { media: true },
@@ -66,6 +67,9 @@ function serializeQuestion(question: QuestionDetail) {
     type: question.type,
     prompt: question.prompt,
     mediaType: question.mediaType,
+    mediaId: question.mediaId,
+    media: question.media ? serializeMedia(question.media) : null,
+    mediaUrl: question.mediaId ? `/media/${question.mediaId}/file` : null,
     order: question.order,
     config: question.config,
     isAttentionCheck: question.isAttentionCheck,
@@ -163,6 +167,32 @@ function validateQuestionShape(input: QuestionInput) {
 
   if (input.options.length > 0) {
     throw Object.assign(new Error("Rating questions cannot have options"), { statusCode: 400 });
+  }
+}
+
+/**
+ * The media a question is *about*. A rating question cannot carry options, so without this
+ * there is nothing for an evaluator to rate — which is why a file media type makes it required.
+ */
+async function validateQuestionMedia(app: Parameters<FastifyPluginAsync>[0], input: QuestionInput) {
+  const wantsMedia = input.mediaType && input.mediaType !== "TEXT";
+  if (!input.mediaId) {
+    if (input.type === "RATING" && wantsMedia) {
+      throw Object.assign(new Error(`Rating questions on ${input.mediaType} need the media being rated`), {
+        statusCode: 400,
+      });
+    }
+    return;
+  }
+
+  const media = await app.prisma.media.findUnique({ where: { id: input.mediaId } });
+  if (!media) {
+    throw Object.assign(new Error("Question media was not found"), { statusCode: 400 });
+  }
+  if (wantsMedia && media.fileType !== input.mediaType) {
+    throw Object.assign(new Error(`Question media ${media.fileName} does not match ${input.mediaType}`), {
+      statusCode: 400,
+    });
   }
 }
 
@@ -438,6 +468,7 @@ export const adminTestsRoutes: FastifyPluginAsync = async (app) => {
 
     const body = questionSchema.parse(request.body);
     validateQuestionShape(body);
+    await validateQuestionMedia(app, body);
     await validateMediaOptions(app, body);
     await validateTrapSource(app, test.id, body);
 
@@ -453,6 +484,7 @@ export const adminTestsRoutes: FastifyPluginAsync = async (app) => {
         type: body.type,
         prompt: body.prompt,
         mediaType: body.mediaType ?? null,
+        mediaId: body.mediaId ?? null,
         order: (last?.order ?? 0) + 1,
         config: inputJson(body.config),
         isAttentionCheck: body.isAttentionCheck,
@@ -477,6 +509,7 @@ export const adminTestsRoutes: FastifyPluginAsync = async (app) => {
 
     const body = questionSchema.parse(request.body);
     validateQuestionShape(body);
+    await validateQuestionMedia(app, body);
     await validateMediaOptions(app, body);
     await validateTrapSource(app, existing.testId, body, existing.id);
 
@@ -488,6 +521,7 @@ export const adminTestsRoutes: FastifyPluginAsync = async (app) => {
           type: body.type,
           prompt: body.prompt,
           mediaType: body.mediaType ?? null,
+          mediaId: body.mediaId ?? null,
           config: inputJson(body.config),
           isAttentionCheck: body.isAttentionCheck,
           isTrapDuplicate: body.isTrapDuplicate,

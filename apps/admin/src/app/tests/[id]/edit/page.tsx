@@ -48,6 +48,8 @@ type QuestionDraft = {
   type: QuestionType;
   prompt: string;
   mediaType: MediaType;
+  /** The media the question is about, as opposed to the media its options offer. */
+  questionMediaId: string;
   options: OptionDraft[];
   isAttentionCheck: boolean;
   isTrapDuplicate: boolean;
@@ -66,6 +68,7 @@ const EMPTY_QUESTION: QuestionDraft = {
   type: "SINGLE_SELECT",
   prompt: "",
   mediaType: "TEXT",
+  questionMediaId: "",
   options: [{ label: "", mediaId: "" }, { label: "", mediaId: "" }],
   isAttentionCheck: false,
   isTrapDuplicate: false,
@@ -116,6 +119,7 @@ function toDraft(question?: AdminQuestion): QuestionDraft {
     type: question.type,
     prompt: question.prompt,
     mediaType: question.mediaType ?? "TEXT",
+    questionMediaId: question.mediaId ?? "",
     options:
       question.options.length > 0
         ? question.options.map((option) => ({ label: option.label ?? "", mediaId: option.mediaId ?? "" }))
@@ -274,6 +278,7 @@ export default function TestEditorPage() {
       type: draft.type,
       prompt: draft.prompt.trim(),
       mediaType: draft.mediaType,
+      mediaId: draft.mediaType === "TEXT" ? null : draft.questionMediaId || null,
       config,
       options,
       isAttentionCheck: draft.isAttentionCheck,
@@ -398,6 +403,12 @@ export default function TestEditorPage() {
       setSaving(false);
     }
   }
+
+  // A rating question on a file media type has nothing to rate without its media, which the
+  // API rejects — so the button says so before the round trip.
+  const needsQuestionMedia =
+    draft.type === "RATING" && draft.mediaType !== "TEXT" && !draft.questionMediaId;
+  const canSaveQuestion = Boolean(draft.prompt.trim()) && !needsQuestionMedia;
 
   if (loading) return <p className="text-sm text-muted-foreground">Loading test...</p>;
   if (!test) return <Alert>{error || "Test not found"}</Alert>;
@@ -826,7 +837,14 @@ export default function TestEditorPage() {
                   <option value="ORDERING">Ordering</option>
                 </Select>
               </Field>
-              <Field label="Option media" hint="Changing this clears the options.">
+              <Field
+                label={draft.type === "RATING" ? "Media type" : "Option media"}
+                hint={
+                  draft.type === "RATING"
+                    ? "The kind of media evaluators will be rating."
+                    : "Changing this clears the options."
+                }
+              >
                 <Select
                   aria-label="Option media type"
                   value={draft.mediaType}
@@ -835,6 +853,7 @@ export default function TestEditorPage() {
                     setDraft((current) => ({
                       ...current,
                       mediaType,
+                      questionMediaId: "",
                       options: [{ label: "", mediaId: "" }, { label: "", mediaId: "" }],
                     }));
                     void fetchMedia(mediaType);
@@ -854,6 +873,40 @@ export default function TestEditorPage() {
                 />
               </Field>
             </div>
+
+            {/*
+              What the question is *about*, as opposed to what its options offer. A rating
+              question cannot carry options at all, so this is the only place the thing being
+              rated can come from.
+            */}
+            {draft.mediaType !== "TEXT" && (
+              <Field
+                label={draft.type === "RATING" ? "Media to rate" : "Question media"}
+                optional={draft.type !== "RATING"}
+                hint={
+                  draft.type === "RATING"
+                    ? "Shown above the rating scale."
+                    : "Shown above the options — the media the question asks about."
+                }
+              >
+                <Select
+                  aria-label="Question media"
+                  value={draft.questionMediaId}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, questionMediaId: event.target.value }))
+                  }
+                >
+                  <option value="">
+                    {media.length === 0
+                      ? `No ${draft.mediaType.toLowerCase()} media in the library`
+                      : "Select media"}
+                  </option>
+                  {media.map((item) => (
+                    <option key={item.id} value={item.id}>{item.fileName}</option>
+                  ))}
+                </Select>
+              </Field>
+            )}
           </section>
 
           {usesOptions(draft.type) && (
@@ -1085,7 +1138,7 @@ export default function TestEditorPage() {
           <Button variant="secondary" onClick={() => questionDialogRef.current?.close()} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={saveQuestion} disabled={saving || !draft.prompt.trim()}>
+          <Button onClick={saveQuestion} disabled={saving || !canSaveQuestion}>
             {saving ? "Saving..." : "Save Question"}
           </Button>
         </DialogFooter>

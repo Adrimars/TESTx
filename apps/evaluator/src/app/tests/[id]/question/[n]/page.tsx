@@ -70,6 +70,34 @@ function OptionMedia({ option }: { option: QuestionOption }) {
   );
 }
 
+/** The media a question is about, shown once above the answer UI at a readable size. */
+function QuestionMediaPanel({ question }: { question: Question }) {
+  const url = resolveMediaUrl(question.media?.url ?? question.mediaUrl);
+  if (!url) return null;
+  const kind = question.media?.fileType ?? "IMAGE";
+  const label = question.media?.fileName ?? question.prompt;
+
+  if (kind === "VIDEO") {
+    return (
+      <video src={url} controls className="mb-5 w-full rounded-lg border border-border bg-muted" />
+    );
+  }
+  if (kind === "AUDIO") {
+    return (
+      <div className="mb-5 rounded-lg border border-border bg-muted p-4">
+        <audio src={url} controls className="w-full" />
+      </div>
+    );
+  }
+  return (
+    <img
+      src={url}
+      alt={label}
+      className="mb-5 max-h-96 w-full rounded-lg border border-border bg-muted object-contain"
+    />
+  );
+}
+
 function SingleSelectQuestion({
   question,
   selected,
@@ -490,6 +518,8 @@ export default function QuestionPage() {
       </div>
 
       <h1 className="mb-5 text-xl font-semibold leading-snug text-foreground">{question.prompt}</h1>
+
+      <QuestionMediaPanel question={question} />
 
       {question.type === "SINGLE_SELECT" && (
         <SingleSelectQuestion

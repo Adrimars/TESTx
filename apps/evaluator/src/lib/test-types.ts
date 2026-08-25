@@ -15,12 +15,25 @@ export type QuestionOption = {
   } | null;
 };
 
+export type QuestionMedia = {
+  id: string;
+  fileName: string;
+  fileType: "IMAGE" | "VIDEO" | "AUDIO";
+  mimeType: string;
+  thumbnailUrl: string | null;
+  url: string;
+};
+
 export type Question = {
   id: string;
   testId: string;
   type: "SINGLE_SELECT" | "MULTI_SELECT" | "RATING" | "ORDERING";
   prompt: string;
   mediaType: string | null;
+  /** The media the question is about — rated, ranked or judged. Never selectable. */
+  mediaId: string | null;
+  media: QuestionMedia | null;
+  mediaUrl: string | null;
   order: number;
   config: Record<string, unknown>;
   isReviewHidden: boolean;

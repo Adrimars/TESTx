@@ -31,6 +31,7 @@ const submitSchema = z.object({
 });
 
 const questionInclude = {
+  media: true,
   options: {
     orderBy: { order: "asc" as const },
     include: { media: true },
@@ -169,12 +170,34 @@ function validateAnswers(
   return { answers };
 }
 
+type SerializableMedia = {
+  id: string;
+  fileName: string;
+  fileType: string;
+  mimeType: string;
+  fileSize: number;
+  thumbnailUrl: string | null;
+};
+
+function serializePublicMedia(media: SerializableMedia) {
+  return {
+    id: media.id,
+    fileName: media.fileName,
+    fileType: media.fileType,
+    mimeType: media.mimeType,
+    thumbnailUrl: media.thumbnailUrl,
+    url: `/media/${media.id}/file`,
+  };
+}
+
 function serializeQuestion(question: {
   id: string;
   testId: string;
   type: string;
   prompt: string;
   mediaType: string | null;
+  mediaId: string | null;
+  media: SerializableMedia | null;
   order: number;
   config: unknown;
   isAttentionCheck: boolean;
@@ -201,6 +224,10 @@ function serializeQuestion(question: {
     type: question.type,
     prompt: question.prompt,
     mediaType: question.mediaType,
+    // The media the question is about — the image being rated, the clip being ranked.
+    mediaId: question.mediaId,
+    media: question.media ? serializePublicMedia(question.media) : null,
+    mediaUrl: question.mediaId ? `/media/${question.mediaId}/file` : null,
     order: question.order,
     config: publicConfig(question.type, question.config),
     isReviewHidden: question.isAttentionCheck || question.isTrapDuplicate,
@@ -211,16 +238,7 @@ function serializeQuestion(question: {
       mediaId: opt.mediaId,
       order: opt.order,
       mediaUrl: opt.mediaId ? `/media/${opt.mediaId}/file` : null,
-      media: opt.media
-        ? {
-            id: opt.media.id,
-            fileName: opt.media.fileName,
-            fileType: opt.media.fileType,
-            mimeType: opt.media.mimeType,
-            thumbnailUrl: opt.media.thumbnailUrl,
-            url: `/media/${opt.media.id}/file`,
-          }
-        : null,
+      media: opt.media ? serializePublicMedia(opt.media) : null,
     })),
   };
 }

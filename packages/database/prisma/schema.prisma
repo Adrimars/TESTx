@@ -105,6 +105,10 @@ model Question {
   type             QuestionType
   prompt           String
   mediaType        MediaType?
+  /// The media the question is *about* — the image being rated, the clip being ranked.
+  /// Shown above the answer UI; unlike a QuestionOption it is never selectable.
+  mediaId          String?          @db.Uuid
+  media            Media?           @relation(fields: [mediaId], references: [id], onDelete: SetNull)
   order            Int
   config           Json             @default("{}")
   isAttentionCheck Boolean          @default(false)
@@ -118,6 +122,7 @@ model Question {
 
   @@unique([testId, order])
   @@index([testId, order])
+  @@index([mediaId])
 }
 
 model QuestionOption {
@@ -145,6 +150,7 @@ model Media {
   tags        String[]          @default([])
   uploadedAt  DateTime          @default(now())
   options     QuestionOption[]
+  questions   Question[]
 
   @@index([fileType])
 }

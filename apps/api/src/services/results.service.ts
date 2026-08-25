@@ -63,6 +63,9 @@ export type QuestionResult = {
   prompt: string;
   type: QuestionType;
   mediaType: ResultQuestion["mediaType"];
+  /** The media the question was about, if any — the image rated, the clip ranked. */
+  mediaId: string | null;
+  mediaUrl: string | null;
   answeredCount: number;
   options?: OptionAggregation[];
   rating?: RatingAggregation;
@@ -81,6 +84,8 @@ function aggregateQuestion(question: ResultQuestion, answers: ResultAnswer[]): Q
     prompt: question.prompt,
     type: question.type,
     mediaType: question.mediaType,
+    mediaId: question.mediaId,
+    mediaUrl: question.mediaId ? `/media/${question.mediaId}/file` : null,
     answeredCount: answers.length,
   };
 

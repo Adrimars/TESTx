@@ -228,6 +228,14 @@ export function QuestionResults({
               {showAnsweredCount && ` · ${question.answeredCount} responses`}
             </p>
             <CardTitle>{question.prompt}</CardTitle>
+            {/* Rating results are unreadable without the thing that was rated. */}
+            {question.mediaId && (
+              <img
+                src={`${API_URL}/media/${question.mediaId}/file`}
+                alt={question.prompt}
+                className="mt-3 max-h-40 rounded-md border border-border object-contain"
+              />
+            )}
           </CardHeader>
           <CardContent>
             {demographic ? (

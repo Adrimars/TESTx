@@ -16,6 +16,7 @@ export type Question = {
   type: QuestionType;
   prompt: string;
   mediaType: MediaType | null;
+  mediaId: string | null;
   order: number;
   config: QuestionConfig;
   isAttentionCheck: boolean;

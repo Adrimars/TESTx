@@ -178,6 +178,14 @@ export default function TestPreviewPage() {
 
             <h2 className="text-xl font-semibold leading-snug text-foreground">{question.prompt}</h2>
 
+            {question.mediaId && (
+              <img
+                src={`${API_URL}/media/${question.mediaId}/file`}
+                alt={question.prompt}
+                className="max-h-80 w-full rounded-lg border border-border bg-muted object-contain"
+              />
+            )}
+
             <QuestionPreview question={question} />
 
             <div className="flex justify-between gap-2 border-t border-border pt-5">

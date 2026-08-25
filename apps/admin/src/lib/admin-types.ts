@@ -30,6 +30,10 @@ export type AdminQuestion = {
   type: QuestionType;
   prompt: string;
   mediaType: MediaType | null;
+  /** The media the question is about — rated, ranked or judged. Never selectable. */
+  mediaId: string | null;
+  media: AdminMedia | null;
+  mediaUrl: string | null;
   order: number;
   config: Record<string, unknown>;
   isAttentionCheck: boolean;
@@ -130,6 +134,9 @@ export type QuestionResult = {
   prompt: string;
   type: QuestionType;
   mediaType: MediaType | null;
+  /** The media the question was about, if any — the image rated, the clip ranked. */
+  mediaId: string | null;
+  mediaUrl: string | null;
   answeredCount: number;
   options?: OptionAggregation[];
   rating?: RatingAggregation;
