@@ -17,8 +17,9 @@ import { theme } from "@/lib/theme";
  * a build that cannot render a newly shipped QuestionType would otherwise break
  * partway through a feed, after the evaluator has already invested time.
  *
- * There is no dismiss action by design. If the check cannot complete (offline,
- * API down) the app is left usable rather than locked out.
+ * There is no dismiss action by design. If the check cannot complete - offline, API
+ * down, or a platform that cannot report its own version - the app is left usable
+ * rather than locked out.
  */
 export function UpdateRequiredGate({ children }: { children: ReactNode }) {
   const [info, setInfo] = useState<MinVersionInfo | null>(null);
@@ -38,7 +39,10 @@ export function UpdateRequiredGate({ children }: { children: ReactNode }) {
   }, []);
 
   const outdated =
-    checked && info != null && isVersionBelow(currentAppVersion, info.minVersion);
+    checked &&
+    info != null &&
+    currentAppVersion != null &&
+    isVersionBelow(currentAppVersion, info.minVersion);
 
   if (!outdated) return <>{children}</>;
 

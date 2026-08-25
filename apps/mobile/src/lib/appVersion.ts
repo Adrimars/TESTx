@@ -8,7 +8,13 @@ export type MinVersionInfo = {
   storeUrls: { ios: string | null; android: string | null };
 };
 
-export const currentAppVersion = Application.nativeApplicationVersion ?? "0.0.0";
+/**
+ * Null when the platform cannot report a version - notably Expo's web target, which has
+ * no native bundle to read one from. Deliberately not defaulted to "0.0.0": that would
+ * turn "the version is unknown" into "the version is older than every minimum", locking
+ * the app behind the update wall on exactly the platforms the store gate does not target.
+ */
+export const currentAppVersion: string | null = Application.nativeApplicationVersion;
 
 /**
  * Returns null when the check cannot be made. A network failure must not lock
