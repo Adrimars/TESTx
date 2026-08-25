@@ -1,4 +1,5 @@
 import { StyleSheet, Text, View } from "react-native";
+import { OptionListCard } from "./OptionListCard";
 import { TwoOptionCard } from "./TwoOptionCard";
 import type { DeckAnswer } from "@/lib/deck";
 import type { EvaluatorQuestion } from "@/lib/test";
@@ -13,14 +14,32 @@ type QuestionCardProps = {
 /**
  * Picks the card interaction for a question type. Each type gets its own component
  * rather than a branching mega-card, because the gesture is what differs between them.
+ *
+ * Attention checks and trap duplicates deliberately get no special treatment. They are
+ * only worth anything while the evaluator cannot tell them apart from a real question,
+ * so they route through exactly the same cards as everything else.
  */
 export function QuestionCard({ question, isActive, onAnswer }: QuestionCardProps) {
-  if (question.type === "SINGLE_SELECT" && question.options.length === 2) {
+  if (question.type === "SINGLE_SELECT") {
+    // Two options map cleanly onto left and right; more than two do not.
+    if (question.options.length === 2) {
+      return (
+        <TwoOptionCard
+          question={question}
+          isActive={isActive}
+          onAnswer={(optionId) =>
+            onAnswer({ questionId: question.id, selectedOptionIds: [optionId] })
+          }
+        />
+      );
+    }
+
     return (
-      <TwoOptionCard
+      <OptionListCard
         question={question}
         isActive={isActive}
-        onAnswer={(optionId) =>
+        selectedIds={[]}
+        onToggle={(optionId) =>
           onAnswer({ questionId: question.id, selectedOptionIds: [optionId] })
         }
       />

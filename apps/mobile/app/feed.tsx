@@ -1,5 +1,5 @@
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
 import { CardStack } from "@/components/cards/CardStack";
@@ -12,8 +12,12 @@ import { theme } from "@/lib/theme";
 export default function FeedScreen() {
   const router = useRouter();
   const { signOut } = useSession();
+  // An explicit testId opens that test instead of whatever is next in line. Phase 11 owns
+  // real feed orchestration; until then this is how a specific test gets opened, and it is
+  // the seam a deep link into a test would use.
+  const { testId } = useLocalSearchParams<{ testId?: string }>();
   const nextTest = useNextTest();
-  const test = useEvaluatorTest(nextTest.data?.id);
+  const test = useEvaluatorTest(testId ?? nextTest.data?.id);
   const deck = useDeck(test.data?.questions ?? []);
 
   async function handleSignOut() {
@@ -21,7 +25,7 @@ export default function FeedScreen() {
     router.replace("/login");
   }
 
-  if (nextTest.isPending || test.isPending) {
+  if ((!testId && nextTest.isPending) || test.isPending) {
     return (
       <Shell>
         <ActivityIndicator color={theme.colors.textSecondary} />
@@ -29,7 +33,7 @@ export default function FeedScreen() {
     );
   }
 
-  if (nextTest.isError || test.isError) {
+  if ((!testId && nextTest.isError) || test.isError) {
     return (
       <Shell>
         <Text style={styles.title}>Could not load a test</Text>
@@ -41,7 +45,7 @@ export default function FeedScreen() {
     );
   }
 
-  if (!nextTest.data || !test.data) {
+  if (!test.data) {
     return (
       <Shell>
         <Text style={styles.title}>Nothing to answer right now</Text>
