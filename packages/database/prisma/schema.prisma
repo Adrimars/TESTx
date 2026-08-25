@@ -30,6 +30,7 @@ enum QuestionType {
   SINGLE_SELECT
   MULTI_SELECT
   RATING
+  RANKING
 }
 
 enum MediaType {

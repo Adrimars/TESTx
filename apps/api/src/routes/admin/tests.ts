@@ -2,6 +2,8 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import type { MediaType, QuestionInput, QuestionType, TestStatus } from "@testx/shared";
 import {
+  RANKING_MAX_OPTIONS,
+  RANKING_MIN_OPTIONS,
   calculateTestReward,
   createTestSchema,
   questionSchema,
@@ -142,6 +144,28 @@ function validateQuestionShape(input: QuestionInput) {
     for (const option of input.options) {
       if (!option.label && !option.mediaId) {
         throw Object.assign(new Error("Each selection option needs a label or media item"), { statusCode: 400 });
+      }
+    }
+    return;
+  }
+
+  if (input.type === "RANKING") {
+    if (
+      input.options.length < RANKING_MIN_OPTIONS ||
+      input.options.length > RANKING_MAX_OPTIONS
+    ) {
+      throw Object.assign(
+        new Error(
+          `Ranking questions require ${RANKING_MIN_OPTIONS} to ${RANKING_MAX_OPTIONS} options`
+        ),
+        { statusCode: 400 }
+      );
+    }
+    for (const option of input.options) {
+      if (!option.label && !option.mediaId) {
+        throw Object.assign(new Error("Each ranking option needs a label or media item"), {
+          statusCode: 400,
+        });
       }
     }
     return;

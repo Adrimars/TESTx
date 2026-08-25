@@ -32,7 +32,12 @@ type QualityResult = {
   warnings: string[];
 };
 
-/** Only option-based answers can be compared for consistency; see the trap check below. */
+/**
+ * Only option-based answers can be compared for consistency; see the trap check below.
+ * Deliberately a whitelist: RATING stores its answer outside `selectedOptionIds`, and
+ * RANKING selects every option by definition, so its two copies would always look
+ * "consistent" no matter how the evaluator ordered them. Neither can serve as a trap.
+ */
 const COMPARABLE_TRAP_TYPES = new Set(["SINGLE_SELECT", "MULTI_SELECT"]);
 
 /**

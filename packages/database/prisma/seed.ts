@@ -318,7 +318,104 @@ async function main() {
     });
   }
 
-  // ── Test 3: CLOSED — Text Survey (with responses for analytics) ───────────
+  // ── Test 3: ACTIVE — Swipe Engine Sampler (one question per type) ─────────
+  // Fixture for the mobile swipe engine: every question type the feed can render,
+  // in one ACTIVE test, so each card interaction can be exercised against real
+  // `/evaluator/tests/:id` data. RANKING has no admin authoring UI yet (plan 13.2),
+  // which is exactly why it has to be seeded here.
+  const existingSamplerTest = await prisma.test.findFirst({
+    where: { title: "Swipe Engine Sampler", status: "ACTIVE" },
+  });
+
+  let samplerTest = existingSamplerTest;
+  if (!samplerTest) {
+    samplerTest = await prisma.test.create({
+      data: {
+        title: "Swipe Engine Sampler",
+        description: "One question of every type, for exercising the mobile card interactions.",
+        status: "ACTIVE",
+        advisoryTimeMin: 3,
+        minTimePerQuestion: 60,
+        rewardPoints: 10,
+        questions: {
+          create: [
+            {
+              // Two options: the swipe-right / swipe-left card.
+              type: "SINGLE_SELECT",
+              prompt: "Which packaging would you pick up first?",
+              mediaType: "IMAGE",
+              order: 1,
+              config: {},
+              options: {
+                create: [
+                  { label: "Left", mediaId: medias[0]!.id, order: 1 },
+                  { label: "Right", mediaId: medias[1]!.id, order: 2 },
+                ],
+              },
+            },
+            {
+              // Three or more options: the docked tap list, no swipe-to-choose.
+              type: "SINGLE_SELECT",
+              prompt: "Which of these best describes the brand's tone?",
+              mediaType: "TEXT",
+              order: 2,
+              config: {},
+              options: {
+                create: [
+                  { label: "Playful", order: 1 },
+                  { label: "Serious", order: 2 },
+                  { label: "Premium", order: 3 },
+                  { label: "Approachable", order: 4 },
+                ],
+              },
+            },
+            {
+              // Sub-deck: one card per option, include/skip, bounded by min/max.
+              type: "MULTI_SELECT",
+              prompt: "Which of these images fit the brand? Pick 2 to 3.",
+              mediaType: "IMAGE",
+              order: 3,
+              config: { minSelections: 2, maxSelections: 3 },
+              options: {
+                create: [
+                  { label: "Image 1", mediaId: medias[2]!.id, order: 1 },
+                  { label: "Image 2", mediaId: medias[3]!.id, order: 2 },
+                  { label: "Image 3", mediaId: medias[4]!.id, order: 3 },
+                  { label: "Image 4", mediaId: medias[5]!.id, order: 4 },
+                ],
+              },
+            },
+            {
+              // Drag-to-target: five pills down the right edge.
+              type: "RATING",
+              prompt: "How much do you like this image?",
+              mediaType: "IMAGE",
+              order: 4,
+              config: { min: 1, max: 5, minLabel: "Not at all", maxLabel: "A lot" },
+            },
+            {
+              // Drag-to-slot: four cards, four slots, strict order.
+              type: "RANKING",
+              prompt: "Rank these lifestyle images from best to worst fit.",
+              mediaType: "IMAGE",
+              order: 5,
+              config: { bestLabel: "Best fit", worstLabel: "Worst fit" },
+              options: {
+                create: [
+                  { label: "Lifestyle A", mediaId: medias[6]!.id, order: 1 },
+                  { label: "Lifestyle B", mediaId: medias[7]!.id, order: 2 },
+                  { label: "Lifestyle C", mediaId: medias[8]!.id, order: 3 },
+                  { label: "Lifestyle D", mediaId: medias[9]!.id, order: 4 },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    });
+  }
+
+  // ── Test 4: CLOSED — Text Survey (with responses for analytics) ───────────
   const existingClosedTest = await prisma.test.findFirst({
     where: { title: "Consumer Habits Survey", status: "CLOSED" },
   });
@@ -563,7 +660,12 @@ async function main() {
   console.log({
     admin: admin.email,
     evaluators: evaluators.length,
-    tests: { photoTest: photoTest.title, ratingTest: ratingTest.title, closedTest: closedTest.title },
+    tests: {
+      photoTest: photoTest.title,
+      ratingTest: ratingTest.title,
+      samplerTest: samplerTest.title,
+      closedTest: closedTest.title,
+    },
     media: medias.length,
   });
 }

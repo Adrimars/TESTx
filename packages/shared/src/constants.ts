@@ -1,7 +1,7 @@
 export const USER_ROLES = ["EVALUATOR", "ADMIN"] as const;
 export const GENDERS = ["MALE", "FEMALE", "OTHER", "UNDISCLOSED"] as const;
 export const TEST_STATUSES = ["DRAFT", "ACTIVE", "PAUSED", "CLOSED"] as const;
-export const QUESTION_TYPES = ["SINGLE_SELECT", "MULTI_SELECT", "RATING"] as const;
+export const QUESTION_TYPES = ["SINGLE_SELECT", "MULTI_SELECT", "RATING", "RANKING"] as const;
 export const MEDIA_TYPES = ["IMAGE", "VIDEO", "AUDIO", "TEXT"] as const;
 export const FILE_MEDIA_TYPES = ["IMAGE", "VIDEO", "AUDIO"] as const;
 export const MEDIA_SOURCE_TYPES = ["UPLOAD", "GOOGLE_DRIVE"] as const;
@@ -53,10 +53,26 @@ export const AI_FREQUENCY_OPTIONS = [
 export const DEFAULT_RATING_MIN = 1;
 export const DEFAULT_RATING_MAX = 5;
 
+/**
+ * A RANKING question asks for a strict order over all of its options, so the option
+ * count is what bounds the work. Below 3 the ordering carries almost no information
+ * beyond a single-select; above 5 the mobile drag-to-slot interaction runs out of
+ * room for the target column within the safe area.
+ */
+export const RANKING_MIN_OPTIONS = 3;
+export const RANKING_MAX_OPTIONS = 5;
+
+/** Endpoint labels shown at the top and bottom of a ranking's slot column. */
+export const DEFAULT_RANKING_BEST_LABEL = "Best";
+export const DEFAULT_RANKING_WORST_LABEL = "Worst";
+
 export const QUESTION_REWARD_WEIGHTS: Record<QuestionType, number> = {
   SINGLE_SELECT: 2,
   MULTI_SELECT: 2,
   RATING: 1,
+  // Ranking asks for one placement per option rather than one answer per question,
+  // so it costs the evaluator more than any of the others.
+  RANKING: 3,
 };
 
 export type UserRole = (typeof USER_ROLES)[number];

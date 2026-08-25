@@ -46,6 +46,7 @@ const PUBLIC_CONFIG_KEYS: Record<string, readonly string[]> = {
   SINGLE_SELECT: [],
   MULTI_SELECT: ["minSelections", "maxSelections"],
   RATING: ["min", "max", "minLabel", "maxLabel"],
+  RANKING: ["bestLabel", "worstLabel"],
 };
 
 function toConfig(raw: unknown): Record<string, unknown> {
@@ -89,6 +90,8 @@ type QuestionForValidation = {
  *
  * Under-filled answers (nothing selected, no rating) are deliberately *not* rejected:
  * they are reachable by an honest evaluator and are the quality service's call to make.
+ * The one exception is RANKING, where a *partially* filled order is not something the
+ * client can produce honestly — see the check below.
  */
 function validateAnswers(
   submitted: SubmittedAnswer[],
@@ -135,6 +138,20 @@ function validateAnswers(
       const maxSelections = numberOr(config.maxSelections, question.options.length);
       if (selected.length > maxSelections) {
         return { message: `Question ${questionId} accepts at most ${maxSelections} options` };
+      }
+      answers.push({ ...base, selectedOptionIds: selected });
+      continue;
+    }
+
+    if (question.type === "RANKING") {
+      // A ranking only means something as a strict total order, so a partial order is
+      // rejected rather than stored — unlike the other types there is no coherent way to
+      // read "options 1 and 3 placed, 2 left out". An empty array stays legal: that is a
+      // skipped question, which every other type allows and the quality service judges.
+      if (selected.length > 0 && selected.length !== question.options.length) {
+        return {
+          message: `Question ${questionId} must rank all ${question.options.length} options`,
+        };
       }
       answers.push({ ...base, selectedOptionIds: selected });
       continue;
