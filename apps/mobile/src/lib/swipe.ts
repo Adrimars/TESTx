@@ -45,3 +45,50 @@ export function resolveHorizontalRelease(
   const signal = clearedDistance ? release.x : release.velocityX;
   return { commit: true, direction: signal < 0 ? -1 : 1 };
 }
+
+/** Sub-deck cursor state for a multi select, in option ids. */
+export type SubDeckState = {
+  /** Option ids still being offered, in the order they are shown. */
+  queue: string[];
+  cursor: number;
+  included: string[];
+};
+
+export type SubDeckStep =
+  | { type: "next"; state: SubDeckState }
+  /** Every option has been decided and the minimum is met. */
+  | { type: "complete"; included: string[] }
+  /** Cards ran out with too few chosen; the skipped ones come back around. */
+  | { type: "reconsider"; state: SubDeckState };
+
+/**
+ * Applies one include/skip decision to a multi select sub-deck.
+ *
+ * Reaching the end with fewer than `min` chosen does not complete the question - the API
+ * would reject it and the evaluator would lose the work - so the skipped options are
+ * re-offered instead. Only the skipped ones come back, because the included ones are not
+ * decisions that still need making.
+ *
+ * The maximum is not enforced here: refusing to include is a gesture-level decision the
+ * card makes before a commit ever happens, so a step that arrives here is already legal.
+ */
+export function advanceSubDeck(
+  state: SubDeckState,
+  optionId: string,
+  include: boolean,
+  min: number
+): SubDeckStep {
+  const included = include ? [...state.included, optionId] : state.included;
+  const cursor = state.cursor + 1;
+
+  if (cursor < state.queue.length) {
+    return { type: "next", state: { ...state, cursor, included } };
+  }
+
+  if (included.length >= min) {
+    return { type: "complete", included };
+  }
+
+  const skipped = state.queue.filter((id) => !included.includes(id));
+  return { type: "reconsider", state: { queue: skipped, cursor: 0, included } };
+}

@@ -1,4 +1,5 @@
 import { StyleSheet, Text, View } from "react-native";
+import { MultiSelectCard } from "./MultiSelectCard";
 import { OptionListCard } from "./OptionListCard";
 import { TwoOptionCard } from "./TwoOptionCard";
 import type { DeckAnswer } from "@/lib/deck";
@@ -41,6 +42,18 @@ export function QuestionCard({ question, isActive, onAnswer }: QuestionCardProps
         selectedIds={[]}
         onToggle={(optionId) =>
           onAnswer({ questionId: question.id, selectedOptionIds: [optionId] })
+        }
+      />
+    );
+  }
+
+  if (question.type === "MULTI_SELECT") {
+    return (
+      <MultiSelectCard
+        question={question}
+        isActive={isActive}
+        onAnswer={(optionIds) =>
+          onAnswer({ questionId: question.id, selectedOptionIds: optionIds })
         }
       />
     );
