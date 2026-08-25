@@ -96,13 +96,16 @@ function OptionShell({
       </Text>
 
       {selected ? (
-        <View style={styles.check} pointerEvents="none">
+        <View style={[styles.check, NO_TOUCH]}>
           <Text style={styles.checkMark}>{"✓"}</Text>
         </View>
       ) : null}
     </Pressable>
   );
 }
+
+/** Inert overlay: the deprecated pointerEvents prop moved onto style. */
+const NO_TOUCH = { pointerEvents: "none" } as const;
 
 const styles = StyleSheet.create({
   card: {

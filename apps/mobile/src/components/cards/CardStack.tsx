@@ -58,9 +58,9 @@ export function CardStack<T>({
           return (
             <View
               key={keyExtractor(item, index)}
-              pointerEvents={isActive ? "auto" : "none"}
               style={[
                 styles.slot,
+                isActive ? null : NO_TOUCH,
                 !isActive && {
                   transform: [
                     { scale: 1 - PEEK_SCALE_STEP * depth },
@@ -77,6 +77,9 @@ export function CardStack<T>({
     </View>
   );
 }
+
+/** Inert overlay: the deprecated pointerEvents prop moved onto style. */
+const NO_TOUCH = { pointerEvents: "none" } as const;
 
 const styles = StyleSheet.create({
   container: {

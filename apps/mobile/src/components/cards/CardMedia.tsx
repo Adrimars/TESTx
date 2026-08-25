@@ -58,7 +58,7 @@ function CardImage({ uri }: { uri: string }) {
         }}
       />
       {loading ? (
-        <View style={styles.overlayCenter} pointerEvents="none">
+        <View style={[styles.overlayCenter, NO_TOUCH]}>
           <ActivityIndicator color={theme.colors.textSecondary} />
         </View>
       ) : null}
@@ -134,6 +134,9 @@ function MediaFallback({ message }: { message: string }) {
     </View>
   );
 }
+
+/** Inert overlay: the deprecated pointerEvents prop moved onto style. */
+const NO_TOUCH = { pointerEvents: "none" } as const;
 
 const styles = StyleSheet.create({
   fill: { flex: 1, backgroundColor: theme.colors.surfaceBase },

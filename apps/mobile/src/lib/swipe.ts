@@ -92,3 +92,66 @@ export function advanceSubDeck(
   const skipped = state.queue.filter((id) => !included.includes(id));
   return { type: "reconsider", state: { queue: skipped, cursor: 0, included } };
 }
+
+/** A drop target's centre and its half-height, in the card's coordinate space. */
+export type DropTarget = {
+  /** What committing on this target means: a rating value, or a ranking slot number. */
+  value: number;
+  centerX: number;
+  centerY: number;
+  /** Distance from the centre at which the target still counts as hit. */
+  radius: number;
+  /** Ranking slots stop accepting drops once filled. */
+  enabled: boolean;
+};
+
+/**
+ * How close a dragged card is to a target, as 0 (far) to 1 (dead centre). Drives the
+ * scale-up that tells the evaluator which target a release would land on, before they
+ * commit to it.
+ */
+export function targetProximity(
+  cardX: number,
+  cardY: number,
+  target: DropTarget,
+  falloff: number
+): number {
+  "worklet";
+  if (!target.enabled) return 0;
+  const dx = cardX - target.centerX;
+  const dy = cardY - target.centerY;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  if (distance >= falloff) return 0;
+  return 1 - distance / falloff;
+}
+
+/**
+ * The target a release lands on, or null to spring back.
+ *
+ * Nearest-centre rather than first-match: targets sit close together in a column, and
+ * picking the first one whose radius contains the point would bias every ambiguous drop
+ * toward whichever end of the column happened to be checked first.
+ */
+export function resolveDropTarget(
+  cardX: number,
+  cardY: number,
+  targets: readonly DropTarget[]
+): DropTarget | null {
+  "worklet";
+  let best: DropTarget | null = null;
+  let bestDistance = Infinity;
+
+  for (let i = 0; i < targets.length; i += 1) {
+    const target = targets[i]!;
+    if (!target.enabled) continue;
+    const dx = cardX - target.centerX;
+    const dy = cardY - target.centerY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    if (distance <= target.radius && distance < bestDistance) {
+      best = target;
+      bestDistance = distance;
+    }
+  }
+
+  return best;
+}

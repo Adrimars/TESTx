@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from "react-native";
 import { MultiSelectCard } from "./MultiSelectCard";
 import { OptionListCard } from "./OptionListCard";
+import { RatingCard } from "./RatingCard";
 import { TwoOptionCard } from "./TwoOptionCard";
 import type { DeckAnswer } from "@/lib/deck";
 import type { EvaluatorQuestion } from "@/lib/test";
@@ -54,6 +55,18 @@ export function QuestionCard({ question, isActive, onAnswer }: QuestionCardProps
         isActive={isActive}
         onAnswer={(optionIds) =>
           onAnswer({ questionId: question.id, selectedOptionIds: optionIds })
+        }
+      />
+    );
+  }
+
+  if (question.type === "RATING") {
+    return (
+      <RatingCard
+        question={question}
+        isActive={isActive}
+        onAnswer={(ratingValue) =>
+          onAnswer({ questionId: question.id, selectedOptionIds: [], ratingValue })
         }
       />
     );

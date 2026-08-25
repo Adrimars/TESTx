@@ -176,14 +176,14 @@ function OptionSwipeCard({
           isActive={isActive}
         />
 
-        <Animated.View style={[styles.stamp, styles.stampSkip, skipHint]} pointerEvents="none">
+        <Animated.View style={[styles.stamp, styles.stampSkip, skipHint, NO_TOUCH]}>
           <Text style={styles.stampText}>SKIP</Text>
         </Animated.View>
-        <Animated.View style={[styles.stamp, styles.stampInclude, includeHint]} pointerEvents="none">
+        <Animated.View style={[styles.stamp, styles.stampInclude, includeHint, NO_TOUCH]}>
           <Text style={styles.stampText}>PICK</Text>
         </Animated.View>
 
-        <View style={styles.captionBar} pointerEvents="none">
+        <View style={[styles.captionBar, NO_TOUCH]}>
           <Text style={styles.captionSide}>{"← Skip"}</Text>
           <Text style={styles.captionLabel} numberOfLines={1}>
             {option.label ?? ""}
@@ -194,6 +194,9 @@ function OptionSwipeCard({
     </SwipeCard>
   );
 }
+
+/** Inert overlay: the deprecated pointerEvents prop moved onto style. */
+const NO_TOUCH = { pointerEvents: "none" } as const;
 
 const styles = StyleSheet.create({
   wrapper: { flex: 1 },

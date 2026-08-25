@@ -82,7 +82,7 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
               isActive={isActive}
             />
             <Animated.View style={[styles.highlight, styles.highlightLeft, leftHighlight]} />
-            <View style={styles.caption} pointerEvents="none">
+            <View style={[styles.caption, NO_TOUCH]}>
               <Text style={styles.captionArrow}>{"←"}</Text>
               <Text style={styles.captionLabel} numberOfLines={2}>
                 {leftOption?.label ?? "Swipe left"}
@@ -100,7 +100,7 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
               isActive={isActive}
             />
             <Animated.View style={[styles.highlight, styles.highlightRight, rightHighlight]} />
-            <View style={styles.caption} pointerEvents="none">
+            <View style={[styles.caption, NO_TOUCH]}>
               <Text style={styles.captionLabel} numberOfLines={2}>
                 {rightOption?.label ?? "Swipe right"}
               </Text>
@@ -112,6 +112,9 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
     </SwipeCard>
   );
 }
+
+/** Inert overlay: the deprecated pointerEvents prop moved onto style. */
+const NO_TOUCH = { pointerEvents: "none" } as const;
 
 const styles = StyleSheet.create({
   body: { flex: 1 },
