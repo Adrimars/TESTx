@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import { TapZone } from "@/components/TapZone";
 import { CardMedia } from "./CardMedia";
 import { CardStack } from "./CardStack";
 import { SwipeCard } from "./SwipeCard";
@@ -183,32 +184,31 @@ function OptionSwipeCard({
           <Text style={styles.stampText}>PICK</Text>
         </Animated.View>
 
-        <View style={styles.captionBar}>
+        <View style={styles.captionBar} pointerEvents="box-none">
           {/* Tap-based fallback for the swipe gesture (prd.md §16.7): calls the same
-              onDecide the swipe commit does, directly. */}
-          <Pressable
+              onDecide the swipe commit does, directly. "box-none" above keeps the rest of
+              this bar passed through to the card's own drag surface underneath. */}
+          <TapZone
             style={styles.captionButton}
             disabled={!isActive}
             onPress={() => onDecide(false)}
-            accessibilityRole="button"
             accessibilityLabel={`Skip ${option.label ?? "this option"}`}
           >
             <Text style={styles.captionSide}>{"← Skip"}</Text>
-          </Pressable>
+          </TapZone>
           <Text style={styles.captionLabel} numberOfLines={1}>
             {option.label ?? ""}
           </Text>
-          <Pressable
+          <TapZone
             style={styles.captionButton}
             disabled={!isActive || atMax}
             onPress={() => onDecide(true)}
-            accessibilityRole="button"
             accessibilityLabel={atMax ? "Maximum reached" : `Pick ${option.label ?? "this option"}`}
           >
             <Text style={[styles.captionSide, atMax && styles.captionSideDisabled]}>
               {atMax ? "Max reached" : "Pick →"}
             </Text>
-          </Pressable>
+          </TapZone>
         </View>
       </View>
     </SwipeCard>

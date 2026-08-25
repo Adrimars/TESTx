@@ -4,6 +4,7 @@ import { X } from "lucide-react-native";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
+import { TapZone } from "@/components/TapZone";
 import { CardMedia } from "./CardMedia";
 import { SwipeCard } from "./SwipeCard";
 import type { ReleaseGesture } from "./SwipeCard";
@@ -103,11 +104,10 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
         <Text style={styles.prompt}>{question.prompt}</Text>
 
         <View style={styles.halves}>
-          <Pressable
+          <TapZone
             style={styles.half}
             disabled={!isActive || !leftOption}
             onPress={() => handleHalfPress(leftOption)}
-            accessibilityRole="button"
             accessibilityLabel={leftOption?.label ?? "Choose this side"}
           >
             <CardMedia
@@ -123,15 +123,14 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
                 {leftOption?.label ?? "Swipe left"}
               </Text>
             </View>
-          </Pressable>
+          </TapZone>
 
           <View style={styles.divider} />
 
-          <Pressable
+          <TapZone
             style={styles.half}
             disabled={!isActive || !rightOption}
             onPress={() => handleHalfPress(rightOption)}
-            accessibilityRole="button"
             accessibilityLabel={rightOption?.label ?? "Choose this side"}
           >
             <CardMedia
@@ -147,7 +146,7 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
               </Text>
               <Text style={styles.captionArrow}>{"→"}</Text>
             </View>
-          </Pressable>
+          </TapZone>
         </View>
       </View>
 

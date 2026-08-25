@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   runOnJS,
@@ -8,6 +8,7 @@ import Animated, {
   useSharedValue,
 } from "react-native-reanimated";
 import type { SharedValue } from "react-native-reanimated";
+import { TapZone } from "@/components/TapZone";
 import { CardMedia } from "./CardMedia";
 import { DragHint } from "./DragHint";
 import { SwipeCard } from "./SwipeCard";
@@ -166,7 +167,7 @@ export function RatingCard({ question, isActive, onAnswer }: RatingCardProps) {
           { right: insets.right + COLUMN_RIGHT_MARGIN, top: insets.top, bottom: insets.bottom },
         ]}
         // "box-none": the column stays inert for the drag gesture beneath it, but each
-        // pill's own Pressable can still take a direct tap - the tap-based fallback every
+        // pill's own TapZone can still take a direct tap - the tap-based fallback every
         // gesture-driven interaction needs (prd.md §16.7).
         pointerEvents="box-none"
       >
@@ -235,15 +236,14 @@ function TargetPill({
       {endLabel ? <Text style={styles.endLabel} numberOfLines={1}>{endLabel}</Text> : null}
       <Animated.View style={[styles.pill, animated]}>
         <Animated.View style={[styles.pillFill, fill]} />
-        <Pressable
+        <TapZone
           style={styles.pillPressable}
           disabled={disabled}
           onPress={onPress}
-          accessibilityRole="button"
           accessibilityLabel={`Rate ${label}`}
         >
           <Text style={styles.pillText}>{label}</Text>
-        </Pressable>
+        </TapZone>
       </Animated.View>
     </View>
   );

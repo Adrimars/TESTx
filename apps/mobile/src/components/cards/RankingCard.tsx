@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Image, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   runOnJS,
@@ -9,6 +9,7 @@ import Animated, {
 } from "react-native-reanimated";
 import type { SharedValue } from "react-native-reanimated";
 import { DEFAULT_RANKING_BEST_LABEL, DEFAULT_RANKING_WORST_LABEL } from "@testx/shared";
+import { TapZone } from "@/components/TapZone";
 import { CardMedia } from "./CardMedia";
 import { DragHint } from "./DragHint";
 import { SwipeCard } from "./SwipeCard";
@@ -234,8 +235,8 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
           { right: insets.right + COLUMN_RIGHT_MARGIN, top: insets.top, bottom: insets.bottom },
         ]}
         // "box-none": the column itself stays inert so the drag-to-place gesture beneath
-        // it still passes through, but a filled slot's own Pressable (below) can still
-        // take a tap to reclaim it.
+        // it still passes through, but each slot's own TapZone (below) can still take a
+        // tap to reclaim or place a card.
         pointerEvents="box-none"
       >
         {targets.map((target, index) => (
@@ -309,27 +310,25 @@ function RankSlot({
       ) : null}
       <Animated.View style={[styles.slot, filled && styles.slotFilled, animated]}>
         {filled && option ? (
-          <Pressable
+          <TapZone
             style={styles.slotThumbnailPressable}
             disabled={disabled}
             onPress={() => onReclaim(target.value)}
-            accessibilityRole="button"
             accessibilityLabel={`Remove ${option.label ?? "this card"} from rank ${target.value}, to place it again`}
           >
             <SlotThumbnail option={option} mediaType={mediaType} />
-          </Pressable>
+          </TapZone>
         ) : (
           // Tap-based fallback for the drag-to-slot gesture (prd.md §16.7): places the
           // current card here directly, same as dragging it onto this slot would.
-          <Pressable
+          <TapZone
             style={styles.slotThumbnailPressable}
             disabled={disabled}
             onPress={() => onPlace(target.value)}
-            accessibilityRole="button"
             accessibilityLabel={`Place the current card at rank ${target.value}`}
           >
             <Text style={styles.slotText}>{target.value}</Text>
-          </Pressable>
+          </TapZone>
         )}
       </Animated.View>
     </View>
