@@ -29,6 +29,12 @@ await app.register(cors, {
   origin: [
     process.env.EVALUATOR_APP_URL ?? "http://localhost:3000",
     process.env.ADMIN_APP_URL ?? "http://localhost:3001",
+    // Expo's web target, used to exercise the mobile app during development. Native
+    // builds are not subject to CORS at all, so this origin has no production use and
+    // is left out of production entirely rather than shipped as a permanent hole.
+    ...(process.env.NODE_ENV === "production"
+      ? []
+      : [process.env.MOBILE_WEB_URL ?? "http://localhost:8081"]),
   ],
 });
 await app.register(cookie);

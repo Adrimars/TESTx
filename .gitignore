@@ -44,3 +44,6 @@ Thumbs.db
 
 # Prisma
 prisma/generated/
+
+# Claude Code local settings (per-developer)
+.claude/settings.local.json
