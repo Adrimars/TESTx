@@ -63,7 +63,14 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
    * steps and the 18+ gate, neither of which applies to web registration
    * (prd.md 15.11 keeps that flow untouched).
    */
-  app.post("/register/mobile", async (request, reply) => {
+  app.post(
+    "/register/mobile",
+    // Tighter than the global default because this endpoint creates accounts,
+    // but deliberately not as tight as /login: registrations from one office or
+    // campus share a NAT address, and 9.5 already chose flagging over blocking
+    // as the answer to farming. This is defence in depth, not the gate.
+    { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
+    async (request, reply) => {
     const input = mobileRegisterSchema.parse(request.body);
 
     const existing = await app.prisma.user.findUnique({ where: { email: input.email } });
@@ -106,7 +113,8 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const refreshToken = signRefreshToken(payload);
     setAuthCookies(reply, accessToken, refreshToken);
     return reply.status(201).send({ ...buildCurrentUser(user), accessToken, refreshToken });
-  });
+    }
+  );
 
   app.post(
     "/login",
@@ -187,7 +195,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
    * pair. Tokens are deliberately never placed in the redirect URL itself,
    * which would leak them into OS logs and browser history.
    */
-  app.post("/google/exchange", async (request, reply) => {
+  app.post(
+    "/google/exchange",
+    { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
+    async (request, reply) => {
     const { code } = (request.body ?? {}) as { code?: unknown };
     if (typeof code !== "string" || !code) {
       return reply.status(400).send({ error: "BAD_REQUEST", message: "Missing code" });
@@ -212,7 +223,8 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const accessToken = signAccessToken(payload);
     const refreshToken = signRefreshToken(payload);
     return reply.send({ ...buildCurrentUser(user), accessToken, refreshToken });
-  });
+    }
+  );
 
   app.get("/google/callback", async (request, reply) => {
     const { code } = request.query as { code?: string };

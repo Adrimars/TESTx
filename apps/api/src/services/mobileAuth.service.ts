@@ -16,6 +16,11 @@ export async function issueMobileAuthCode(prisma: PrismaClient, userId: string):
   await prisma.mobileAuthCode.create({
     data: { code, userId, expiresAt: new Date(Date.now() + CODE_TTL_MS) },
   });
+
+  // Opportunistic cleanup. Issuing is rare and already on a slow OAuth path, so
+  // this is a natural place to sweep; it must not delay handing back the code.
+  void purgeExpiredAuthCodes(prisma).catch(() => undefined);
+
   return code;
 }
 
