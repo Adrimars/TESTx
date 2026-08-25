@@ -944,3 +944,11 @@ Not scheduled into the phases above — tracked here so they aren't lost:
 - **Coupon redemption/purchase execution** — actually spending points from the Phase 14 catalog (balance deduction, fulfillment/coupon-code delivery, transaction history). The catalog itself ships in Phase 14; this is only the "spend" action.
 - **KVKK consent on web** — Phase 9.3 adds it to mobile only; extending the same consent capture to `apps/evaluator`'s registration flow is a follow-up if legal/compliance asks for parity.
 - **Smarter quality-control algorithm** (prd.md §15.8): replace the flat per-test `minTimePerQuestion` with a computed per-question minimum (roughly `advisoryTimeMin ÷ 4`, formula TBD), summed per test, invisible to the evaluator. Add repeated-failure tracking (3–4 speed-check or consistency-check failures) as an additional reward-withholding signal on top of the existing single-flag behavior. Needs its own design pass — including how `advisoryTimeMin` is actually derived/used — before implementation.
+
+### Legal / Store Compliance (from `kvkk-compliance-research.md` and `appstore-playstore-compliance-research.md`, 2026-08-24)
+
+- **Have the Privacy Notice (Aydınlatma Metni) drafted by legal counsel** — `apps/mobile/src/content/aydinlatmaMetni.ts` is currently a placeholder and hasn't passed legal review.
+- **Prepare a separate Privacy Policy + Terms of Use document** — neither exists in the repo yet; required for both KVKK and Apple/Google store rules (the Privacy Notice does not substitute for these).
+- **Clarify the legal basis for data transfer to Google** (KVKK Article 9) — since Google OAuth sign-in is a continuous/routine dependency, explicit consent alone may not be sufficient; may need to rely on Google's standard contractual clauses/DPA instead — legal counsel approval required.
+- **Add an account deletion feature** — mandatory for both Apple (5.1.1v) and Google Play submission; currently only sign-out exists. Must be done before store launch.
+- **Clarify VERBİS exemption status** — employee count and annual balance sheet figures are pending; likely exempt at this scale, but not yet confirmed.
