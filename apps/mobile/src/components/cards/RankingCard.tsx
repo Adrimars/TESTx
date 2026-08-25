@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import type { SharedValue } from "react-native-reanimated";
@@ -8,6 +8,7 @@ import { CardMedia } from "./CardMedia";
 import { DragHint } from "./DragHint";
 import { SwipeCard } from "./SwipeCard";
 import type { ReleaseGesture } from "./SwipeCard";
+import { resolveMediaUrl } from "@/lib/env";
 import {
   activeTargetValue,
   orderPlacements,
@@ -15,7 +16,7 @@ import {
   targetProximity,
 } from "@/lib/swipe";
 import type { DropTarget } from "@/lib/swipe";
-import type { EvaluatorQuestion } from "@/lib/test";
+import type { EvaluatorOption, EvaluatorQuestion } from "@/lib/test";
 import { useGestureTutorial } from "@/lib/tutorial";
 import { theme } from "@/lib/theme";
 
@@ -43,6 +44,10 @@ type RankingCardProps = {
  * than allowing ties. Aiming at a filled one springs the card back instead of snapping to
  * a neighbouring slot: landing somewhere the evaluator did not aim would quietly produce
  * an ordering they never chose, and the ordering is the entire answer here.
+ *
+ * Tapping a filled slot pulls its card back out (`reclaim`) so one placement can be
+ * revised without discarding the rest - the outer deck's Back (10.7) is the only other
+ * undo, and that throws away the whole question.
  */
 export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) {
   const { width } = useWindowDimensions();
@@ -50,14 +55,23 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
 
   const options = question.options;
   const slotCount = options.length;
+  const optionsById = useMemo(
+    () => new Map(options.map((option) => [option.id, option])),
+    [options]
+  );
 
   /** Slot number (1-based) to the option id placed in it. */
   const [placements, setPlacements] = useState<Record<number, string>>({});
-  const [cursor, setCursor] = useState(0);
+  /** Option ids not yet placed, in the order they're offered. Index 0 is the active card. */
+  const [remaining, setRemaining] = useState<string[]>(() => options.map((option) => option.id));
 
   const bestLabel = question.config.bestLabel ?? DEFAULT_RANKING_BEST_LABEL;
   const worstLabel = question.config.worstLabel ?? DEFAULT_RANKING_WORST_LABEL;
 
+  // Owned here (not inside SwipeCard) because Rating/Ranking need the finger position to
+  // light up the target column - see SwipeCard's `position`/`pointer` doc. That means a
+  // fresh card for the next option does not automatically get a fresh 0,0: `place`/
+  // `reclaim` reset these explicitly before swapping `current`.
   const x = useSharedValue(0);
   const y = useSharedValue(0);
   const pointerX = useSharedValue(0);
@@ -80,7 +94,7 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
     }));
   }, [insets.top, insets.bottom, insets.right, width, slotCount, placements]);
 
-  const current = options[cursor];
+  const current = remaining[0] ? optionsById.get(remaining[0]) : undefined;
 
   const tutorial = useGestureTutorial("ranking", isActive);
   const hintTarget = targets.find((target) => target.enabled);
@@ -98,12 +112,28 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
     };
   };
 
+  /**
+   * Zeroes the shared drag/pointer offsets before the next card takes over.
+   *
+   * `x`/`y`/`pointerX`/`pointerY` are owned here, not by SwipeCard, so remounting the
+   * SwipeCard for the next option (see the `key` below) does not by itself reset them -
+   * they would otherwise still read wherever the last card was released, which on a miss
+   * near a slot boundary can leave a neighbouring slot armed before the next drag begins.
+   */
+  function resetDrag() {
+    x.value = 0;
+    y.value = 0;
+    pointerX.value = 0;
+    pointerY.value = 0;
+  }
+
   function place(slotNumber: number) {
     if (!current) return;
     const next = { ...placements, [slotNumber]: current.id };
-    const nextCursor = cursor + 1;
+    const nextRemaining = remaining.slice(1);
+    resetDrag();
 
-    if (nextCursor >= options.length) {
+    if (nextRemaining.length === 0) {
       const ordered = orderPlacements(next, slotCount);
       // Every card has been placed and every slot takes exactly one, so this cannot come
       // back null. Falling through rather than asserting keeps a partial ranking out of
@@ -115,7 +145,18 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
     }
 
     setPlacements(next);
-    setCursor(nextCursor);
+    setRemaining(nextRemaining);
+  }
+
+  /** Pulls a filled slot's card back out to the front of the queue, for re-placing. */
+  function reclaim(slotNumber: number) {
+    const optionId = placements[slotNumber];
+    if (optionId === undefined) return;
+    const next = { ...placements };
+    delete next[slotNumber];
+    resetDrag();
+    setPlacements(next);
+    setRemaining((prev) => [optionId, ...prev]);
   }
 
   if (!current) {
@@ -130,6 +171,12 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
   return (
     <View style={styles.wrapper}>
       <SwipeCard
+        // Remounts for each option in turn, matching CardStack's own unmount-to-reset
+        // pattern (see that file's comment): without this the same SwipeCard instance
+        // persists across placements, and its internal `isSettling` latch - set once on
+        // the first commit and never cleared - permanently disables the pan gesture for
+        // every option after it.
+        key={current.id}
         width={width}
         enabled={isActive}
         position={isActive ? { x, y } : undefined}
@@ -142,7 +189,7 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
         <View style={styles.body}>
           <Text style={styles.prompt}>{question.prompt}</Text>
           <Text style={styles.status}>
-            {cursor + 1} of {options.length} · drag onto an open slot
+            {slotCount - remaining.length + 1} of {slotCount} · drag onto an open slot
           </Text>
           <View style={styles.media}>
             <CardMedia
@@ -167,8 +214,11 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
         style={[
           styles.column,
           { right: insets.right + COLUMN_RIGHT_MARGIN, top: insets.top, bottom: insets.bottom },
-          NO_TOUCH,
         ]}
+        // "box-none": the column itself stays inert so the drag-to-place gesture beneath
+        // it still passes through, but a filled slot's own Pressable (below) can still
+        // take a tap to reclaim it.
+        pointerEvents="box-none"
       >
         {targets.map((target, index) => (
           <RankSlot
@@ -180,6 +230,9 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
             targets={targets}
             pointerX={pointerX}
             pointerY={pointerY}
+            option={optionsById.get(placements[target.value] ?? "")}
+            mediaType={question.mediaType}
+            onReclaim={reclaim}
           />
         ))}
       </View>
@@ -193,12 +246,18 @@ function RankSlot({
   targets,
   pointerX,
   pointerY,
+  option,
+  mediaType,
+  onReclaim,
 }: {
   target: DropTarget;
   endLabel?: string;
   targets: DropTarget[];
   pointerX: SharedValue<number>;
   pointerY: SharedValue<number>;
+  option: EvaluatorOption | undefined;
+  mediaType: string | null;
+  onReclaim: (slotNumber: number) => void;
 }) {
   const filled = !target.enabled;
 
@@ -225,14 +284,37 @@ function RankSlot({
         </Text>
       ) : null}
       <Animated.View style={[styles.slot, filled && styles.slotFilled, animated]}>
-        <Text style={[styles.slotText, filled && styles.slotTextFilled]}>{target.value}</Text>
+        {filled && option ? (
+          <Pressable
+            style={styles.slotThumbnailPressable}
+            onPress={() => onReclaim(target.value)}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${option.label ?? "this card"} from rank ${target.value}, to place it again`}
+          >
+            <SlotThumbnail option={option} mediaType={mediaType} />
+          </Pressable>
+        ) : (
+          <Text style={styles.slotText}>{target.value}</Text>
+        )}
       </Animated.View>
     </View>
   );
 }
 
-/** Inert overlay: the deprecated pointerEvents prop moved onto style. */
-const NO_TOUCH = { pointerEvents: "none" } as const;
+/** A placed option's photo, small enough to fit in a slot - lets the evaluator see the
+ * whole ranking at a glance instead of just slot numbers. Falls back to an initial for
+ * non-image media, same as CardMedia's own TEXT fallback but sized for the slot. */
+function SlotThumbnail({ option, mediaType }: { option: EvaluatorOption; mediaType: string | null }) {
+  const resolved = mediaType === "IMAGE" ? resolveMediaUrl(option.mediaUrl) : null;
+  if (!resolved) {
+    return (
+      <Text style={styles.slotTextFilled} numberOfLines={1}>
+        {(option.label ?? "?").charAt(0).toUpperCase()}
+      </Text>
+    );
+  }
+  return <Image source={{ uri: resolved }} style={styles.slotThumbnail} resizeMode="cover" />;
+}
 
 const styles = StyleSheet.create({
   wrapper: { flex: 1 },
@@ -271,6 +353,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderStyle: "dashed",
     backgroundColor: theme.colors.surfaceRaised,
+    overflow: "hidden",
   },
   slotFilled: {
     borderStyle: "solid",
@@ -278,7 +361,14 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.accent,
   },
   slotText: { color: theme.colors.textPrimary, fontSize: 18, fontWeight: "700" },
-  slotTextFilled: { color: theme.colors.accentContrast },
+  slotTextFilled: { color: theme.colors.accentContrast, fontSize: 18, fontWeight: "700" },
+  slotThumbnailPressable: {
+    width: "100%",
+    height: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  slotThumbnail: { width: "100%", height: "100%" },
   endLabel: {
     position: "absolute",
     right: SLOT_WIDTH + theme.spacing(0.5),

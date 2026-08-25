@@ -1,10 +1,12 @@
-import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { useState } from "react";
+import { Image, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { CardMedia } from "./CardMedia";
 import { SwipeCard } from "./SwipeCard";
 import type { ReleaseGesture } from "./SwipeCard";
+import { resolveMediaUrl } from "@/lib/env";
 import { resolveHorizontalRelease } from "@/lib/swipe";
-import type { EvaluatorQuestion } from "@/lib/test";
+import type { EvaluatorOption, EvaluatorQuestion } from "@/lib/test";
 import { theme } from "@/lib/theme";
 
 /** Fraction of the screen width a card must travel before a release counts as a choice. */
@@ -32,6 +34,13 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
 
   const [rightOption, leftOption] = [question.options[0], question.options[1]];
   const distanceThreshold = width * DISTANCE_THRESHOLD_RATIO;
+
+  // Each half only ever shows a cropped slice of its photo (see the split layout below).
+  // Tapping a side opens that option's photo uncropped so the evaluator can actually judge
+  // it before committing to a swipe. Scoped to IMAGE questions - a cropped video/text/audio
+  // half isn't the bug being fixed here.
+  const [previewOption, setPreviewOption] = useState<EvaluatorOption | null>(null);
+  const canPreview = question.mediaType === "IMAGE";
 
   const onRelease = (gesture: ReleaseGesture) => {
     "worklet";
@@ -74,7 +83,11 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
         <Text style={styles.prompt}>{question.prompt}</Text>
 
         <View style={styles.halves}>
-          <View style={styles.half}>
+          <Pressable
+            style={styles.half}
+            disabled={!canPreview || !leftOption}
+            onPress={() => leftOption && setPreviewOption(leftOption)}
+          >
             <CardMedia
               mediaType={question.mediaType}
               url={leftOption?.mediaUrl ?? null}
@@ -88,11 +101,15 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
                 {leftOption?.label ?? "Swipe left"}
               </Text>
             </View>
-          </View>
+          </Pressable>
 
           <View style={styles.divider} />
 
-          <View style={styles.half}>
+          <Pressable
+            style={styles.half}
+            disabled={!canPreview || !rightOption}
+            onPress={() => rightOption && setPreviewOption(rightOption)}
+          >
             <CardMedia
               mediaType={question.mediaType}
               url={rightOption?.mediaUrl ?? null}
@@ -106,9 +123,24 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
               </Text>
               <Text style={styles.captionArrow}>{"→"}</Text>
             </View>
-          </View>
+          </Pressable>
         </View>
       </View>
+
+      <Modal
+        visible={previewOption !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewOption(null)}
+      >
+        <Pressable style={styles.previewBackdrop} onPress={() => setPreviewOption(null)}>
+          <Image
+            source={{ uri: resolveMediaUrl(previewOption?.mediaUrl ?? null) ?? undefined }}
+            style={styles.previewImage}
+            resizeMode="contain"
+          />
+        </Pressable>
+      </Modal>
     </SwipeCard>
   );
 }
@@ -158,4 +190,11 @@ const styles = StyleSheet.create({
   },
   captionArrow: { color: theme.colors.textSecondary, fontSize: 18, fontWeight: "700" },
   captionLabel: { color: theme.colors.textPrimary, fontSize: 14, fontWeight: "600", flexShrink: 1 },
+  previewBackdrop: {
+    flex: 1,
+    backgroundColor: theme.colors.surfaceBase,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  previewImage: { width: "100%", height: "100%" },
 });

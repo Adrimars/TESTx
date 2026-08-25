@@ -6,6 +6,15 @@ import { theme } from "@/lib/theme";
 const DEFAULT_PEEK_COUNT = 2;
 const PEEK_SCALE_STEP = 0.04;
 const PEEK_OFFSET_STEP = 12;
+/**
+ * A peeking card's own prompt/caption text stays fully opaque even as the card itself
+ * dims (see `slot`'s opacity below) - at one step back that is still legible enough to
+ * visually mix with the active card's text. This scrim sits on top of a peeking card only,
+ * covering its content rather than the whole card's opacity, so the stack still reads as
+ * a stack of cards while only the active one reads as text.
+ */
+const SCRIM_BASE_OPACITY = 0.55;
+const SCRIM_OPACITY_STEP = 0.2;
 
 type CardStackProps<T> = {
   /** The whole queue. The stack only ever draws a short window of it. */
@@ -71,6 +80,15 @@ export function CardStack<T>({
               ]}
             >
               {renderCard(item, isActive)}
+              {!isActive ? (
+                <View
+                  style={[
+                    styles.scrim,
+                    NO_TOUCH,
+                    { opacity: Math.min(SCRIM_BASE_OPACITY + SCRIM_OPACITY_STEP * depth, 1) },
+                  ]}
+                />
+              ) : null}
             </View>
           );
         })}
@@ -93,5 +111,15 @@ const styles = StyleSheet.create({
     right: theme.spacing(2),
     bottom: theme.spacing(2),
     left: theme.spacing(2),
+  },
+  // Matches SwipeCard's own corner radius so the scrim never peeks past the card's edge.
+  scrim: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    borderRadius: 24,
+    backgroundColor: theme.colors.surfaceBase,
   },
 });
