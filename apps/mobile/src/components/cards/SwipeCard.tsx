@@ -88,6 +88,13 @@ export function SwipeCard({
   // is already flying away and drop it back into the deck, committing twice.
   const isSettling = useSharedValue(false);
 
+  // The commit callback hangs off this rather than off either axis. A drag-to-target
+  // release can be almost entirely vertical or almost entirely horizontal, so neither
+  // translate is guaranteed to change - and an animation whose start already equals its
+  // end is exactly the kind of thing to be careful with when a whole deck depends on the
+  // callback firing. This always runs 0 to 1.
+  const settleProgress = useSharedValue(0);
+
   const pan = Gesture.Pan()
     .enabled(enabled)
     .onUpdate((event) => {
@@ -119,7 +126,10 @@ export function SwipeCard({
       const committed = decision.value;
 
       translateX.value = withTiming(target.x, { duration: FLY_AWAY_MS });
-      translateY.value = withTiming(target.y, { duration: FLY_AWAY_MS }, (finished) => {
+      translateY.value = withTiming(target.y, { duration: FLY_AWAY_MS });
+
+      settleProgress.value = 0;
+      settleProgress.value = withTiming(1, { duration: FLY_AWAY_MS }, (finished) => {
         if (finished && onCommit) {
           runOnJS(onCommit)(committed);
         }

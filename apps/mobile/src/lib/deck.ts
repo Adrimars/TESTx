@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { EvaluatorQuestion } from "./test";
 
 /**
@@ -32,21 +32,24 @@ export function useDeck(questions: EvaluatorQuestion[]): Deck {
   const [answers, setAnswers] = useState<Record<string, DeckAnswer>>({});
   // Per-question timing is measured from when the card became active, not from when the
   // test was opened, so a pause on one question does not inflate the next one.
-  const [shownAt, setShownAt] = useState(() => Date.now());
+  //
+  // A ref rather than state: two cards can commit within one render pass - the multi
+  // select sub-deck resolves several option cards in quick succession - and state read
+  // through a closure would still hold the previous card's timestamp, charging this
+  // question for time the last one took. That feeds straight into the speed check that
+  // withholds rewards, so it has to be read at call time.
+  const shownAt = useRef(Date.now());
 
-  const answer = useCallback(
-    (next: Omit<DeckAnswer, "timeSpentSeconds">) => {
-      const now = Date.now();
-      const timeSpentSeconds = Math.max(0, Math.round((now - shownAt) / 1000));
-      setAnswers((current) => ({
-        ...current,
-        [next.questionId]: { ...next, timeSpentSeconds },
-      }));
-      setShownAt(now);
-      setIndex((current) => current + 1);
-    },
-    [shownAt]
-  );
+  const answer = useCallback((next: Omit<DeckAnswer, "timeSpentSeconds">) => {
+    const now = Date.now();
+    const timeSpentSeconds = Math.max(0, Math.round((now - shownAt.current) / 1000));
+    setAnswers((current) => ({
+      ...current,
+      [next.questionId]: { ...next, timeSpentSeconds },
+    }));
+    shownAt.current = now;
+    setIndex((current) => current + 1);
+  }, []);
 
   const current = questions[index];
 
