@@ -614,6 +614,10 @@ Coupon {
   - The active card shows 1–2 next cards peeking behind it (Tinder-style stack depth) to reinforce the continuous-feed feel.
   - **First-run gesture tutorial:** swipe-left/right needs no explanation, but drag-to-target (Rating/Ranking) is a novel gesture. The evaluator's first-ever Rating card and first-ever Ranking card show a brief one-time animated hint before the interaction becomes active, tracked locally on-device (not server state) so it never repeats. Unexplained novel gestures risk confused/careless answers, which directly undermines §15.8's quality signal.
   - **Safe area:** the right-edge target column (Rating/Ranking) is laid out inside the device's safe area, not raw screen edges — clear of the iPhone notch/Dynamic Island and home-indicator strip, and of the Android gesture-navigation bar. See §16.7.
+- **Known issues from Phase 10 field testing, to fix in Phase 12 (see plan.md §12.1):**
+  - The two-option comparison card only shows about half of each photo (the card is split into two side-by-side halves, each cropped to fit) — the evaluator needs a way to see an option's full photo, not just the cropped half, before choosing it.
+  - The next-card peeking behind the active one (previous bullet) keeps its prompt/caption text legible enough to visually mix with the active card's own text, reading as cluttered rather than a clean stack.
+  - The Ranking card gets stuck after its first photo is dragged onto a slot — the next photo in the sub-deck doesn't reliably take over the card, leaving the rest of the ranking unreachable. Filled slots also show only a rank number, not the photo that was placed there, and there's no way to revise a single placement short of the outer Back control discarding the whole ranking.
 
 ### 15.4 Feed Structure — Continuous Cross-Test Feed
 - The evaluator does not pick a test from a list; cards from the current test keep coming until it's finished, TikTok-feed style.

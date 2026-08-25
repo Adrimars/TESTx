@@ -859,31 +859,40 @@ Phase 0 (Scaffolding) ──→ Phase 1 (Auth) ──→ Phase 2 (Media) ──�
 
 > Full spec: prd.md §16 (Mobile Design System). This phase turns that spec into actual tokens/components — it is not a cosmetic pass at the end, it underpins every screen built in Phases 8–10, so token setup (11.1) should land early and get retrofitted, not bolted on last.
 
-### 12.1 Design Tokens
+### 12.1 Card Interaction Fixes (from Phase 10 field testing)
+- **Two-option comparison card only shows half the photo** — `TwoOptionCard` splits the card into two side-by-side halves, each rendering its option's photo through `CardMedia`'s cover crop; at half width most of the image is cropped out and never seen. Selecting/tapping a side should let the evaluator see that option's full, uncropped photo before committing to it.
+- **Peeking cards' text clutters the view** — `CardStack` keeps 1–2 upcoming cards visible behind the active one (10.7/prd.md §15.3) at only slightly reduced opacity, and their prompt/caption text stays legible enough to visually mix with the active card's own text. Peeking cards' text should be hidden or dimmed further so only the active card reads clearly.
+- **Ranking card gets stuck after the first placement** — `RankingCard` swaps `current` (the option being shown) in place on one persistent `SwipeCard` instance rather than remounting a fresh one per option, unlike `CardStack`, which unmounts a card specifically to reset its drag offset and committed latch (see `CardStack.tsx`'s own comment on this). After the first photo is dragged onto a slot, the next option's card doesn't reliably reset, leaving the rest of the ranking unreachable.
+- **Filled ranking slots show only a number, not the photo** — once a card is placed, its slot (`RankSlot`) shows just the rank number. A small thumbnail of the placed photo inside the slot would let the evaluator see their whole ranking at a glance.
+- **No way to revise one ranking placement** — the only undo is the outer deck's Back (10.7), which discards the *entire* question's placements, not one card. Tapping a filled slot should pull that card back out for re-placing without losing the other placements.
+
+### 12.2 Design Tokens
 - `apps/mobile` theme module encoding prd.md §16.2's color tokens (`surface-base`, `surface-raised`, `surface-overlay`, `border-hairline`, `text-primary`, `text-secondary`, `accent`, `accent-contrast`, `success`, `danger`) and §16.3's type scale, as plain constants or via `nativewind` if adopted in Phase 9.2.
 - Dark-only (no light theme in v1, prd.md §16.7) — no theme-switch logic needed yet.
 
-### 12.2 Motion Primitives
+### 12.3 Motion Primitives
 - Shared `react-native-reanimated` spring presets matching prd.md §16.4: card-commit fly-off, card-reject snap-back, target-proximity scale curve, popup overshoot — implemented once and reused by every card/target component from Phase 10, not redefined per screen.
 - `expo-haptics` tick wired to the Rating/Ranking commit-threshold crossing.
+- **Tap-selection feedback for `OptionListCard` (10.3) and the option tiles inside `MultiSelectCard`'s summary state** — picking a tile currently just flips border/background color instantly, with no scale, checkmark, or fade transition. The swipe and drag cards already have motion (highlight opacity, fly-away, proximity scale); the tap-to-select path is the one interaction in the deck with none, and it should use the same spring presets defined above rather than a one-off `Animated.timing` bolted onto that component alone.
 
-### 12.3 Component Library
+### 12.4 Component Library
 - Card, target pill, progress-segment bar, counter chip, and empty/error state components per prd.md §16.6 — built as the shared primitives Phases 9–10 consume, so those phases don't each invent their own card/pill styling.
 
-### 12.4 Iconography & Media Treatment
+### 12.5 Iconography & Media Treatment
 - `lucide-react-native` wired in with 1.5px stroke icons (prd.md §16.5); full-bleed crop (never letterbox) confirmed for image and video cards.
 
-### 12.5 Accessibility & Reduced Motion
+### 12.6 Accessibility & Reduced Motion
 - Every gesture-driven interaction (swipe, drag-to-rate, drag-to-rank) gets a tap-based fallback path.
-- OS-level Reduce Motion setting collapses every spring from 11.2 to an instant/short fade, verified on both iOS and Android.
+- OS-level Reduce Motion setting collapses every spring from 12.3 to an instant/short fade, verified on both iOS and Android.
 - 44×44pt minimum touch target audit across all interactive elements, including target pills at rest size.
 - Safe-area audit: the Rating/Ranking target column (9.5/9.6) and any other edge-anchored chrome sit inside `react-native-safe-area-context` insets on every screen, checked against a notched iPhone and a gesture-nav Android device, not just default-inset simulators.
 
 ### Phase 12 Exit Criteria
+- [ ] The two-option card's full-photo view, the peeking-card text clutter, and the Ranking card's stuck-after-first-placement bug (12.1) are all fixed and re-verified on-device
 - [ ] A design/style review confirms no default/unstyled native components remain on any mobile screen (auth, profile, feed, card, rewards, completion)
 - [ ] Color and type tokens are defined in one place and consumed everywhere — no ad-hoc hex values or font sizes scattered in screen code
 - [ ] Reduced-motion setting produces a usable tap-based fallback for every question type, verified on-device
-- [ ] Core interactions (swipe, drag-to-rate, drag-to-rank, undo, completion) use the shared spring presets from §11.2, not one-off animation code
+- [ ] Core interactions (swipe, drag-to-rate, drag-to-rank, undo, completion) use the shared spring presets from §12.3, not one-off animation code
 
 ---
 
