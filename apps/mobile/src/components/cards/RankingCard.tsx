@@ -8,7 +8,12 @@ import { CardMedia } from "./CardMedia";
 import { DragHint } from "./DragHint";
 import { SwipeCard } from "./SwipeCard";
 import type { ReleaseGesture } from "./SwipeCard";
-import { orderPlacements, resolveDropTarget, targetProximity } from "@/lib/swipe";
+import {
+  activeTargetValue,
+  orderPlacements,
+  resolveDropTarget,
+  targetProximity,
+} from "@/lib/swipe";
 import type { DropTarget } from "@/lib/swipe";
 import type { EvaluatorQuestion } from "@/lib/test";
 import { useGestureTutorial } from "@/lib/tutorial";
@@ -55,6 +60,8 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
 
   const x = useSharedValue(0);
   const y = useSharedValue(0);
+  const pointerX = useSharedValue(0);
+  const pointerY = useSharedValue(0);
 
   // Same derivation as RatingCard: the column is centred between the safe-area insets, so
   // each slot offset from the card centre follows from its index. Nothing is measured.
@@ -80,12 +87,14 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
 
   const onRelease = (gesture: ReleaseGesture) => {
     "worklet";
-    const target = resolveDropTarget(gesture.x, gesture.y, targets);
+    // Hit-tested on the finger, not the card, so the slot you are pointing at is the one
+    // that takes the card no matter where you picked it up.
+    const target = resolveDropTarget(gesture.pointerX, gesture.pointerY, targets);
     if (!target) return { commit: false as const };
     return {
       commit: true as const,
       value: target.value,
-      flyTo: { x: target.centerX, y: target.centerY },
+      flyTo: { x: gesture.x, y: gesture.y },
     };
   };
 
@@ -124,6 +133,7 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
         width={width}
         enabled={isActive}
         position={isActive ? { x, y } : undefined}
+        pointer={isActive ? { x: pointerX, y: pointerY } : undefined}
         onRelease={onRelease}
         onCommit={place}
         onDragStart={tutorial.shouldShow ? tutorial.dismiss : undefined}
@@ -167,8 +177,9 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
             endLabel={
               index === 0 ? bestLabel : index === targets.length - 1 ? worstLabel : undefined
             }
-            dragX={x}
-            dragY={y}
+            targets={targets}
+            pointerX={pointerX}
+            pointerY={pointerY}
           />
         ))}
       </View>
@@ -179,21 +190,30 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
 function RankSlot({
   target,
   endLabel,
-  dragX,
-  dragY,
+  targets,
+  pointerX,
+  pointerY,
 }: {
   target: DropTarget;
   endLabel?: string;
-  dragX: SharedValue<number>;
-  dragY: SharedValue<number>;
+  targets: DropTarget[];
+  pointerX: SharedValue<number>;
+  pointerY: SharedValue<number>;
 }) {
   const filled = !target.enabled;
 
   const animated = useAnimatedStyle(() => {
-    const nearness = targetProximity(dragX.value, dragY.value, target, PROXIMITY_FALLOFF);
+    // Only the slot under the finger reacts. Lighting up every nearby slot would suggest
+    // the card could land in any of them, when exactly one will take it.
+    const isUnderFinger =
+      activeTargetValue(pointerX.value, pointerY.value, targets) === target.value;
+    if (!isUnderFinger) {
+      return { transform: [{ scale: 1 }], borderColor: theme.colors.borderHairline };
+    }
+    const nearness = targetProximity(pointerX.value, pointerY.value, target, PROXIMITY_FALLOFF);
     return {
       transform: [{ scale: 1 + nearness * (MAX_SLOT_SCALE - 1) }],
-      borderColor: nearness > 0.6 ? theme.colors.accent : theme.colors.borderHairline,
+      borderColor: theme.colors.accent,
     };
   });
 

@@ -7,7 +7,7 @@ import { CardMedia } from "./CardMedia";
 import { DragHint } from "./DragHint";
 import { SwipeCard } from "./SwipeCard";
 import type { ReleaseGesture } from "./SwipeCard";
-import { resolveDropTarget, targetProximity } from "@/lib/swipe";
+import { activeTargetValue, resolveDropTarget, targetProximity } from "@/lib/swipe";
 import type { DropTarget } from "@/lib/swipe";
 import type { EvaluatorQuestion } from "@/lib/test";
 import { useGestureTutorial } from "@/lib/tutorial";
@@ -46,6 +46,8 @@ export function RatingCard({ question, isActive, onAnswer }: RatingCardProps) {
   const insets = useSafeAreaInsets();
   const x = useSharedValue(0);
   const y = useSharedValue(0);
+  const pointerX = useSharedValue(0);
+  const pointerY = useSharedValue(0);
 
   const min = question.config.min ?? 1;
   const max = question.config.max ?? 5;
@@ -91,12 +93,16 @@ export function RatingCard({ question, isActive, onAnswer }: RatingCardProps) {
 
   const onRelease = (gesture: ReleaseGesture) => {
     "worklet";
-    const target = resolveDropTarget(gesture.x, gesture.y, targets);
+    // Hit-tested on the finger, not the card, so the pill you are pointing at is the one
+    // that commits regardless of where on the card you picked it up.
+    const target = resolveDropTarget(gesture.pointerX, gesture.pointerY, targets);
     if (!target) return { commit: false as const };
     return {
       commit: true as const,
       value: target.value,
-      flyTo: { x: target.centerX, y: target.centerY },
+      // Fly to where the finger let go rather than to the pill's centre, so the card
+      // leaves from under the finger instead of jumping sideways first.
+      flyTo: { x: gesture.x, y: gesture.y },
     };
   };
 
@@ -106,6 +112,7 @@ export function RatingCard({ question, isActive, onAnswer }: RatingCardProps) {
         width={width}
         enabled={isActive}
         position={isActive ? { x, y } : undefined}
+        pointer={isActive ? { x: pointerX, y: pointerY } : undefined}
         onRelease={onRelease}
         onCommit={onAnswer}
         onDragStart={tutorial.shouldShow ? tutorial.dismiss : undefined}
@@ -148,8 +155,9 @@ export function RatingCard({ question, isActive, onAnswer }: RatingCardProps) {
             endLabel={
               index === 0 ? question.config.minLabel : index === targets.length - 1 ? question.config.maxLabel : undefined
             }
-            dragX={x}
-            dragY={y}
+            targets={targets}
+            pointerX={pointerX}
+            pointerY={pointerY}
           />
         ))}
       </View>
@@ -161,28 +169,43 @@ function TargetPill({
   target,
   label,
   endLabel,
-  dragX,
-  dragY,
+  targets,
+  pointerX,
+  pointerY,
 }: {
   target: DropTarget;
   label: string;
   endLabel?: string;
-  dragX: SharedValue<number>;
-  dragY: SharedValue<number>;
+  targets: DropTarget[];
+  pointerX: SharedValue<number>;
+  pointerY: SharedValue<number>;
 }) {
   const animated = useAnimatedStyle(() => {
-    const nearness = targetProximity(dragX.value, dragY.value, target, PROXIMITY_FALLOFF);
+    // Exactly one pill can be active, because only one target can be under the finger.
+    // Scaling every pill the finger happens to be near reads as several values being
+    // selected at once, which is the opposite of what a 1-to-5 rating means.
+    const isActive = activeTargetValue(pointerX.value, pointerY.value, targets) === target.value;
+    if (!isActive) {
+      return { transform: [{ scale: 1 }], borderColor: theme.colors.borderHairline, opacity: 1 };
+    }
+    const nearness = targetProximity(pointerX.value, pointerY.value, target, PROXIMITY_FALLOFF);
     return {
       transform: [{ scale: 1 + nearness * (MAX_PILL_SCALE - 1) }],
-      borderColor: nearness > 0.6 ? theme.colors.accent : theme.colors.borderHairline,
-      opacity: 0.85 + nearness * 0.15,
+      borderColor: theme.colors.accent,
+      opacity: 1,
     };
   });
+
+  const fill = useAnimatedStyle(() => ({
+    opacity:
+      activeTargetValue(pointerX.value, pointerY.value, targets) === target.value ? 1 : 0,
+  }));
 
   return (
     <View style={styles.pillSlot}>
       {endLabel ? <Text style={styles.endLabel} numberOfLines={1}>{endLabel}</Text> : null}
       <Animated.View style={[styles.pill, animated]}>
+        <Animated.View style={[styles.pillFill, fill]} />
         <Text style={styles.pillText}>{label}</Text>
       </Animated.View>
     </View>
@@ -227,6 +250,16 @@ const styles = StyleSheet.create({
     borderRadius: PILL_HEIGHT / 2,
     borderWidth: 2,
     backgroundColor: theme.colors.surfaceRaised,
+    overflow: "hidden",
+  },
+  // Sits under the number so the active pill reads as filled rather than merely outlined.
+  pillFill: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: theme.colors.accent,
   },
   pillText: { color: theme.colors.textPrimary, fontSize: 18, fontWeight: "700" },
   endLabel: {

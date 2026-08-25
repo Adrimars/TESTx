@@ -106,20 +106,22 @@ export type DropTarget = {
 };
 
 /**
- * How close a dragged card is to a target, as 0 (far) to 1 (dead centre). Drives the
- * scale-up that tells the evaluator which target a release would land on, before they
- * commit to it.
+ * How close the finger is to a target, as 0 (far) to 1 (dead centre).
+ *
+ * Only ever used for the one target that would actually commit. Ramping every nearby
+ * target at once lights up half the column and says nothing about where the answer will
+ * land - which reads as several values being selected simultaneously.
  */
 export function targetProximity(
-  cardX: number,
-  cardY: number,
+  pointerX: number,
+  pointerY: number,
   target: DropTarget,
   falloff: number
 ): number {
   "worklet";
   if (!target.enabled) return 0;
-  const dx = cardX - target.centerX;
-  const dy = cardY - target.centerY;
+  const dx = pointerX - target.centerX;
+  const dy = pointerY - target.centerY;
   const distance = Math.sqrt(dx * dx + dy * dy);
   if (distance >= falloff) return 0;
   return 1 - distance / falloff;
@@ -175,4 +177,26 @@ export function orderPlacements(
     ordered.push(id);
   }
   return ordered;
+}
+
+/**
+ * Which target is currently under the finger, by value, or 0 for none.
+ *
+ * Declared after resolveDropTarget on purpose: the worklets transform turns these into
+ * const bindings, so calling one declared further down the file throws a temporal dead
+ * zone error at bundle time rather than hoisting the way a plain function would.
+ *
+ * Deliberately the same nearest-enabled-within-radius rule as `resolveDropTarget`, so the
+ * target that lights up during the drag is by construction the one a release commits to.
+ * Two rules here would let the highlight promise one answer and the release record
+ * another, which is the worst possible failure for a question the evaluator cannot review.
+ */
+export function activeTargetValue(
+  pointerX: number,
+  pointerY: number,
+  targets: readonly DropTarget[]
+): number {
+  "worklet";
+  const hit = resolveDropTarget(pointerX, pointerY, targets);
+  return hit ? hit.value : 0;
 }

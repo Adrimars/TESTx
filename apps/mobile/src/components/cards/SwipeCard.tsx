@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { StyleSheet } from "react-native";
-import type { StyleProp, ViewStyle } from "react-native";
+import type { LayoutChangeEvent, StyleProp, ViewStyle } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   interpolate,
@@ -17,8 +17,19 @@ import { theme } from "@/lib/theme";
 export type DragPosition = { x: SharedValue<number>; y: SharedValue<number> };
 
 export type ReleaseGesture = {
+  /** Card offset from its resting position. Drives directional swipes. */
   x: number;
   y: number;
+  /**
+   * Where the finger is, as an offset from the card's resting centre.
+   *
+   * This is what drag-to-target hit-tests against, not `x`/`y`. Grab a card by its bottom
+   * corner and the finger sits a long way from the card's middle, so aiming the finger at
+   * a target lands the card's centre somewhere else - the pill under your finger is not
+   * the one that commits. Equal to `x`/`y` only when the card is grabbed dead centre.
+   */
+  pointerX: number;
+  pointerY: number;
   velocityX: number;
   velocityY: number;
 };
@@ -65,6 +76,11 @@ type SwipeCardProps = {
    * behind it would bind them all to one offset, and the whole deck would slide as one.
    */
   position?: DragPosition;
+  /**
+   * Finger offset from the card's resting centre, for parents that light up the target
+   * under the finger. Same active-card-only rule as `position`.
+   */
+  pointer?: DragPosition;
   /** False renders the card as a static surface: the 3+ option select does not drag. */
   enabled?: boolean;
   /** Degrees of tilt at the horizontal edges of the screen. 0 keeps the card flat. */
@@ -80,6 +96,7 @@ export function SwipeCard({
   onCommit,
   onDragStart,
   position,
+  pointer,
   enabled = true,
   maxTiltDeg = 8,
   width,
@@ -87,8 +104,26 @@ export function SwipeCard({
 }: SwipeCardProps) {
   const ownX = useSharedValue(0);
   const ownY = useSharedValue(0);
+  const ownPointerX = useSharedValue(0);
+  const ownPointerY = useSharedValue(0);
   const translateX = position?.x ?? ownX;
   const translateY = position?.y ?? ownY;
+  const pointerX = pointer?.x ?? ownPointerX;
+  const pointerY = pointer?.y ?? ownPointerY;
+
+  /**
+   * Where on the card the finger grabbed it, relative to the card's centre. Fixed for the
+   * life of the gesture - the finger keeps its spot on the card while dragging - so this
+   * plus the translation is where the finger actually is.
+   */
+  const grabX = useSharedValue(0);
+  const grabY = useSharedValue(0);
+
+  // Card size, needed to turn a touch position into an offset from the card's centre.
+  // Measured rather than derived, because the card's height depends on the deck chrome
+  // above it, which this component deliberately knows nothing about.
+  const boxWidth = useSharedValue(0);
+  const boxHeight = useSharedValue(0);
 
   // Latches once a commit starts. Without it a fast second drag can grab a card that
   // is already flying away and drop it back into the deck, committing twice.
@@ -103,14 +138,22 @@ export function SwipeCard({
 
   const pan = Gesture.Pan()
     .enabled(enabled)
-    .onStart(() => {
+    .onStart((event) => {
       if (isSettling.value) return;
+      // event.x/y are relative to the card's own box, so subtracting half its size gives
+      // the grab point relative to the card's centre.
+      grabX.value = boxWidth.value > 0 ? event.x - boxWidth.value / 2 : 0;
+      grabY.value = boxHeight.value > 0 ? event.y - boxHeight.value / 2 : 0;
+      pointerX.value = grabX.value;
+      pointerY.value = grabY.value;
       if (onDragStart) runOnJS(onDragStart)();
     })
     .onUpdate((event) => {
       if (isSettling.value) return;
       translateX.value = event.translationX;
       translateY.value = event.translationY;
+      pointerX.value = grabX.value + event.translationX;
+      pointerY.value = grabY.value + event.translationY;
     })
     .onEnd((event) => {
       if (isSettling.value) return;
@@ -118,6 +161,8 @@ export function SwipeCard({
       const decision = onRelease({
         x: translateX.value,
         y: translateY.value,
+        pointerX: pointerX.value,
+        pointerY: pointerY.value,
         velocityX: event.velocityX,
         velocityY: event.velocityY,
       });
@@ -125,6 +170,10 @@ export function SwipeCard({
       if (!decision.commit) {
         translateX.value = withSpring(0, RETURN_SPRING);
         translateY.value = withSpring(0, RETURN_SPRING);
+        // The highlight has to leave with the card, or the last target stays lit after a
+        // miss and reads as a selection that was never made.
+        pointerX.value = withSpring(0, RETURN_SPRING);
+        pointerY.value = withSpring(0, RETURN_SPRING);
         return;
       }
 
@@ -161,9 +210,16 @@ export function SwipeCard({
     };
   });
 
+  function onLayout(event: LayoutChangeEvent) {
+    boxWidth.value = event.nativeEvent.layout.width;
+    boxHeight.value = event.nativeEvent.layout.height;
+  }
+
   return (
     <GestureDetector gesture={pan}>
-      <Animated.View style={[styles.card, style, animatedStyle]}>{children}</Animated.View>
+      <Animated.View onLayout={onLayout} style={[styles.card, style, animatedStyle]}>
+        {children}
+      </Animated.View>
     </GestureDetector>
   );
 }
