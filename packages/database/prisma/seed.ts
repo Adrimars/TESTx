@@ -348,8 +348,9 @@ async function main() {
               config: {},
               options: {
                 create: [
-                  { label: "Left", mediaId: medias[0]!.id, order: 1 },
-                  { label: "Right", mediaId: medias[1]!.id, order: 2 },
+                  // Order matters: the first option is the swipe-right choice.
+                  { label: "Bold packaging", mediaId: medias[0]!.id, order: 1 },
+                  { label: "Minimal packaging", mediaId: medias[1]!.id, order: 2 },
                 ],
               },
             },
