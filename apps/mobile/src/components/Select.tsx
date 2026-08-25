@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { FlatList, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Check, X } from "lucide-react-native";
 import { theme } from "@/lib/theme";
 
 export type Option = { value: string; label: string };
@@ -52,8 +53,12 @@ export function Select({
         <View style={styles.sheet}>
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle}>{label}</Text>
-            <Pressable onPress={() => setOpen(false)} accessibilityRole="button">
-              <Text style={styles.close}>Close</Text>
+            <Pressable
+              onPress={() => setOpen(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Close"
+            >
+              <X size={22} color={theme.colors.textPrimary} strokeWidth={1.5} />
             </Pressable>
           </View>
 
@@ -82,7 +87,9 @@ export function Select({
                 }}
               >
                 <Text style={styles.rowText}>{item.label}</Text>
-                {item.value === value ? <Text style={styles.check}>✓</Text> : null}
+                {item.value === value ? (
+                  <Check size={18} color={theme.colors.accent} strokeWidth={1.5} />
+                ) : null}
               </Pressable>
             )}
           />
@@ -118,7 +125,6 @@ const styles = StyleSheet.create({
     paddingBottom: theme.spacing(1.5),
   },
   sheetTitle: { color: theme.colors.textPrimary, fontSize: 18, fontWeight: "700" },
-  close: { color: theme.colors.accent, fontSize: 16 },
   search: {
     marginHorizontal: theme.spacing(3),
     marginBottom: theme.spacing(1),
@@ -139,5 +145,4 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.colors.borderHairline,
   },
   rowText: { color: theme.colors.textPrimary, fontSize: 16, flex: 1 },
-  check: { color: theme.colors.accent, fontSize: 16 },
 });

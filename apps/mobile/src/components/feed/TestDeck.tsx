@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { ChevronLeft, CircleAlert, Inbox, UploadCloud } from "lucide-react-native";
 import Animated, {
   interpolate,
   useAnimatedStyle,
@@ -232,7 +233,7 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
 
   if (phase === "empty") {
     return (
-      <Shell>
+      <Shell icon={Inbox}>
         <Text style={styles.title}>Nothing to answer right now</Text>
         <Text style={styles.subtitle}>New tests show up here as they open.</Text>
         <Button label="Profile" variant="secondary" onPress={() => router.push("/profile")} />
@@ -247,7 +248,7 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
     // identical thing and fail identically, so the only real way forward is back to the
     // feed for a fresh test, not a "Try again" that can never succeed.
     return (
-      <Shell>
+      <Shell icon={CircleAlert}>
         <Text style={styles.title}>Could not submit your answers</Text>
         <Text style={styles.subtitle}>{errorMessage ?? "Something went wrong."}</Text>
         <Button label="Back to tests" onPress={() => router.replace("/home")} />
@@ -258,7 +259,7 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
 
   if (phase === "pendingSync") {
     return (
-      <Shell>
+      <Shell icon={UploadCloud}>
         <Text style={styles.title}>Still saving your answers</Text>
         <Text style={styles.subtitle}>
           Your answers are safe on this device. They'll be submitted automatically the
@@ -291,7 +292,8 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
               pressed && deck.canGoBack && styles.backPressed,
             ]}
           >
-            <Text style={styles.backLabel}>{"← Back"}</Text>
+            <ChevronLeft size={18} color={theme.colors.textPrimary} strokeWidth={1.5} />
+            <Text style={styles.backLabel}>Back</Text>
           </Pressable>
           <CounterChip count={Math.max(remaining, 0)} label="left" />
         </View>
@@ -379,10 +381,21 @@ function CompletionPopup({
   );
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+/** An accent-tinted line icon for the empty/error/pending states below, per prd.md
+ * §16.6 - never a bare native Alert. */
+function Shell({
+  icon: Icon,
+  children,
+}: {
+  icon?: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
+  children: React.ReactNode;
+}) {
   return (
     <SafeAreaView style={styles.flex}>
-      <View style={styles.centered}>{children}</View>
+      <View style={styles.centered}>
+        {Icon ? <Icon size={40} color={theme.colors.accent} strokeWidth={1.5} /> : null}
+        {children}
+      </View>
     </SafeAreaView>
   );
 }
@@ -426,6 +439,9 @@ const styles = StyleSheet.create({
   testTitle: { color: theme.colors.textPrimary, fontSize: 16, fontWeight: "600", flexShrink: 1 },
   headerRight: { flexDirection: "row", alignItems: "center", gap: theme.spacing(1.5) },
   backButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing(0.5),
     minHeight: 36,
     justifyContent: "center",
     paddingHorizontal: theme.spacing(1.5),

@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Check } from "lucide-react-native";
 import Animated, {
   Extrapolation,
   interpolate,
@@ -126,7 +127,7 @@ function OptionShell({
 
         {selected ? (
           <Animated.View style={[styles.check, NO_TOUCH, checkStyle]}>
-            <Text style={styles.checkMark}>{"✓"}</Text>
+            <Check size={14} color={theme.colors.accentContrast} strokeWidth={1.5} />
           </Animated.View>
         ) : null}
       </Animated.View>
@@ -190,7 +191,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: theme.colors.accent,
   },
-  checkMark: { color: theme.colors.accentContrast, fontSize: 14, fontWeight: "700" },
   footer: {
     gap: theme.spacing(1),
     padding: theme.spacing(2),

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Image, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { X } from "lucide-react-native";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { CardMedia } from "./CardMedia";
 import { SwipeCard } from "./SwipeCard";
 import type { ReleaseGesture } from "./SwipeCard";
@@ -29,6 +31,7 @@ type TwoOptionCardProps = {
  */
 export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardProps) {
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const x = useSharedValue(0);
   const y = useSharedValue(0);
 
@@ -139,6 +142,14 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
             style={styles.previewImage}
             resizeMode="contain"
           />
+          <Pressable
+            style={[styles.previewClose, { top: insets.top + theme.spacing(1.5) }]}
+            onPress={() => setPreviewOption(null)}
+            accessibilityRole="button"
+            accessibilityLabel="Close photo preview"
+          >
+            <X size={22} color={theme.colors.textPrimary} strokeWidth={1.5} />
+          </Pressable>
         </Pressable>
       </Modal>
     </SwipeCard>
@@ -197,4 +208,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   previewImage: { width: "100%", height: "100%" },
+  previewClose: {
+    position: "absolute",
+    right: theme.spacing(2),
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.colors.surfaceOverlay,
+  },
 });
