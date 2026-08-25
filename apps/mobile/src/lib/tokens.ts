@@ -21,10 +21,16 @@ async function readKey(key: string): Promise<string | null> {
   }
 }
 
+/**
+ * A write failure must not surface as a failed sign-in: the credentials were
+ * accepted and the session is live in memory. The cost is that the session does
+ * not survive a restart, which is a better outcome than telling someone with
+ * valid credentials that their sign-in failed.
+ */
 export async function saveTokens({ accessToken, refreshToken }: TokenPair): Promise<void> {
   await Promise.all([
-    SecureStore.setItemAsync(ACCESS_TOKEN_KEY, accessToken),
-    SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken),
+    SecureStore.setItemAsync(ACCESS_TOKEN_KEY, accessToken).catch(() => undefined),
+    SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken).catch(() => undefined),
   ]);
 }
 
