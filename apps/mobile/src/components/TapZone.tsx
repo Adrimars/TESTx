@@ -22,6 +22,16 @@ type TapZoneProps = {
  * swallow the touch before the other ever sees it, and that has nothing to do with which
  * gesture is a "better fit" for the tap - it is default RN responder handling. Staying
  * inside RNGH end to end keeps the arbitration between drag and tap in one system.
+ *
+ * When nested inside a SwipeCard (TwoOptionCard's two halves are literally its whole
+ * surface), this relies on RNGH's default nested-handler behaviour: a child gesture gets
+ * first refusal on a touch, and only once it fails - here, once the finger travels past
+ * `maxDistance` - does the ancestor's Pan pick the same touch back up, with no explicit
+ * `Gesture.Exclusive`/`requireExternalGestureToFail` wiring needed for a direct
+ * parent-child pair. That default is what makes this safe to nest rather than only safe
+ * as a sibling overlay (Rating/Ranking/MultiSelect's case) - **verify a slow drag started
+ * on a TwoOptionCard half still moves the card on-device**; this is the one thing here
+ * that reading the code cannot confirm.
  */
 export function TapZone({ onPress, disabled = false, style, children, accessibilityLabel }: TapZoneProps) {
   const tap = Gesture.Tap()
