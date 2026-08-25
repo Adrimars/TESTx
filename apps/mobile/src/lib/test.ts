@@ -124,10 +124,21 @@ export function prefetchTest(queryClient: QueryClient, testId: string) {
   });
 }
 
-export function prefetchNextTest(queryClient: QueryClient) {
+/**
+ * The full eligible list, forced fresh every call (`staleTime: 0`).
+ *
+ * The continuous-feed prefetch (11.1) needs this rather than `/next-test`: `/next-test`
+ * excludes a test only once a `TestResponse` row for it exists, which doesn't happen
+ * until submit - so calling it while the *current* test is still in flight (which is
+ * exactly when the prefetch fires, at 1-2 questions left) hands back the current test
+ * itself as "next". `/available-tests` shares the same eligibility filter and ordering,
+ * so filtering out the current test id here finds a genuine next candidate instead.
+ */
+export function prefetchAvailableTests(queryClient: QueryClient) {
   return queryClient.fetchQuery({
-    queryKey: ["next-test"],
-    queryFn: () => apiFetch<NextTestSummary>("/evaluator/next-test"),
+    queryKey: ["available-tests"],
+    staleTime: 0,
+    queryFn: () => apiFetch<AvailableTest[]>("/evaluator/available-tests"),
   });
 }
 

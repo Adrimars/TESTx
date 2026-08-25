@@ -78,7 +78,7 @@ export default function FeedScreen() {
     <TestDeck
       key={testId}
       test={test.data}
-      initialDeckState={inProgress.data ?? undefined}
+      resumedFrom={inProgress.data ?? undefined}
       onContinue={setTestId}
     />
   );

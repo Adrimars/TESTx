@@ -8,7 +8,6 @@ import { CardStack } from "@/components/cards/CardStack";
 import { QuestionCard } from "@/components/cards/QuestionCard";
 import { ApiError } from "@/lib/api";
 import { useDeck } from "@/lib/deck";
-import type { DeckState } from "@/lib/deckState";
 import { resolveMediaUrl } from "@/lib/env";
 import { useSession } from "@/lib/session";
 import {
@@ -16,8 +15,14 @@ import {
   submitWithBackoff,
   writeInProgressTest,
   writePendingSubmission,
+  type InProgressTest,
 } from "@/lib/submissionQueue";
-import { prefetchNextTest, prefetchTest, type EvaluatorTest, type SubmitResult } from "@/lib/test";
+import {
+  prefetchAvailableTests,
+  prefetchTest,
+  type EvaluatorTest,
+  type SubmitResult,
+} from "@/lib/test";
 import { theme } from "@/lib/theme";
 import { ProgressBar } from "./ProgressBar";
 
@@ -25,25 +30,39 @@ import { ProgressBar } from "./ProgressBar";
 const PREFETCH_WINDOW = 2;
 
 /**
- * A test `/next-test` just offered can still turn out unopenable by the time the full
- * fetch runs (capacity filled, eligibility changed) - these are the codes that mean "not
- * this one", not "something is broken". `/next-test` re-evaluates every candidate fresh
- * from the database, so asking it again is a real retry, not a repeat of the same answer.
+ * A test the eligible list just offered can still turn out unopenable by the time the
+ * full fetch runs (capacity filled, eligibility changed) - these are the codes that mean
+ * "not this one", not "something is broken". The list is re-fetched fresh on every
+ * attempt, so trying the next candidate is a real retry, not a repeat of the same answer.
  */
 const UNAVAILABLE_NEXT_CODES = new Set(["NOT_AVAILABLE", "CAPACITY_REACHED", "NOT_ELIGIBLE", "NOT_FOUND"]);
 const MAX_NEXT_TEST_ATTEMPTS = 3;
 
-/** Finds a test the feed can actually open next, skipping past ones that just fell through. */
-async function findNextTest(queryClient: QueryClient): Promise<string | null> {
+/**
+ * Finds a test the feed can actually open next, skipping past ones that just fell
+ * through - and past `currentTestId` itself. The current test has no `TestResponse` row
+ * until its submit lands, so it's still "eligible" by every filter the server applies;
+ * without excluding it here, the prefetch finds the test the evaluator is *already* on,
+ * `onContinue` becomes a same-id `setState` that React drops, and the feed hangs on a
+ * spinner instead of continuing.
+ */
+async function findNextTest(queryClient: QueryClient, currentTestId: string): Promise<string | null> {
+  const exclude = new Set([currentTestId]);
+
   for (let attempt = 0; attempt < MAX_NEXT_TEST_ATTEMPTS; attempt += 1) {
-    const next = await prefetchNextTest(queryClient);
+    const candidates = await prefetchAvailableTests(queryClient);
+    const next = candidates.find((candidate) => !exclude.has(candidate.id));
     if (!next) return null;
+
     try {
       const full = await prefetchTest(queryClient, next.id);
       prefetchFirstCardMedia(full);
       return next.id;
     } catch (error) {
-      if (error instanceof ApiError && UNAVAILABLE_NEXT_CODES.has(error.code ?? "")) continue;
+      if (error instanceof ApiError && UNAVAILABLE_NEXT_CODES.has(error.code ?? "")) {
+        exclude.add(next.id);
+        continue;
+      }
       return null;
     }
   }
@@ -62,7 +81,7 @@ type Phase =
 type TestDeckProps = {
   test: EvaluatorTest;
   /** A persisted in-progress answer set for this exact test, if a kill left one behind. */
-  initialDeckState?: DeckState;
+  resumedFrom?: InProgressTest;
   /** Opens the next test in the same feed, with no navigation and no loading gap. */
   onContinue: (nextTestId: string) => void;
 };
@@ -75,11 +94,18 @@ type TestDeckProps = {
  * instead of one carrying over the previous test's index and answers - the deck-cursor
  * bug that would otherwise show on every test-to-test transition.
  */
-export function TestDeck({ test, initialDeckState, onContinue }: TestDeckProps) {
+export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
   const router = useRouter();
   const { signOut } = useSession();
   const queryClient = useQueryClient();
-  const deck = useDeck(test.questions, initialDeckState);
+  const deck = useDeck(test.questions, resumedFrom);
+
+  // The token that anchors this test's `startedAt` for the quality service's timing
+  // checks. A resumed test keeps the token minted *before* the kill, not the fresh one
+  // `test` was just refetched with - the fresh one's `startedAt` is the resume moment,
+  // which would make a nearly-finished test look like it was answered in secondsflat and
+  // fail the speed check for real, honest work. See submissionQueue.ts / plan.md 11.4.
+  const sessionToken = resumedFrom?.sessionToken ?? test.sessionToken;
 
   const [phase, setPhase] = useState<Phase>("answering");
   const [result, setResult] = useState<SubmitResult | null>(null);
@@ -96,8 +122,8 @@ export function TestDeck({ test, initialDeckState, onContinue }: TestDeckProps) 
 
   useEffect(() => {
     if (prefetchRef.current || remaining > PREFETCH_WINDOW || remaining <= 0) return;
-    prefetchRef.current = findNextTest(queryClient);
-  }, [remaining, queryClient]);
+    prefetchRef.current = findNextTest(queryClient, test.id);
+  }, [remaining, queryClient, test.id]);
 
   // Persists the in-progress answers map as the evaluator moves through the deck (11.4),
   // so a killed app resumes an almost-finished test instead of losing it. Stops the
@@ -107,12 +133,12 @@ export function TestDeck({ test, initialDeckState, onContinue }: TestDeckProps) 
     if (deck.isComplete) return;
     void writeInProgressTest({
       testId: test.id,
-      sessionToken: test.sessionToken,
+      sessionToken,
       index: deck.index,
       answers: deck.answers,
       canGoBack: deck.canGoBack,
     });
-  }, [test.id, test.sessionToken, deck.index, deck.answers, deck.canGoBack, deck.isComplete]);
+  }, [test.id, sessionToken, deck.index, deck.answers, deck.canGoBack, deck.isComplete]);
 
   useEffect(() => {
     if (!deck.isComplete || phase !== "answering") return;
@@ -129,7 +155,7 @@ export function TestDeck({ test, initialDeckState, onContinue }: TestDeckProps) 
           timeSpentSeconds: 0,
         }
     );
-    const payload = { testId: test.id, sessionToken: test.sessionToken, answers };
+    const payload = { testId: test.id, sessionToken, answers };
 
     void (async () => {
       // The test is finished; what needs protecting from here on is this payload, not
@@ -168,7 +194,7 @@ export function TestDeck({ test, initialDeckState, onContinue }: TestDeckProps) 
   /** Moves the feed into whatever test comes next, or ends it. */
   async function advance() {
     setPhase("checkingNext");
-    const nextId = await (prefetchRef.current ?? findNextTest(queryClient));
+    const nextId = await (prefetchRef.current ?? findNextTest(queryClient, test.id));
 
     if (nextId) {
       onContinue(nextId);
@@ -199,11 +225,16 @@ export function TestDeck({ test, initialDeckState, onContinue }: TestDeckProps) 
   }
 
   if (phase === "error") {
+    // `rejected` only reaches here for a definitively bad payload or session
+    // (INVALID_SESSION / INVALID_ANSWER / INCOMPLETE) - retrying would resubmit the
+    // identical thing and fail identically, so the only real way forward is back to the
+    // feed for a fresh test, not a "Try again" that can never succeed.
     return (
       <Shell>
         <Text style={styles.title}>Could not submit your answers</Text>
         <Text style={styles.subtitle}>{errorMessage ?? "Something went wrong."}</Text>
-        <Button label="Try again" onPress={retrySubmit} />
+        <Button label="Back to tests" onPress={() => router.replace("/home")} />
+        <Button label="Sign out" variant="quiet" onPress={handleSignOut} />
       </Shell>
     );
   }
