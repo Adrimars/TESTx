@@ -1,20 +1,11 @@
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/Button";
-import { apiFetch } from "@/lib/api";
 import { useSession } from "@/lib/session";
-import { useAvailableTests } from "@/lib/test";
+import { useAvailableTests, useBalance } from "@/lib/test";
 import type { AvailableTest } from "@/lib/test";
 import { theme } from "@/lib/theme";
-
-function useBalance() {
-  return useQuery({
-    queryKey: ["balance"],
-    queryFn: () => apiFetch<{ balance: number }>("/evaluator/balance"),
-  });
-}
 
 /**
  * The app's landing screen.

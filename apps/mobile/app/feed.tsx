@@ -1,10 +1,9 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
-import { CardStack } from "@/components/cards/CardStack";
-import { QuestionCard } from "@/components/cards/QuestionCard";
-import { useDeck } from "@/lib/deck";
+import { TestDeck } from "@/components/feed/TestDeck";
 import { useSession } from "@/lib/session";
 import { useEvaluatorTest, useNextTest } from "@/lib/test";
 import { theme } from "@/lib/theme";
@@ -12,20 +11,26 @@ import { theme } from "@/lib/theme";
 export default function FeedScreen() {
   const router = useRouter();
   const { signOut } = useSession();
-  // An explicit testId opens that test instead of whatever is next in line. Phase 11 owns
-  // real feed orchestration; until then this is how a specific test gets opened, and it is
-  // the seam a deep link into a test would use.
-  const { testId } = useLocalSearchParams<{ testId?: string }>();
+  // An explicit testId opens that test instead of whatever is next in line - the seam a
+  // deep link, or the home screen's "Start test" button, uses to open one directly.
+  const { testId: routeTestId } = useLocalSearchParams<{ testId?: string }>();
+  const [testId, setTestId] = useState<string | undefined>(routeTestId);
   const nextTest = useNextTest();
-  const test = useEvaluatorTest(testId ?? nextTest.data?.id);
-  const deck = useDeck(test.data?.questions ?? []);
+
+  // No explicit test was requested - fall in behind whatever the feed decides is next,
+  // the same auto-assignment `/evaluator/next-test` was built for.
+  useEffect(() => {
+    if (!testId && nextTest.data?.id) setTestId(nextTest.data.id);
+  }, [testId, nextTest.data]);
+
+  const test = useEvaluatorTest(testId);
 
   async function handleSignOut() {
     await signOut();
     router.replace("/login");
   }
 
-  if ((!testId && nextTest.isPending) || test.isPending) {
+  if ((!testId && nextTest.isPending) || (Boolean(testId) && test.isPending)) {
     return (
       <Shell>
         <ActivityIndicator color={theme.colors.textSecondary} />
@@ -40,7 +45,13 @@ export default function FeedScreen() {
         <Text style={styles.subtitle}>
           {(nextTest.error ?? test.error)?.message ?? "Something went wrong."}
         </Text>
-        <Button label="Try again" onPress={() => void nextTest.refetch()} />
+        <Button
+          label="Try again"
+          onPress={() => {
+            void nextTest.refetch();
+            void test.refetch();
+          }}
+        />
       </Shell>
     );
   }
@@ -56,57 +67,7 @@ export default function FeedScreen() {
     );
   }
 
-  if (deck.isComplete) {
-    // Submission and the reward screen are phase 11; this is the seam they plug into.
-    return (
-      <Shell>
-        <Text style={styles.title}>Deck finished</Text>
-        <Text style={styles.subtitle}>
-          {Object.keys(deck.answers).length} of {test.data.questionCount} answered. Submitting
-          lands in phase 11.
-        </Text>
-        <Button label="Profile" variant="secondary" onPress={() => router.push("/profile")} />
-      </Shell>
-    );
-  }
-
-  return (
-    <SafeAreaView style={styles.flex} edges={["top", "bottom"]}>
-      <View style={styles.header}>
-        <Text style={styles.testTitle} numberOfLines={1}>
-          {test.data.title}
-        </Text>
-        <View style={styles.headerRight}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back to the previous question"
-            accessibilityState={{ disabled: !deck.canGoBack }}
-            disabled={!deck.canGoBack}
-            onPress={deck.back}
-            style={({ pressed }) => [
-              styles.backButton,
-              !deck.canGoBack && styles.backDisabled,
-              pressed && deck.canGoBack && styles.backPressed,
-            ]}
-          >
-            <Text style={styles.backLabel}>{"← Back"}</Text>
-          </Pressable>
-          <Text style={styles.counter}>
-            {deck.index + 1} / {test.data.questions.length}
-          </Text>
-        </View>
-      </View>
-
-      <CardStack
-        items={test.data.questions}
-        activeIndex={deck.index}
-        keyExtractor={(question) => question.id}
-        renderCard={(question, isActive) => (
-          <QuestionCard question={question} isActive={isActive} onAnswer={deck.answer} />
-        )}
-      />
-    </SafeAreaView>
-  );
+  return <TestDeck key={testId} test={test.data} onContinue={setTestId} />;
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -126,27 +87,6 @@ const styles = StyleSheet.create({
     padding: theme.spacing(3),
     gap: theme.spacing(1.5),
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: theme.spacing(2),
-    paddingHorizontal: theme.spacing(3),
-    paddingVertical: theme.spacing(1.5),
-  },
-  testTitle: { color: theme.colors.textPrimary, fontSize: 16, fontWeight: "600", flexShrink: 1 },
-  headerRight: { flexDirection: "row", alignItems: "center", gap: theme.spacing(1.5) },
-  backButton: {
-    minHeight: 36,
-    justifyContent: "center",
-    paddingHorizontal: theme.spacing(1.5),
-    borderRadius: 10,
-    backgroundColor: theme.colors.surfaceRaised,
-  },
-  backDisabled: { opacity: 0.35 },
-  backPressed: { opacity: 0.7 },
-  backLabel: { color: theme.colors.textPrimary, fontSize: 14, fontWeight: "600" },
-  counter: { color: theme.colors.textSecondary, fontSize: 14, fontVariant: ["tabular-nums"] },
   title: { color: theme.colors.textPrimary, fontSize: 22, fontWeight: "700", textAlign: "center" },
   subtitle: { color: theme.colors.textSecondary, fontSize: 15, textAlign: "center" },
 });

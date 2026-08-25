@@ -1,5 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./api";
+import type { DeckAnswer } from "./deckState";
 
 /** Mirrors `serializeQuestion` in apps/api/src/routes/evaluator.ts. */
 export type EvaluatorOption = {
@@ -88,6 +89,10 @@ export function useNextTest() {
   });
 }
 
+function fetchTest(testId: string) {
+  return apiFetch<EvaluatorTest>(`/evaluator/tests/${testId}`);
+}
+
 export function useEvaluatorTest(testId: string | undefined) {
   return useQuery({
     queryKey: ["test", testId],
@@ -99,6 +104,68 @@ export function useEvaluatorTest(testId: string | undefined) {
     refetchOnMount: false,
     refetchOnReconnect: false,
     enabled: Boolean(testId),
-    queryFn: () => apiFetch<EvaluatorTest>(`/evaluator/tests/${testId}`),
+    queryFn: () => fetchTest(testId!),
+  });
+}
+
+/**
+ * Primes the query cache for a test the feed hasn't opened yet.
+ *
+ * Used by the continuous-feed prefetch (11.1): fetched under the same query key
+ * `useEvaluatorTest` reads, so opening the prefetched test is a cache hit, not a fetch -
+ * that's what makes the test-to-test transition gapless.
+ */
+export function prefetchTest(queryClient: QueryClient, testId: string) {
+  return queryClient.fetchQuery({
+    queryKey: ["test", testId],
+    staleTime: Infinity,
+    gcTime: Infinity,
+    queryFn: () => fetchTest(testId),
+  });
+}
+
+export function prefetchNextTest(queryClient: QueryClient) {
+  return queryClient.fetchQuery({
+    queryKey: ["next-test"],
+    queryFn: () => apiFetch<NextTestSummary>("/evaluator/next-test"),
+  });
+}
+
+export type SubmitResult = {
+  pointsEarned: number;
+  isFlagged: boolean;
+  flagReasons: string[];
+};
+
+/** Fires the one-shot, per-test reward submission. */
+export function useSubmitTest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      testId,
+      sessionToken,
+      answers,
+    }: {
+      testId: string;
+      sessionToken: string;
+      answers: DeckAnswer[];
+    }) =>
+      apiFetch<SubmitResult>(`/evaluator/tests/${testId}/submit`, {
+        method: "POST",
+        body: JSON.stringify({ sessionToken, answers }),
+      }),
+    onSuccess: () => {
+      // The reward, the home screen's list, and what "next" means have all just changed.
+      void queryClient.invalidateQueries({ queryKey: ["balance"] });
+      void queryClient.invalidateQueries({ queryKey: ["available-tests"] });
+      void queryClient.invalidateQueries({ queryKey: ["next-test"] });
+    },
+  });
+}
+
+export function useBalance() {
+  return useQuery({
+    queryKey: ["balance"],
+    queryFn: () => apiFetch<{ balance: number }>("/evaluator/balance"),
   });
 }
