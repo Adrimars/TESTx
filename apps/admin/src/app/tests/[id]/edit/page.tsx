@@ -16,7 +16,7 @@ import {
   PauseCircle,
 } from "lucide-react";
 import type { Gender, MediaType, QuestionType, TestStatus } from "@testx/shared";
-import { COUNTRIES, CITIES_BY_COUNTRY } from "@testx/shared";
+import { COUNTRIES, CITIES_BY_COUNTRY, RANKING_MAX_OPTIONS, RANKING_MIN_OPTIONS } from "@testx/shared";
 import {
   Alert,
   Badge,
@@ -58,6 +58,8 @@ type QuestionDraft = {
   ratingMax: string;
   minLabel: string;
   maxLabel: string;
+  bestLabel: string;
+  worstLabel: string;
 };
 
 const EMPTY_QUESTION: QuestionDraft = {
@@ -74,6 +76,8 @@ const EMPTY_QUESTION: QuestionDraft = {
   ratingMax: "5",
   minLabel: "",
   maxLabel: "",
+  bestLabel: "",
+  worstLabel: "",
 };
 
 const GENDERS: Gender[] = ["MALE", "FEMALE", "OTHER", "UNDISCLOSED"];
@@ -115,7 +119,16 @@ function toDraft(question?: AdminQuestion): QuestionDraft {
     ratingMax: configNumber(question.config.max, "5"),
     minLabel: configString(question.config.minLabel),
     maxLabel: configString(question.config.maxLabel),
+    bestLabel: configString(question.config.bestLabel),
+    worstLabel: configString(question.config.worstLabel),
   };
+}
+
+/** Pads or trims an options list to land within [min, max], preserving existing entries. */
+function clampOptions(options: OptionDraft[], min: number, max: number): OptionDraft[] {
+  const next = options.slice(0, max);
+  while (next.length < min) next.push({ label: "", mediaId: "" });
+  return next;
 }
 
 function numberOrUndefined(value: string) {
@@ -241,9 +254,13 @@ export default function TestEditorPage() {
       if (draft.minLabel.trim()) config.minLabel = draft.minLabel.trim();
       if (draft.maxLabel.trim()) config.maxLabel = draft.maxLabel.trim();
     }
+    if (draft.type === "RANKING") {
+      if (draft.bestLabel.trim()) config.bestLabel = draft.bestLabel.trim();
+      if (draft.worstLabel.trim()) config.worstLabel = draft.worstLabel.trim();
+    }
 
     const options =
-      draft.type === "SINGLE_SELECT" || draft.type === "MULTI_SELECT"
+      draft.type === "SINGLE_SELECT" || draft.type === "MULTI_SELECT" || draft.type === "RANKING"
         ? draft.options.map((option, index) => ({
             label: option.label.trim() || undefined,
             mediaId: option.mediaId || undefined,
@@ -797,13 +814,28 @@ export default function TestEditorPage() {
                 <Select
                   aria-label="Question type"
                   value={draft.type}
-                  onChange={(event) =>
-                    setDraft((current) => ({ ...current, type: event.target.value as QuestionType }))
-                  }
+                  onChange={(event) => {
+                    const type = event.target.value as QuestionType;
+                    setDraft((current) => ({
+                      ...current,
+                      type,
+                      options:
+                        type === "RANKING"
+                          ? clampOptions(current.options, RANKING_MIN_OPTIONS, RANKING_MAX_OPTIONS)
+                          : current.options,
+                      // Neither check is meaningful for a ranking (prd.md 5.3.4): a trap
+                      // duplicate compares option identity, which a ranking selects in full by
+                      // construction, and there is no admin-facing way to key a "correct" order.
+                      isAttentionCheck: type === "RANKING" ? false : current.isAttentionCheck,
+                      isTrapDuplicate: type === "RANKING" ? false : current.isTrapDuplicate,
+                      trapSourceId: type === "RANKING" ? "" : current.trapSourceId,
+                    }));
+                  }}
                 >
                   <option value="SINGLE_SELECT">Single select</option>
                   <option value="MULTI_SELECT">Multi select</option>
                   <option value="RATING">Rating</option>
+                  <option value="RANKING">Ranking</option>
                 </Select>
               </Field>
               <Field label="Option media" hint="Changing this clears the options.">
@@ -815,7 +847,11 @@ export default function TestEditorPage() {
                     setDraft((current) => ({
                       ...current,
                       mediaType,
-                      options: [{ label: "", mediaId: "" }, { label: "", mediaId: "" }],
+                      options: clampOptions(
+                        [],
+                        current.type === "RANKING" ? RANKING_MIN_OPTIONS : 2,
+                        current.type === "RANKING" ? RANKING_MAX_OPTIONS : 2
+                      ),
                     }));
                     void fetchMedia(mediaType);
                   }}
@@ -836,11 +872,12 @@ export default function TestEditorPage() {
             </div>
           </section>
 
-          {(draft.type === "SINGLE_SELECT" || draft.type === "MULTI_SELECT") && (
+          {(draft.type === "SINGLE_SELECT" || draft.type === "MULTI_SELECT" || draft.type === "RANKING") && (
             <section className="space-y-3 border-t border-border pt-5">
               <div className="flex items-center justify-between">
                 <h3 className="text-meta uppercase text-muted-foreground">
                   Options ({draft.options.length})
+                  {draft.type === "RANKING" && ` — ${RANKING_MIN_OPTIONS} to ${RANKING_MAX_OPTIONS} required`}
                 </h3>
                 <Button
                   variant="secondary"
@@ -851,7 +888,7 @@ export default function TestEditorPage() {
                       options: [...current.options, { label: "", mediaId: "" }],
                     }))
                   }
-                  disabled={draft.options.length >= 10}
+                  disabled={draft.options.length >= (draft.type === "RANKING" ? RANKING_MAX_OPTIONS : 10)}
                 >
                   <Plus className="size-4" aria-hidden />
                   Add Option
@@ -890,7 +927,7 @@ export default function TestEditorPage() {
                         options: current.options.filter((_, itemIndex) => itemIndex !== index),
                       }))
                     }
-                    disabled={draft.options.length <= 2}
+                    disabled={draft.options.length <= (draft.type === "RANKING" ? RANKING_MIN_OPTIONS : 2)}
                   >
                     <Trash2 className="size-4" aria-hidden />
                     Remove
@@ -959,22 +996,46 @@ export default function TestEditorPage() {
             </section>
           )}
 
+          {draft.type === "RANKING" && (
+            <section className="space-y-3 border-t border-border pt-5">
+              <h3 className="text-meta uppercase text-muted-foreground">Endpoint labels</h3>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Best label" optional>
+                  <Input
+                    placeholder="Best"
+                    value={draft.bestLabel}
+                    onChange={(event) => setDraft((current) => ({ ...current, bestLabel: event.target.value }))}
+                  />
+                </Field>
+                <Field label="Worst label" optional>
+                  <Input
+                    placeholder="Worst"
+                    value={draft.worstLabel}
+                    onChange={(event) => setDraft((current) => ({ ...current, worstLabel: event.target.value }))}
+                  />
+                </Field>
+              </div>
+            </section>
+          )}
+
           <section className="space-y-3 border-t border-border pt-5">
             <h3 className="text-meta uppercase text-muted-foreground">Quality control</h3>
             <p className="text-sm text-muted-foreground">
-              A question can be an attention check or a trap duplicate, not both.
+              {draft.type === "RANKING"
+                ? "Ranking questions aren't eligible as an attention check or trap duplicate."
+                : "A question can be an attention check or a trap duplicate, not both."}
             </p>
             <div className="grid gap-4 lg:grid-cols-3">
               <label
                 className={`flex min-h-11 items-center gap-2 text-sm ${
-                  draft.isTrapDuplicate ? "text-muted-foreground" : ""
+                  draft.isTrapDuplicate || draft.type === "RANKING" ? "text-muted-foreground" : ""
                 }`}
               >
                 <input
                   type="checkbox"
                   className="size-4 rounded border-input accent-primary"
                   checked={draft.isAttentionCheck}
-                  disabled={draft.isTrapDuplicate}
+                  disabled={draft.isTrapDuplicate || draft.type === "RANKING"}
                   onChange={(event) =>
                     setDraft((current) => ({
                       ...current,
@@ -989,14 +1050,14 @@ export default function TestEditorPage() {
               </label>
               <label
                 className={`flex min-h-11 items-center gap-2 text-sm ${
-                  draft.isAttentionCheck ? "text-muted-foreground" : ""
+                  draft.isAttentionCheck || draft.type === "RANKING" ? "text-muted-foreground" : ""
                 }`}
               >
                 <input
                   type="checkbox"
                   className="size-4 rounded border-input accent-primary"
                   checked={draft.isTrapDuplicate}
-                  disabled={draft.isAttentionCheck}
+                  disabled={draft.isAttentionCheck || draft.type === "RANKING"}
                   onChange={(event) =>
                     setDraft((current) => ({
                       ...current,
