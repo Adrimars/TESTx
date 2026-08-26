@@ -16,7 +16,12 @@ import { theme } from "@/lib/theme";
  */
 export default function AydinlatmaScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ email?: string; password?: string; age?: string }>();
+  const params = useLocalSearchParams<{
+    email?: string;
+    password?: string;
+    confirmPassword?: string;
+    ageConfirmed?: string;
+  }>();
 
   function handleAcknowledge() {
     router.replace({ pathname: "/register", params: { ...params, acknowledged: "1" } });

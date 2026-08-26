@@ -9,7 +9,7 @@ type AuthResponse = CurrentUser & TokenPair;
 export type MobileRegisterPayload = {
   email: string;
   password: string;
-  age: number;
+  ageConfirmed: true;
   aydinlatmaAcknowledged: true;
   acikRizaAccepted?: boolean;
   deviceId?: string;

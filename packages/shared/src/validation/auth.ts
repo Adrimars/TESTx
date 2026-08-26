@@ -48,11 +48,13 @@ export const MOBILE_MIN_AGE = 18;
  * required - declining explicit consent must not block registration.
  */
 export const mobileRegisterSchema = registerSchema.extend({
-  age: z
-    .number()
-    .int()
-    .min(MOBILE_MIN_AGE, `You must be at least ${MOBILE_MIN_AGE} to create an account`)
-    .max(120),
+  // A self-attested checkbox (16.8), not a number - the numeric age was never persisted
+  // by /register/mobile (apps/api/src/routes/auth.ts), only used to gate under-18
+  // signups. The real, persisted EvaluatorProfile.age is still collected once, on
+  // profile-onboarding.tsx, unaffected by this change.
+  ageConfirmed: z.literal(true, {
+    errorMap: () => ({ message: `You must confirm you are ${MOBILE_MIN_AGE} or older to create an account` }),
+  }),
   aydinlatmaAcknowledged: z.literal(true, {
     errorMap: () => ({ message: "The disclosure must be acknowledged before registering" }),
   }),
