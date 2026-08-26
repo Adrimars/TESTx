@@ -43,10 +43,8 @@ export default function RootLayout() {
                 name="profile-onboarding"
                 options={{ title: "Your profile", headerBackVisible: false }}
               />
-              <Stack.Screen name="home" options={{ headerShown: false }} />
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen name="feed" options={{ headerShown: false }} />
-              <Stack.Screen name="profile" options={{ title: "Profile" }} />
-              <Stack.Screen name="rewards" options={{ title: "Rewards" }} />
             </Stack>
             </UpdateRequiredGate>
           </SafeAreaProvider>

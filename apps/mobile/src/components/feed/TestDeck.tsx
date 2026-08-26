@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { ChevronLeft, CircleAlert, Inbox, UploadCloud } from "lucide-react-native";
+import { ChevronLeft, CircleAlert, Inbox, UploadCloud, X } from "lucide-react-native";
 import Animated, {
   interpolate,
   useAnimatedStyle,
@@ -233,6 +233,15 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
     router.replace("/login");
   }
 
+  /** Exits the feed back to the Dashboard tab (16.5) - an explicit control independent of
+   * the OS back gesture, reachable from every phase that renders the header below
+   * (answering, submitting, checkingNext, popup). In-progress answers are already
+   * persisted continuously by the `writeInProgressTest` effect above, so leaving here
+   * mid-question loses nothing; resuming this test later picks the same answers back up. */
+  function handleClose() {
+    router.replace("/dashboard");
+  }
+
   if (phase === "empty") {
     return (
       <Shell icon={Inbox}>
@@ -253,7 +262,7 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
       <Shell icon={CircleAlert}>
         <Text style={styles.title}>Could not submit your answers</Text>
         <Text style={styles.subtitle}>{errorMessage ?? "Something went wrong."}</Text>
-        <Button label="Back to tests" onPress={() => router.replace("/home")} />
+        <Button label="Back to tests" onPress={handleClose} />
         <Button label="Sign out" variant="quiet" onPress={handleSignOut} />
       </Shell>
     );
@@ -278,6 +287,14 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
       <ProgressBar total={questionCount} index={deck.index} />
 
       <View style={styles.header}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Exit to the Dashboard"
+          onPress={handleClose}
+          style={({ pressed }) => [styles.closeButton, pressed && styles.backPressed]}
+        >
+          <X size={18} color={theme.colors.textPrimary} strokeWidth={1.5} />
+        </Pressable>
         <Text style={styles.testTitle} numberOfLines={1}>
           {test.title}
         </Text>
@@ -442,8 +459,17 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing(1.5),
     paddingBottom: theme.spacing(1.5),
   },
-  testTitle: { color: theme.colors.textPrimary, fontSize: 16, fontWeight: "600", flexShrink: 1 },
+  testTitle: { color: theme.colors.textPrimary, fontSize: 16, fontWeight: "600", flex: 1 },
   headerRight: { flexDirection: "row", alignItems: "center", gap: theme.spacing(1.5) },
+  closeButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    // 44pt minimum touch target (prd.md §16.7), same as backButton's own.
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: theme.colors.surfaceRaised,
+  },
   backButton: {
     flexDirection: "row",
     alignItems: "center",

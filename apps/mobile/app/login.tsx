@@ -30,7 +30,7 @@ export default function LoginScreen() {
     setBusy("email");
     try {
       const user = await signIn(email, password);
-      router.replace(user.evaluatorProfile ? "/home" : "/profile-onboarding");
+      router.replace(user.evaluatorProfile ? "/dashboard" : "/profile-onboarding");
     } catch (error) {
       Alert.alert("Sign in failed", error instanceof Error ? error.message : "Please try again.");
     } finally {
@@ -48,7 +48,7 @@ export default function LoginScreen() {
         return;
       }
       const user = await signInWithCode(result.code);
-      router.replace(user.evaluatorProfile ? "/home" : "/profile-onboarding");
+      router.replace(user.evaluatorProfile ? "/dashboard" : "/profile-onboarding");
     } catch (error) {
       Alert.alert("Sign in failed", error instanceof Error ? error.message : "Please try again.");
     } finally {

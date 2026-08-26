@@ -15,7 +15,7 @@ export default function SplashScreen() {
   useEffect(() => {
     if (initializing) return;
     if (!user) router.replace("/login");
-    else router.replace(hasProfile ? "/home" : "/profile-onboarding");
+    else router.replace(hasProfile ? "/dashboard" : "/profile-onboarding");
   }, [initializing, user, hasProfile, router]);
 
   return (

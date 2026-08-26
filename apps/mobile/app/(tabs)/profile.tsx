@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useRouter } from "expo-router";
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import {
   AI_EXPERIENCE_OPTIONS,
   AI_FREQUENCY_OPTIONS,
@@ -25,8 +25,7 @@ const GENDER_OPTIONS = GENDERS.map((gender) => ({
 }));
 
 export default function ProfileScreen() {
-  const router = useRouter();
-  const { user, signOut, refreshUser } = useSession();
+  const { user, refreshUser } = useSession();
 
   const profile = user?.evaluatorProfile ?? null;
 
@@ -118,127 +117,85 @@ export default function ProfileScreen() {
     }
   }
 
-  async function handleSignOut() {
-    await signOut();
-    router.replace("/login");
-  }
-
-  function handleDeleteAccount() {
-    Alert.alert(
-      "Delete account?",
-      "This permanently deletes your account, your profile and your answer history. This cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => {
-            void (async () => {
-              try {
-                await apiFetch("/users/me", { method: "DELETE" });
-                await signOut();
-                router.replace("/login");
-              } catch (error) {
-                Alert.alert(
-                  "Could not delete account",
-                  error instanceof Error ? error.message : "Please try again."
-                );
-              }
-            })();
-          },
-        },
-      ]
-    );
-  }
-
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <AvatarPicker value={avatarId} onChange={handleSelectAvatar} />
+    <SafeAreaView style={styles.flex} edges={["top"]}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+          <AvatarPicker value={avatarId} onChange={handleSelectAvatar} />
 
-        <Text style={styles.email}>{user?.email}</Text>
+          <Text style={styles.email}>{user?.email}</Text>
 
-        <Field
-          label="Age"
-          value={age}
-          onChangeText={setAge}
-          error={errors.age}
-          keyboardType="number-pad"
-          inputMode="numeric"
-          maxLength={3}
-        />
-        <Select
-          label="Gender"
-          options={GENDER_OPTIONS}
-          value={gender}
-          onChange={setGender}
-          error={errors.gender}
-        />
-        <Select
-          label="Country"
-          options={COUNTRIES}
-          value={country}
-          onChange={setCountry}
-          error={errors.country}
-          searchable
-        />
-        <Field
-          label="City"
-          value={city}
-          onChangeText={setCity}
-          error={errors.city}
-          placeholder="Optional"
-        />
-        <Field
-          label="Native language"
-          value={nativeLanguage}
-          onChangeText={setNativeLanguage}
-          error={errors.nativeLanguage}
-          placeholder="Optional"
-        />
-        <Field
-          label="Occupation"
-          value={occupation}
-          onChangeText={setOccupation}
-          error={errors.occupation}
-          placeholder="Optional"
-        />
-        <Select
-          label="Education level"
-          options={EDUCATION_LEVELS}
-          value={educationLevel}
-          onChange={setEducationLevel}
-          error={errors.educationLevel}
-        />
-        <Select
-          label="AI experience"
-          options={AI_EXPERIENCE_OPTIONS}
-          value={aiExperience}
-          onChange={setAiExperience}
-          error={errors.aiExperience}
-        />
-        <Select
-          label="How often do you use AI?"
-          options={AI_FREQUENCY_OPTIONS}
-          value={aiFrequency}
-          onChange={setAiFrequency}
-          error={errors.aiFrequency}
-        />
+          <Field
+            label="Age"
+            value={age}
+            onChangeText={setAge}
+            error={errors.age}
+            keyboardType="number-pad"
+            inputMode="numeric"
+            maxLength={3}
+          />
+          <Select
+            label="Gender"
+            options={GENDER_OPTIONS}
+            value={gender}
+            onChange={setGender}
+            error={errors.gender}
+          />
+          <Select
+            label="Country"
+            options={COUNTRIES}
+            value={country}
+            onChange={setCountry}
+            error={errors.country}
+            searchable
+          />
+          <Field
+            label="City"
+            value={city}
+            onChangeText={setCity}
+            error={errors.city}
+            placeholder="Optional"
+          />
+          <Field
+            label="Native language"
+            value={nativeLanguage}
+            onChangeText={setNativeLanguage}
+            error={errors.nativeLanguage}
+            placeholder="Optional"
+          />
+          <Field
+            label="Occupation"
+            value={occupation}
+            onChangeText={setOccupation}
+            error={errors.occupation}
+            placeholder="Optional"
+          />
+          <Select
+            label="Education level"
+            options={EDUCATION_LEVELS}
+            value={educationLevel}
+            onChange={setEducationLevel}
+            error={errors.educationLevel}
+          />
+          <Select
+            label="AI experience"
+            options={AI_EXPERIENCE_OPTIONS}
+            value={aiExperience}
+            onChange={setAiExperience}
+            error={errors.aiExperience}
+          />
+          <Select
+            label="How often do you use AI?"
+            options={AI_FREQUENCY_OPTIONS}
+            value={aiFrequency}
+            onChange={setAiFrequency}
+            error={errors.aiFrequency}
+          />
 
-        <Button label="Save changes" onPress={handleSave} loading={saving} />
-
-        <View style={styles.dangerZone}>
-          <Button label="Sign out" variant="secondary" onPress={handleSignOut} />
-          <Button label="Delete account" variant="quiet" onPress={handleDeleteAccount} />
-          <Text style={styles.dangerNote}>
-            Deleting your account removes your profile and answer history permanently.
-          </Text>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          <Button label="Save changes" onPress={handleSave} loading={saving} />
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
@@ -246,12 +203,4 @@ const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: theme.colors.surfaceBase },
   container: { padding: theme.spacing(3), gap: theme.spacing(2), paddingBottom: theme.spacing(6) },
   email: { color: theme.colors.textSecondary, fontSize: 14 },
-  dangerZone: {
-    marginTop: theme.spacing(3),
-    paddingTop: theme.spacing(2),
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.borderHairline,
-    gap: theme.spacing(1),
-  },
-  dangerNote: { color: theme.colors.textSecondary, fontSize: 12, textAlign: "center" },
 });
