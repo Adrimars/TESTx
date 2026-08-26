@@ -3,11 +3,13 @@ import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
+import { FirstTestWalkthrough } from "@/components/FirstTestWalkthrough";
 import { TestDeck } from "@/components/feed/TestDeck";
 import { useSession } from "@/lib/session";
 import { useInProgressTest } from "@/lib/submissionQueue";
 import { useEvaluatorTest, useNextTest } from "@/lib/test";
 import { theme } from "@/lib/theme";
+import { useFirstTestWalkthrough } from "@/lib/tutorial";
 
 export default function FeedScreen() {
   const router = useRouter();
@@ -29,24 +31,30 @@ export default function FeedScreen() {
   // matches the test actually being opened, never a leftover from a different one.
   const inProgress = useInProgressTest(testId);
 
+  // Mounted here rather than in TestDeck: TestDeck is keyed per test and remounts on
+  // every continue in the feed (see its own doc), which would replay the walkthrough at
+  // the first test-to-test transition. This screen is the stable seam the evaluator
+  // actually lands on once, before any test - real or loading - is visible underneath.
+  const walkthrough = useFirstTestWalkthrough();
+
   async function handleSignOut() {
     await signOut();
     router.replace("/login");
   }
 
+  let content: React.ReactNode;
+
   if (
     (!testId && nextTest.isPending) ||
     (Boolean(testId) && (test.isPending || inProgress.isPending))
   ) {
-    return (
+    content = (
       <Shell>
         <ActivityIndicator color={theme.colors.textSecondary} />
       </Shell>
     );
-  }
-
-  if ((!testId && nextTest.isError) || test.isError) {
-    return (
+  } else if ((!testId && nextTest.isError) || test.isError) {
+    content = (
       <Shell>
         <Text style={styles.title}>Could not load a test</Text>
         <Text style={styles.subtitle}>
@@ -61,10 +69,8 @@ export default function FeedScreen() {
         />
       </Shell>
     );
-  }
-
-  if (!test.data) {
-    return (
+  } else if (!test.data) {
+    content = (
       <Shell>
         <Text style={styles.title}>Nothing to answer right now</Text>
         <Text style={styles.subtitle}>New tests show up here as they open.</Text>
@@ -72,15 +78,24 @@ export default function FeedScreen() {
         <Button label="Sign out" variant="quiet" onPress={handleSignOut} />
       </Shell>
     );
+  } else {
+    content = (
+      <TestDeck
+        key={testId}
+        test={test.data}
+        resumedFrom={inProgress.data ?? undefined}
+        onContinue={setTestId}
+      />
+    );
   }
 
   return (
-    <TestDeck
-      key={testId}
-      test={test.data}
-      resumedFrom={inProgress.data ?? undefined}
-      onContinue={setTestId}
-    />
+    <>
+      {content}
+      {walkthrough.shouldShow ? (
+        <FirstTestWalkthrough onComplete={walkthrough.complete} onSkip={walkthrough.skip} />
+      ) : null}
+    </>
   );
 }
 

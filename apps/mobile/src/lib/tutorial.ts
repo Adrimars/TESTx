@@ -15,6 +15,8 @@ const KEYS: Record<TutorialGesture, string> = {
   ranking: "testx.hasSeenRankingTutorial",
 };
 
+const WALKTHROUGH_KEY = "testx.hasSeenFirstTestWalkthrough";
+
 /**
  * Device-local by design, not server state. It tracks whether this install has explained
  * itself, which is a property of the app on this phone rather than of the account - and
@@ -84,4 +86,64 @@ export function useGestureTutorial(gesture: TutorialGesture, enabled: boolean): 
   }, [gesture]);
 
   return { shouldShow, dismiss };
+}
+
+export type WalkthroughState = {
+  /** True only while the first-run walkthrough should be on screen. */
+  shouldShow: boolean;
+  /**
+   * Marks the walkthrough seen after a full run-through, which also retires the
+   * per-type Rating/Ranking gesture hints (10.8/12.1) - the walkthrough already
+   * demonstrated both, so the narrower mid-test hints would just repeat it.
+   */
+  complete: () => void;
+  /**
+   * Marks only the walkthrough itself seen, leaving the per-type gesture hints as a
+   * fallback for whichever novel gesture the evaluator actually meets first - an
+   * evaluator who skips the walkthrough still gets taught drag-to-target once, just at
+   * the point they need it instead of up front.
+   */
+  skip: () => void;
+};
+
+/**
+ * Decides whether to show the first-run, Instagram-style walkthrough that covers every
+ * question type before a brand-new evaluator's very first test (15.7) - unlike
+ * `useGestureTutorial`, which is scoped to one card type and shown mid-test, this is a
+ * one-time, whole-app orientation shown once at the entry point into the feed.
+ *
+ * Same start-closed-then-open-after-read shape as `useGestureTutorial`, for the same
+ * reason: flashing the walkthrough for a frame at every returning evaluator before the
+ * stored flag is read back would be worse than showing it a moment late for the one
+ * evaluator who has genuinely never seen it.
+ */
+export function useFirstTestWalkthrough(): WalkthroughState {
+  const [shouldShow, setShouldShow] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const seen = await readFlag(WALKTHROUGH_KEY);
+      if (!cancelled && !seen) setShouldShow(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const complete = useCallback(() => {
+    setShouldShow(false);
+    void writeFlag(WALKTHROUGH_KEY);
+    void writeFlag(KEYS.rating);
+    void writeFlag(KEYS.ranking);
+  }, []);
+
+  const skip = useCallback(() => {
+    setShouldShow(false);
+    void writeFlag(WALKTHROUGH_KEY);
+  }, []);
+
+  return { shouldShow, complete, skip };
 }
