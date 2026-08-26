@@ -111,6 +111,13 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
   const pointerX = useSharedValue(0);
   const pointerY = useSharedValue(0);
 
+  // Driven by whichever SwappableThumbnail is mid-drag (16.1): the slot value it is
+  // currently crossing (0 = none/own slot) and how close it sits to that slot's centre.
+  // Lives here rather than on the thumbnail itself so a sibling RankSlot can read it too -
+  // the held card and the slot it is passing over grow in lockstep off one shared number.
+  const swapTargetValue = useSharedValue(0);
+  const swapNearness = useSharedValue(0);
+
   // Same derivation as RatingCard's, except Ranking's column is flipped (15.3): slot 1
   // (best) sits at the bottom and the last slot (worst) at the top, the opposite of
   // Rating's low-to-high top-to-bottom order - a ranking's "best" belongs at the bottom
@@ -306,6 +313,8 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
                 onReclaim={reclaim}
                 onPlace={place}
                 onSwap={swap}
+                swapTargetValue={swapTargetValue}
+                swapNearness={swapNearness}
               />
             ))}
 
@@ -333,6 +342,8 @@ function RankSlot({
   onReclaim,
   onPlace,
   onSwap,
+  swapTargetValue,
+  swapNearness,
 }: {
   target: DropTarget;
   targets: DropTarget[];
@@ -347,6 +358,11 @@ function RankSlot({
   onReclaim: (slotNumber: number) => void;
   onPlace: (slotNumber: number) => void;
   onSwap: (sourceValue: number, targetValue: number) => void;
+  /** Which slot value a swap-in-progress is currently crossing (16.1), and how close it
+   * sits to this slot's centre - shared across every slot so the one being crossed can
+   * grow the same way the placement drag's `isUnderFinger` branch below already does. */
+  swapTargetValue: SharedValue<number>;
+  swapNearness: SharedValue<number>;
 }) {
   const filled = !target.enabled;
 
@@ -355,14 +371,23 @@ function RankSlot({
     // the card could land in any of them, when exactly one will take it.
     const isUnderFinger =
       activeTargetValue(pointerX.value, pointerY.value, targets) === target.value;
-    if (!isUnderFinger) {
-      return { transform: [{ scale: 1 }], borderColor: theme.colors.borderHairline };
+    if (isUnderFinger) {
+      const nearness = targetProximity(pointerX.value, pointerY.value, target, PROXIMITY_FALLOFF);
+      return {
+        transform: [{ scale: 1 + nearness * (MAX_SLOT_SCALE - 1) }],
+        borderColor: theme.colors.accent,
+      };
     }
-    const nearness = targetProximity(pointerX.value, pointerY.value, target, PROXIMITY_FALLOFF);
-    return {
-      transform: [{ scale: 1 + nearness * (MAX_SLOT_SCALE - 1) }],
-      borderColor: theme.colors.accent,
-    };
+    // A held thumbnail from another slot is being dragged across this one (16.1) - same
+    // "grow near a target" shape, driven by the swap gesture's shared nearness instead of
+    // the placement drag's pointer position.
+    if (swapTargetValue.value === target.value) {
+      return {
+        transform: [{ scale: 1 + swapNearness.value * (MAX_SLOT_SCALE - 1) }],
+        borderColor: theme.colors.accent,
+      };
+    }
+    return { transform: [{ scale: 1 }], borderColor: theme.colors.borderHairline };
   });
 
   return (
@@ -379,12 +404,15 @@ function RankSlot({
         {filled && option ? (
           <SwappableThumbnail
             slotValue={target.value}
+            slotCount={targets.length}
             slotHeight={slotHeight}
             option={option}
             mediaType={mediaType}
             disabled={disabled}
             onReclaim={onReclaim}
             onSwap={onSwap}
+            swapTargetValue={swapTargetValue}
+            swapNearness={swapNearness}
           />
         ) : (
           // Tap-based fallback for the drag-to-slot gesture (prd.md §16.7): places the
@@ -404,6 +432,33 @@ function RankSlot({
 }
 
 /**
+ * Where a swap drag's `translateY` currently sits relative to the slot it would land on
+ * (16.1): which slot value that is (0 if still over the source slot, or past either end
+ * with nowhere valid to land), and how close - 0 (mid-transition) to 1 (dead on that
+ * slot's centre). Same "grow near a target" shape as `targetProximity`, just measured
+ * along this gesture's 1D `translateY` instead of 2D pointer coordinates, since a swap
+ * drag never tracks the raw finger position (see `SwappableThumbnail`'s doc below).
+ */
+function computeSwapCrossing(
+  translateY: number,
+  slotHeight: number,
+  slotValue: number,
+  slotCount: number
+): { targetValue: number; nearness: number } {
+  "worklet";
+  // Downward drag moves toward the bottom of the column, where rank 1 sits after 15.3's
+  // flip - value decreases as the finger moves down, hence the negation.
+  const delta = Math.round(-translateY / slotHeight);
+  if (delta === 0) return { targetValue: 0, nearness: 0 };
+  const targetValue = Math.max(1, Math.min(slotCount, slotValue + delta));
+  if (targetValue === slotValue) return { targetValue: 0, nearness: 0 };
+  const targetTranslateY = -delta * slotHeight;
+  const distance = Math.abs(translateY - targetTranslateY);
+  const nearness = distance >= PROXIMITY_FALLOFF ? 0 : 1 - distance / PROXIMITY_FALLOFF;
+  return { targetValue, nearness };
+}
+
+/**
  * A filled slot's own thumbnail: a tap reclaims it (existing 12.1/12.6 flow, unchanged),
  * and a press-and-hold followed by a drag swaps it directly with whatever slot the finger
  * ends up over (15.6) - a shortcut alongside reclaim-then-place, not instead of it.
@@ -418,20 +473,26 @@ function RankSlot({
  */
 function SwappableThumbnail({
   slotValue,
+  slotCount,
   slotHeight,
   option,
   mediaType,
   disabled,
   onReclaim,
   onSwap,
+  swapTargetValue,
+  swapNearness,
 }: {
   slotValue: number;
+  slotCount: number;
   slotHeight: number;
   option: EvaluatorOption;
   mediaType: string | null;
   disabled: boolean;
   onReclaim: (slotNumber: number) => void;
   onSwap: (sourceValue: number, targetValue: number) => void;
+  swapTargetValue: SharedValue<number>;
+  swapNearness: SharedValue<number>;
 }) {
   const translateY = useSharedValue(0);
 
@@ -449,17 +510,38 @@ function SwappableThumbnail({
       translateY.value = event.translationY;
     })
     .onEnd((event) => {
-      // Downward drag moves toward the bottom of the column, where rank 1 sits after
-      // 15.3's flip - value decreases as the finger moves down, hence the negation.
-      const delta = -Math.round(event.translationY / slotHeight);
+      const { targetValue } = computeSwapCrossing(event.translationY, slotHeight, slotValue, slotCount);
+      // Springing back to 0 here also carries the shared crossing state below back to
+      // resting (its reaction keeps firing for every frame of this animation), so both
+      // this thumbnail and whichever slot it was over settle together off one spring.
       translateY.value = withSpring(0, CARD_REJECT_SPRING);
-      runOnJS(onSwap)(slotValue, slotValue + delta);
+      if (targetValue !== 0) runOnJS(onSwap)(slotValue, targetValue);
     });
 
-  const followFinger = useAnimatedStyle(() => ({
-    transform: [{ translateY: translateY.value }],
-    zIndex: translateY.value === 0 ? 0 : 1,
-  }));
+  // Broadcasts the currently-crossed slot (if any) so that slot's own RankSlot can grow
+  // in step with this thumbnail - fires on every frame translateY changes, including
+  // during the release spring above, which is what lets the highlight fade back out
+  // smoothly instead of snapping off the instant the gesture ends.
+  useAnimatedReaction(
+    () => translateY.value,
+    (ty) => {
+      const { targetValue, nearness } = computeSwapCrossing(ty, slotHeight, slotValue, slotCount);
+      swapTargetValue.value = targetValue;
+      swapNearness.value = nearness;
+    },
+    [slotHeight, slotValue, slotCount]
+  );
+
+  const followFinger = useAnimatedStyle(() => {
+    const { nearness } = computeSwapCrossing(translateY.value, slotHeight, slotValue, slotCount);
+    return {
+      transform: [
+        { translateY: translateY.value },
+        { scale: 1 + nearness * (MAX_SLOT_SCALE - 1) },
+      ],
+      zIndex: translateY.value === 0 ? 0 : 1,
+    };
+  });
 
   return (
     <GestureDetector gesture={Gesture.Race(pan, tap)}>
