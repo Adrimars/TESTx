@@ -270,6 +270,7 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
       aiUseCases: body.aiUseCases ?? [],
       aiExperience: body.aiExperience ?? null,
       aiFrequency: body.aiFrequency ?? null,
+      hobbies: body.hobbies ?? [],
     };
     const profile = await app.prisma.evaluatorProfile.upsert({
       where: { userId: request.user!.id },

@@ -13,6 +13,7 @@ import {
 import { AvatarPicker } from "@/components/AvatarPicker";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
+import { HobbiesPicker } from "@/components/HobbiesPicker";
 import { Select } from "@/components/Select";
 import { apiFetch } from "@/lib/api";
 import { useSession } from "@/lib/session";
@@ -40,6 +41,7 @@ export default function ProfileScreen() {
   );
   const [aiExperience, setAiExperience] = useState<string | null>(profile?.aiExperience ?? null);
   const [aiFrequency, setAiFrequency] = useState<string | null>(profile?.aiFrequency ?? null);
+  const [hobbies, setHobbies] = useState<string[]>(profile?.hobbies ?? []);
   const [avatarId, setAvatarId] = useState<number | null>(user?.avatarId ?? null);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -60,6 +62,7 @@ export default function ProfileScreen() {
     setEducationLevel(p.educationLevel ?? null);
     setAiExperience(p.aiExperience ?? null);
     setAiFrequency(p.aiFrequency ?? null);
+    setHobbies(p.hobbies ?? []);
   }, [user]);
 
   async function handleSelectAvatar(nextAvatarId: number) {
@@ -97,6 +100,7 @@ export default function ProfileScreen() {
       educationLevel: educationLevel ?? undefined,
       aiExperience: aiExperience ?? undefined,
       aiFrequency: aiFrequency ?? undefined,
+      hobbies,
     });
 
     if (!parsed.success) {
@@ -190,6 +194,12 @@ export default function ProfileScreen() {
             value={aiFrequency}
             onChange={setAiFrequency}
             error={errors.aiFrequency}
+          />
+          <HobbiesPicker
+            label="Hobbies (Optional)"
+            value={hobbies}
+            onChange={setHobbies}
+            error={errors.hobbies}
           />
 
           <Button label="Save changes" onPress={handleSave} loading={saving} />

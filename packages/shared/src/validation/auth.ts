@@ -1,5 +1,9 @@
 import { z } from "zod";
-import { GENDERS } from "../constants";
+import { GENDERS, HOBBIES, HOBBIES_MAX } from "../constants";
+
+/** The bare values out of `HOBBIES`, for `z.enum` - keeps `hobbies` a closed set rather
+ * than free text an evaluator (or a replayed request) could put anything into. */
+const HOBBY_VALUES = HOBBIES.map((hobby) => hobby.value) as [string, ...string[]];
 
 export const registerSchema = z.object({
   email: z.string().email(),
@@ -23,6 +27,7 @@ export const evaluatorProfileSchema = z.object({
   aiUseCases: z.array(z.string().min(1)).optional().default([]),
   aiExperience: z.string().min(1).optional(),
   aiFrequency: z.string().min(1).optional(),
+  hobbies: z.array(z.enum(HOBBY_VALUES)).max(HOBBIES_MAX).optional().default([]),
 });
 
 /**

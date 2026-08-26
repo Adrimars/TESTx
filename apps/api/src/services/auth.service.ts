@@ -39,6 +39,7 @@ export function buildCurrentUser(user: UserWithProfile): CurrentUser {
           aiUseCases: user.evaluatorProfile.aiUseCases,
           aiExperience: user.evaluatorProfile.aiExperience,
           aiFrequency: user.evaluatorProfile.aiFrequency,
+          hobbies: user.evaluatorProfile.hobbies,
           balance: user.evaluatorProfile.balance,
           createdAt: user.evaluatorProfile.createdAt.toISOString(),
           updatedAt: user.evaluatorProfile.updatedAt.toISOString(),

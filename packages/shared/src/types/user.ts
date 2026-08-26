@@ -25,6 +25,7 @@ export type EvaluatorProfile = {
   aiUseCases: string[];
   aiExperience: string | null;
   aiFrequency: string | null;
+  hobbies: string[];
   balance: number;
   createdAt: string;
   updatedAt: string;

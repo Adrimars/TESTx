@@ -33,6 +33,36 @@ export const AI_USE_CASES = [
   { value: "OTHER", label: "Other" },
 ] as const;
 
+/**
+ * Predecided hobby list (prd.md §16.7) - `EvaluatorProfile.hobbies` is validated
+ * server-side against these values, same reasoning as `AI_USE_CASES`: a free-text field
+ * here would make "which hobbies are common" unanswerable for targeting/analysis later.
+ */
+export const HOBBIES = [
+  { value: "READING", label: "Reading" },
+  { value: "COOKING_BAKING", label: "Cooking & Baking" },
+  { value: "GAMING", label: "Gaming" },
+  { value: "SPORTS_FITNESS", label: "Sports & Fitness" },
+  { value: "TRAVEL", label: "Travel" },
+  { value: "PHOTOGRAPHY", label: "Photography" },
+  { value: "MUSIC", label: "Music" },
+  { value: "MOVIES_TV", label: "Movies & TV" },
+  { value: "ART_PAINTING", label: "Art & Painting" },
+  { value: "GARDENING", label: "Gardening" },
+  { value: "HIKING_OUTDOORS", label: "Hiking & Outdoors" },
+  { value: "WRITING", label: "Writing" },
+  { value: "YOGA_MEDITATION", label: "Yoga & Meditation" },
+  { value: "BOARD_GAMES_PUZZLES", label: "Board Games & Puzzles" },
+  { value: "PETS_ANIMALS", label: "Pets & Animals" },
+  { value: "DIY_CRAFTS", label: "DIY & Crafts" },
+  { value: "FASHION_STYLE", label: "Fashion & Style" },
+  { value: "TECHNOLOGY_GADGETS", label: "Technology & Gadgets" },
+] as const;
+
+/** Cap on how many hobbies can be selected - read by both `evaluatorProfileSchema`
+ * (server-side enforcement) and the chip grid's own `atMax` guard (client-side). */
+export const HOBBIES_MAX = 5;
+
 export const AI_EXPERIENCE_OPTIONS = [
   { value: "NONE", label: "No experience / Just starting out" },
   { value: "UNDER_6_MONTHS", label: "Less than 6 months" },
