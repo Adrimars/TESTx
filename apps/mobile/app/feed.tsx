@@ -13,7 +13,7 @@ import { useFirstTestWalkthrough } from "@/lib/tutorial";
 
 export default function FeedScreen() {
   const router = useRouter();
-  const { signOut } = useSession();
+  const { user, signOut } = useSession();
   // An explicit testId opens that test instead of whatever is next in line - the seam a
   // deep link, or the home screen's "Start test" button, uses to open one directly.
   const { testId: routeTestId } = useLocalSearchParams<{ testId?: string }>();
@@ -29,7 +29,7 @@ export default function FeedScreen() {
   const test = useEvaluatorTest(testId);
   // A test finished-but-abandoned answer set (11.4) - only ever offered back when it
   // matches the test actually being opened, never a leftover from a different one.
-  const inProgress = useInProgressTest(testId);
+  const inProgress = useInProgressTest(user?.id, testId);
 
   // Mounted here rather than in TestDeck: TestDeck is keyed per test and remounts on
   // every continue in the feed (see its own doc), which would replay the walkthrough at

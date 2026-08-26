@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { ReactNode } from "react";
 import type { CurrentUser } from "@testx/shared";
 import { apiFetch, setSessionExpiredHandler } from "./api";
+import { clearInProgressTest, clearPendingSubmission } from "./submissionQueue";
 import { clearTokens, getAccessToken, saveTokens, type TokenPair } from "./tokens";
 
 type AuthResponse = CurrentUser & TokenPair;
@@ -105,9 +106,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
+    // Belt-and-suspenders (16.10): per-user storage keys already stop a different
+    // account ever reading these, but an abandoned session leaving its own queued
+    // in-progress/pending records behind indefinitely is still just clutter worth
+    // clearing on the way out.
+    if (user) {
+      await Promise.all([clearInProgressTest(user.id), clearPendingSubmission(user.id)]);
+    }
     await clearTokens();
     setUser(null);
-  }, []);
+  }, [user]);
 
   const refreshUser = useCallback(async () => {
     setUser(await apiFetch<CurrentUser>("/auth/me"));

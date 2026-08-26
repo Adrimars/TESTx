@@ -60,7 +60,11 @@ const MAX_NEXT_TEST_ATTEMPTS = 3;
  * `onContinue` becomes a same-id `setState` that React drops, and the feed hangs on a
  * spinner instead of continuing.
  */
-async function findNextTest(queryClient: QueryClient, currentTestId: string): Promise<string | null> {
+async function findNextTest(
+  queryClient: QueryClient,
+  userId: string,
+  currentTestId: string
+): Promise<string | null> {
   const exclude = new Set([currentTestId]);
 
   for (let attempt = 0; attempt < MAX_NEXT_TEST_ATTEMPTS; attempt += 1) {
@@ -74,7 +78,7 @@ async function findNextTest(queryClient: QueryClient, currentTestId: string): Pr
       // the time `onContinue` swaps `key={testId}` or the gap just moves one gate later.
       const [full] = await Promise.all([
         prefetchTest(queryClient, next.id),
-        prefetchInProgressTest(queryClient, next.id),
+        prefetchInProgressTest(queryClient, userId, next.id),
       ]);
       prefetchFirstCardMedia(full);
       return next.id;
@@ -116,7 +120,10 @@ type TestDeckProps = {
  */
 export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
   const router = useRouter();
-  const { signOut } = useSession();
+  const { user, signOut } = useSession();
+  // TestDeck only ever mounts once `feed.tsx` has an authenticated test fetch to hand
+  // it, so a signed-in user is guaranteed here despite the type's nullability.
+  const userId = user!.id;
   const queryClient = useQueryClient();
   const deck = useDeck(test.questions, resumedFrom);
 
@@ -142,8 +149,8 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
 
   useEffect(() => {
     if (prefetchRef.current || remaining > PREFETCH_WINDOW || remaining <= 0) return;
-    prefetchRef.current = findNextTest(queryClient, test.id);
-  }, [remaining, queryClient, test.id]);
+    prefetchRef.current = findNextTest(queryClient, userId, test.id);
+  }, [remaining, queryClient, userId, test.id]);
 
   // Persists the in-progress answers map as the evaluator moves through the deck (11.4),
   // so a killed app resumes an almost-finished test instead of losing it. Stops the
@@ -151,14 +158,14 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
   // the thing worth protecting, not the now-superseded in-progress record.
   useEffect(() => {
     if (deck.isComplete) return;
-    void writeInProgressTest({
+    void writeInProgressTest(userId, {
       testId: test.id,
       sessionToken,
       index: deck.index,
       answers: deck.answers,
       canGoBack: deck.canGoBack,
     });
-  }, [test.id, sessionToken, deck.index, deck.answers, deck.canGoBack, deck.isComplete]);
+  }, [userId, test.id, sessionToken, deck.index, deck.answers, deck.canGoBack, deck.isComplete]);
 
   useEffect(() => {
     if (!deck.isComplete || phase !== "answering") return;
@@ -181,9 +188,9 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
       // The test is finished; what needs protecting from here on is this payload, not
       // the answers-in-progress record it has just replaced. Written before the backoff
       // loop even starts, so a kill mid-retry still has it queued for next launch.
-      await clearInProgressTest();
-      await writePendingSubmission(payload);
-      const outcome = await submitWithBackoff(queryClient, payload);
+      await clearInProgressTest(userId);
+      await writePendingSubmission(userId, payload);
+      const outcome = await submitWithBackoff(queryClient, userId, payload);
 
       switch (outcome.status) {
         case "success":
@@ -214,7 +221,7 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
   /** Moves the feed into whatever test comes next, or ends it. */
   async function advance() {
     setPhase("checkingNext");
-    const nextId = await (prefetchRef.current ?? findNextTest(queryClient, test.id));
+    const nextId = await (prefetchRef.current ?? findNextTest(queryClient, userId, test.id));
 
     if (nextId) {
       onContinue(nextId);
