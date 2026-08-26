@@ -571,4 +571,21 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
     if (!profile) return reply.status(400).send({ error: "PROFILE_REQUIRED", message: "Complete your profile first" });
     return reply.send({ balance: profile.balance });
   });
+
+  app.get("/coupons", authEval, async (_request, reply) => {
+    const coupons = await app.prisma.coupon.findMany({
+      where: { isActive: true },
+      orderBy: { displayOrder: "asc" },
+    });
+    return reply.send(
+      coupons.map((coupon) => ({
+        id: coupon.id,
+        title: coupon.title,
+        description: coupon.description,
+        imageUrl: coupon.imageUrl,
+        pointsCost: coupon.pointsCost,
+        displayOrder: coupon.displayOrder,
+      }))
+    );
+  });
 };
