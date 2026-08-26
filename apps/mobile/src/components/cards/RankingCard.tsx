@@ -1,12 +1,14 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Image, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   runOnJS,
   useAnimatedReaction,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withSpring,
+  withTiming,
 } from "react-native-reanimated";
 import type { SharedValue } from "react-native-reanimated";
 import { DEFAULT_RANKING_BEST_LABEL, DEFAULT_RANKING_WORST_LABEL } from "@testx/shared";
@@ -16,7 +18,12 @@ import { DragHint } from "./DragHint";
 import { SwipeCard } from "./SwipeCard";
 import type { ReleaseGesture } from "./SwipeCard";
 import { resolveMediaUrl } from "@/lib/env";
-import { CARD_REJECT_SPRING, triggerTargetHaptic } from "@/lib/motion";
+import {
+  CARD_ENTRANCE_SPRING,
+  CARD_REJECT_SPRING,
+  REDUCED_MOTION_FADE_MS,
+  triggerTargetHaptic,
+} from "@/lib/motion";
 import {
   activeTargetValue,
   orderPlacements,
@@ -48,6 +55,13 @@ const NOTCH_SIZE = 14;
 /** How long a placed card's thumbnail must be held before it starts dragging for a swap
  * (15.6), rather than being read as the start of a tap-to-reclaim. */
 const SWAP_LONG_PRESS_MS = 350;
+/** Reclaim/place entrance starting points (16.9): both ease to resting scale (1) and
+ * opacity (1) rather than snapping there, growing up from a smaller state on reclaim and
+ * shrinking down from a larger one on place - opposite directions, since one is a card
+ * becoming "the" card and the other is a card shrinking into a slot. */
+const RECLAIM_ENTRANCE_START_SCALE = 0.92;
+const PLACE_ENTRANCE_START_SCALE = 1.15;
+const ENTRANCE_START_OPACITY = 0.4;
 
 type RankingCardProps = {
   question: EvaluatorQuestion;
@@ -118,6 +132,14 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
   const swapTargetValue = useSharedValue(0);
   const swapNearness = useSharedValue(0);
 
+  // Reclaim entrance (16.9): the current card grows up from a smaller, more-transparent
+  // state whenever `current` itself changes - both on a genuine reclaim (a different
+  // option jumps back to the front of `remaining`) and on the ordinary place-to-next-
+  // option advance, since both are "a new card just became current" the same way.
+  const reducedMotion = useReducedMotion();
+  const cardEntranceScale = useSharedValue(1);
+  const cardEntranceOpacity = useSharedValue(1);
+
   // Same derivation as RatingCard's, except Ranking's column is flipped (15.3): slot 1
   // (best) sits at the bottom and the last slot (worst) at the top, the opposite of
   // Rating's low-to-high top-to-bottom order - a ranking's "best" belongs at the bottom
@@ -138,6 +160,35 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
   }, [photoWidth, slotCount, placements]);
 
   const current = remaining[0] ? optionsById.get(remaining[0]) : undefined;
+  const currentId = current?.id;
+
+  // The very first card's own entrance is CardStack's job (16.2, peeking to active) - this
+  // effect only animates *later* changes to `current`, i.e. an actual reclaim or a place-
+  // to-next-option advance, so the two entrances never stack on the opening card.
+  const isFirstCard = useRef(true);
+
+  useEffect(() => {
+    if (!currentId) return;
+    if (isFirstCard.current) {
+      isFirstCard.current = false;
+      return;
+    }
+    if (reducedMotion) {
+      cardEntranceScale.value = 1;
+      cardEntranceOpacity.value = ENTRANCE_START_OPACITY;
+      cardEntranceOpacity.value = withTiming(1, { duration: REDUCED_MOTION_FADE_MS });
+      return;
+    }
+    cardEntranceScale.value = RECLAIM_ENTRANCE_START_SCALE;
+    cardEntranceScale.value = withSpring(1, CARD_ENTRANCE_SPRING);
+    cardEntranceOpacity.value = ENTRANCE_START_OPACITY;
+    cardEntranceOpacity.value = withSpring(1, CARD_ENTRANCE_SPRING);
+  }, [currentId, reducedMotion, cardEntranceScale, cardEntranceOpacity]);
+
+  const cardEntranceStyle = useAnimatedStyle(() => ({
+    opacity: cardEntranceOpacity.value,
+    transform: [{ scale: cardEntranceScale.value }],
+  }));
 
   const tutorial = useGestureTutorial("ranking", isActive);
   const hintTarget = targets.find((target) => target.enabled);
@@ -255,30 +306,36 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
 
         <View style={styles.row}>
           <View style={{ width: photoWidth }}>
-            <SwipeCard
-              // Remounts for each option in turn, matching CardStack's own unmount-to-reset
-              // pattern (see that file's comment): without this the same SwipeCard instance
-              // persists across placements, and its internal `isSettling` latch - set once on
-              // the first commit and never cleared - permanently disables the pan gesture for
-              // every option after it.
-              key={current.id}
-              surface={false}
-              width={photoWidth}
-              enabled={isActive}
-              position={isActive ? { x, y } : undefined}
-              pointer={isActive ? { x: pointerX, y: pointerY } : undefined}
-              onRelease={onRelease}
-              onCommit={place}
-              onDragStart={tutorial.shouldShow ? tutorial.dismiss : undefined}
-              maxTiltDeg={0}
-            >
-              <CardMedia
-                mediaType={question.mediaType}
-                url={current.mediaUrl}
-                label={current.label}
-                isActive={isActive}
-              />
-            </SwipeCard>
+            {/* flex:1 preserves SwipeCard's own flex-fill sizing chain (it fills this
+                wrapper the same way it used to fill this View directly) - the wrapper
+                only adds the reclaim entrance's scale+opacity as a paint-time effect
+                (16.9), never touching layout. */}
+            <Animated.View style={[styles.currentCardEntrance, cardEntranceStyle]}>
+              <SwipeCard
+                // Remounts for each option in turn, matching CardStack's own unmount-to-reset
+                // pattern (see that file's comment): without this the same SwipeCard instance
+                // persists across placements, and its internal `isSettling` latch - set once on
+                // the first commit and never cleared - permanently disables the pan gesture for
+                // every option after it.
+                key={current.id}
+                surface={false}
+                width={photoWidth}
+                enabled={isActive}
+                position={isActive ? { x, y } : undefined}
+                pointer={isActive ? { x: pointerX, y: pointerY } : undefined}
+                onRelease={onRelease}
+                onCommit={place}
+                onDragStart={tutorial.shouldShow ? tutorial.dismiss : undefined}
+                maxTiltDeg={0}
+              >
+                <CardMedia
+                  mediaType={question.mediaType}
+                  url={current.mediaUrl}
+                  label={current.label}
+                  isActive={isActive}
+                />
+              </SwipeCard>
+            </Animated.View>
 
             {tutorial.shouldShow && hintTarget ? (
               <DragHint
@@ -496,6 +553,23 @@ function SwappableThumbnail({
 }) {
   const translateY = useSharedValue(0);
 
+  // Place entrance (16.9): this component only ever mounts fresh the moment a slot goes
+  // from empty to filled - a swap (15.6) reuses the same instance, just changing `option`
+  // - so a plain mount effect is exactly "a card was just placed here", no extra state to
+  // track. Shrinks down from larger/more-transparent to resting size/opacity.
+  const reducedMotion = useReducedMotion();
+  const placeEntranceScale = useSharedValue(reducedMotion ? 1 : PLACE_ENTRANCE_START_SCALE);
+  const placeEntranceOpacity = useSharedValue(reducedMotion ? 1 : ENTRANCE_START_OPACITY);
+
+  useEffect(() => {
+    if (reducedMotion) {
+      placeEntranceOpacity.value = withTiming(1, { duration: REDUCED_MOTION_FADE_MS });
+      return;
+    }
+    placeEntranceScale.value = withSpring(1, CARD_ENTRANCE_SPRING);
+    placeEntranceOpacity.value = withSpring(1, CARD_ENTRANCE_SPRING);
+  }, [reducedMotion, placeEntranceScale, placeEntranceOpacity]);
+
   const tap = Gesture.Tap()
     .enabled(!disabled)
     .maxDistance(10)
@@ -535,9 +609,10 @@ function SwappableThumbnail({
   const followFinger = useAnimatedStyle(() => {
     const { nearness } = computeSwapCrossing(translateY.value, slotHeight, slotValue, slotCount);
     return {
+      opacity: placeEntranceOpacity.value,
       transform: [
         { translateY: translateY.value },
-        { scale: 1 + nearness * (MAX_SLOT_SCALE - 1) },
+        { scale: placeEntranceScale.value * (1 + nearness * (MAX_SLOT_SCALE - 1)) },
       ],
       zIndex: translateY.value === 0 ? 0 : 1,
     };
@@ -595,6 +670,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: ROW_PADDING,
     paddingBottom: theme.spacing(2),
   },
+  currentCardEntrance: { flex: 1 },
   column: {
     width: SLOT_WIDTH,
     alignItems: "center",
