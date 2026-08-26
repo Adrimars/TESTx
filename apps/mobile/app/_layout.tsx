@@ -46,6 +46,7 @@ export default function RootLayout() {
               <Stack.Screen name="home" options={{ headerShown: false }} />
               <Stack.Screen name="feed" options={{ headerShown: false }} />
               <Stack.Screen name="profile" options={{ title: "Profile" }} />
+              <Stack.Screen name="rewards" options={{ title: "Rewards" }} />
             </Stack>
             </UpdateRequiredGate>
           </SafeAreaProvider>

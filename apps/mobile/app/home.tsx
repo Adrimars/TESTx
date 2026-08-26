@@ -87,6 +87,7 @@ export default function HomeScreen() {
         )}
 
         <View style={styles.footer}>
+          <Button label="Rewards" variant="secondary" onPress={() => router.push("/rewards")} />
           <Button label="Profile" variant="secondary" onPress={() => router.push("/profile")} />
           <Button label="Sign out" variant="quiet" onPress={handleSignOut} />
         </View>
