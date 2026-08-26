@@ -105,6 +105,18 @@ export function useInProgressTest(userId: string | undefined, testId: string | u
     queryKey: ["in-progress-test", userId, testId],
     enabled: Boolean(userId) && Boolean(testId),
     queryFn: () => fetchInProgressForTest(userId!, testId!),
+    // `writeInProgressTest` mutates AsyncStorage directly on every answer, entirely outside
+    // React Query's cache. `staleTime: 0` alone isn't enough: a cache hit still reports
+    // `isPending: false` synchronously on mount regardless of staleness, so `feed.tsx`'s
+    // loading gate would wave TestDeck through onto a leftover value from an earlier visit
+    // to this same test before the background revalidation lands - locking in the wrong
+    // starting index for `useDeck`'s lazy initializer, which only ever reads it once, at
+    // mount. `gcTime: 0` drops the cached entry the instant this hook's one observer
+    // unmounts (leaving the feed screen, via the 16.5 close button or otherwise), so the
+    // next mount - the exit-and-immediately-resume case 16.5 introduced - starts genuinely
+    // cold and actually waits on a fresh read instead of trusting a stale one.
+    staleTime: 0,
+    gcTime: 0,
   });
 }
 
