@@ -7,6 +7,7 @@ import Animated, {
   useSharedValue,
 } from "react-native-reanimated";
 import type { SharedValue } from "react-native-reanimated";
+import { DEFAULT_RATING_MAX_LABEL, DEFAULT_RATING_MIN_LABEL } from "@testx/shared";
 import { TapZone } from "@/components/TapZone";
 import { CardMedia } from "./CardMedia";
 import { DragHint } from "./DragHint";
@@ -44,6 +45,11 @@ type RatingCardProps = {
  * Rating as drag-to-target: a column of pills beside the photo, dragged onto rather than
  * tapped. Releasing anywhere else springs the card back uncommitted, so an accidental
  * nudge cannot score a question.
+ *
+ * Stays low-to-high, top-to-bottom always (15.3) - unlike Ranking, a rating has no
+ * best/worst end to flip toward, so the column's direction never changes. What can be
+ * missing is which end means "better": the end labels default to "Low"/"High" whenever
+ * the admin didn't set `minLabel`/`maxLabel`, so the direction is never left ambiguous.
  *
  * The prompt and the pill column are static chrome drawn by this component's own outer
  * "Card" surface; only the photo is the draggable `SwipeCard`, so a touch on the prompt
@@ -167,7 +173,7 @@ export function RatingCard({ question, isActive, onAnswer }: RatingCardProps) {
           <View style={styles.column}>
             <View style={styles.endLabelSlot}>
               <Text style={styles.endLabel} numberOfLines={1}>
-                {question.config.minLabel ?? ""}
+                {question.config.minLabel ?? DEFAULT_RATING_MIN_LABEL}
               </Text>
             </View>
 
@@ -186,7 +192,7 @@ export function RatingCard({ question, isActive, onAnswer }: RatingCardProps) {
 
             <View style={styles.endLabelSlot}>
               <Text style={styles.endLabel} numberOfLines={1}>
-                {question.config.maxLabel ?? ""}
+                {question.config.maxLabel ?? DEFAULT_RATING_MAX_LABEL}
               </Text>
             </View>
           </View>

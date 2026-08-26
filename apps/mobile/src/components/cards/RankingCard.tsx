@@ -54,11 +54,14 @@ type RankingCardProps = {
  * than Rating's pills (15.2) - a scale and a strict order should not look like the same
  * component wearing two labels.
  *
-
  * The prompt and the "N of M" status line are static chrome drawn by this component's own
  * outer "Card" surface; only the photo is the draggable `SwipeCard`, so a touch on either
  * text line never starts a drag. The slot column sits in its own reserved space beside the
  * photo, never on top of it.
+ *
+ * The column reads best-to-worst bottom-to-top (15.3): slot 1 sits at the bottom, the
+ * last slot at the top - the opposite of Rating's low-to-high top-to-bottom order, since
+ * a ranking's "best" is a podium position, not a point on a scale.
  *
  * A filled slot stops being a drop target, which is what makes the ordering strict rather
  * than allowing ties. Aiming at a filled one springs the card back instead of snapping to
@@ -99,10 +102,12 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
   const pointerX = useSharedValue(0);
   const pointerY = useSharedValue(0);
 
-  // Same derivation as RatingCard's: the column is a plain flex sibling of the photo, so
-  // a slot's offset from their shared centre follows from its index alone. Nothing is
-  // measured, and there is no safe-area asymmetry to correct for now that the column is
-  // real layout space rather than an inset overlay.
+  // Same derivation as RatingCard's, except Ranking's column is flipped (15.3): slot 1
+  // (best) sits at the bottom and the last slot (worst) at the top, the opposite of
+  // Rating's low-to-high top-to-bottom order - a ranking's "best" belongs at the bottom
+  // the way a podium reads, not stacked the way a numeric scale does. Negating the offset
+  // here is only half of the flip: the render order below has to reverse too, or the
+  // visual position and this hit-test geometry disagree about which slot is which.
   const targets = useMemo<DropTarget[]>(() => {
     const step = SLOT_HEIGHT + SLOT_GAP;
     const centerX = photoWidth / 2 + COLUMN_GAP + SLOT_WIDTH / 2;
@@ -110,7 +115,7 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
     return Array.from({ length: slotCount }, (_, index) => ({
       value: index + 1,
       centerX,
-      centerY: (index - (slotCount - 1) / 2) * step,
+      centerY: -(index - (slotCount - 1) / 2) * step,
       radius: HIT_RADIUS,
       enabled: placements[index + 1] === undefined,
     }));
@@ -249,13 +254,16 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
           </View>
 
           <View style={styles.column}>
+            {/* Worst-to-best, top-to-bottom (15.3): rendered in reverse of `targets`'
+                index order, matching the negated centerY above so the slot under the
+                finger is always the one the render puts in that spot on screen. */}
             <View style={styles.endLabelSlot}>
               <Text style={styles.endLabel} numberOfLines={1}>
-                {bestLabel}
+                {worstLabel}
               </Text>
             </View>
 
-            {targets.map((target) => (
+            {[...targets].reverse().map((target) => (
               <RankSlot
                 key={target.value}
                 target={target}
@@ -272,7 +280,7 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
 
             <View style={styles.endLabelSlot}>
               <Text style={styles.endLabel} numberOfLines={1}>
-                {worstLabel}
+                {bestLabel}
               </Text>
             </View>
           </View>

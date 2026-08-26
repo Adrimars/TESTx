@@ -54,6 +54,15 @@ export const DEFAULT_RATING_MIN = 1;
 export const DEFAULT_RATING_MAX = 5;
 
 /**
+ * Endpoint labels shown at the low and high ends of a rating's scale when the admin did
+ * not set `minLabel`/`maxLabel`. A rating is a scale, not a ranking - unlike Ranking's
+ * best/worst, which end is "better" is never implied by the scale itself, so the
+ * direction has to be legible even when the admin left these unset.
+ */
+export const DEFAULT_RATING_MIN_LABEL = "Low";
+export const DEFAULT_RATING_MAX_LABEL = "High";
+
+/**
  * A RANKING question asks for a strict order over all of its options, so the option
  * count is what bounds the work. Below 3 the ordering carries almost no information
  * beyond a single-select; above 5 the mobile drag-to-slot interaction runs out of
