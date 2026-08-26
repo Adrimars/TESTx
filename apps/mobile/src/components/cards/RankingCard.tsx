@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 import { Image, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   runOnJS,
   useAnimatedReaction,
   useAnimatedStyle,
   useSharedValue,
+  withSpring,
 } from "react-native-reanimated";
 import type { SharedValue } from "react-native-reanimated";
 import { DEFAULT_RANKING_BEST_LABEL, DEFAULT_RANKING_WORST_LABEL } from "@testx/shared";
@@ -14,7 +16,7 @@ import { DragHint } from "./DragHint";
 import { SwipeCard } from "./SwipeCard";
 import type { ReleaseGesture } from "./SwipeCard";
 import { resolveMediaUrl } from "@/lib/env";
-import { triggerTargetHaptic } from "@/lib/motion";
+import { CARD_REJECT_SPRING, triggerTargetHaptic } from "@/lib/motion";
 import {
   activeTargetValue,
   orderPlacements,
@@ -39,6 +41,9 @@ const MAX_SLOT_SCALE = 1.45;
 const END_LABEL_HEIGHT = 28;
 /** Side length of the notch diamond that cuts a rank slot into a tag shape (15.2). */
 const NOTCH_SIZE = 14;
+/** How long a placed card's thumbnail must be held before it starts dragging for a swap
+ * (15.6), rather than being read as the start of a tap-to-reclaim. */
+const SWAP_LONG_PRESS_MS = 350;
 
 type RankingCardProps = {
   question: EvaluatorQuestion;
@@ -198,6 +203,26 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
     setRemaining((prev) => [optionId, ...prev]);
   }
 
+  /**
+   * Swaps two already-placed cards directly (15.6): a shortcut alongside reclaim-then-
+   * place, not instead of it. Holding a filled slot's thumbnail and dragging it onto
+   * another filled slot moves both cards to each other's spot in one motion, with no
+   * intermediate "current" card and no touch to `remaining` - reclaim-then-place and
+   * hold-and-swap both only ever produce a `placements` map, never a different shape.
+   *
+   * `rawTargetValue` arrives unclamped, and possibly pointing at an empty slot, straight
+   * from the gesture's raw translation - both are legal outcomes of a real drag (overshoot
+   * past an end slot, or a slot that happens to be open), and both are simply not a swap.
+   */
+  function swap(sourceValue: number, rawTargetValue: number) {
+    const targetValue = Math.max(1, Math.min(slotCount, rawTargetValue));
+    if (targetValue === sourceValue) return;
+    const sourceOptionId = placements[sourceValue];
+    const targetOptionId = placements[targetValue];
+    if (sourceOptionId === undefined || targetOptionId === undefined) return;
+    setPlacements((prev) => ({ ...prev, [sourceValue]: targetOptionId, [targetValue]: sourceOptionId }));
+  }
+
   if (!current) {
     return (
       <View style={styles.shadow}>
@@ -272,9 +297,11 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
                 pointerY={pointerY}
                 option={optionsById.get(placements[target.value] ?? "")}
                 mediaType={question.mediaType}
+                slotHeight={SLOT_HEIGHT + SLOT_GAP}
                 disabled={!isActive}
                 onReclaim={reclaim}
                 onPlace={place}
+                onSwap={swap}
               />
             ))}
 
@@ -297,9 +324,11 @@ function RankSlot({
   pointerY,
   option,
   mediaType,
+  slotHeight,
   disabled,
   onReclaim,
   onPlace,
+  onSwap,
 }: {
   target: DropTarget;
   targets: DropTarget[];
@@ -307,9 +336,13 @@ function RankSlot({
   pointerY: SharedValue<number>;
   option: EvaluatorOption | undefined;
   mediaType: string | null;
+  /** Centre-to-centre distance between adjacent slots, for turning a swap drag's
+   * translationY into a number of slots crossed. */
+  slotHeight: number;
   disabled: boolean;
   onReclaim: (slotNumber: number) => void;
   onPlace: (slotNumber: number) => void;
+  onSwap: (sourceValue: number, targetValue: number) => void;
 }) {
   const filled = !target.enabled;
 
@@ -337,14 +370,15 @@ function RankSlot({
       <View style={styles.notch} pointerEvents="none" />
       <Animated.View style={[styles.slot, filled && styles.slotFilled, animated]}>
         {filled && option ? (
-          <TapZone
-            style={styles.slotThumbnailPressable}
+          <SwappableThumbnail
+            slotValue={target.value}
+            slotHeight={slotHeight}
+            option={option}
+            mediaType={mediaType}
             disabled={disabled}
-            onPress={() => onReclaim(target.value)}
-            accessibilityLabel={`Remove ${option.label ?? "this card"} from rank ${target.value}, to place it again`}
-          >
-            <SlotThumbnail option={option} mediaType={mediaType} />
-          </TapZone>
+            onReclaim={onReclaim}
+            onSwap={onSwap}
+          />
         ) : (
           // Tap-based fallback for the drag-to-slot gesture (prd.md §16.7): places the
           // current card here directly, same as dragging it onto this slot would.
@@ -359,6 +393,79 @@ function RankSlot({
         )}
       </Animated.View>
     </View>
+  );
+}
+
+/**
+ * A filled slot's own thumbnail: a tap reclaims it (existing 12.1/12.6 flow, unchanged),
+ * and a press-and-hold followed by a drag swaps it directly with whatever slot the finger
+ * ends up over (15.6) - a shortcut alongside reclaim-then-place, not instead of it.
+ *
+ * `Gesture.Race` picks whichever of the two actually activates: a quick tap wins before
+ * the hold threshold ever fires; holding still past it activates the pan instead, and the
+ * tap is cancelled by Race the moment that happens. Reading the swap target off
+ * `translationY` alone - rather than re-deriving pointer coordinates in this thumbnail's
+ * own space - works because every slot sits exactly `slotHeight` from its neighbour, so
+ * "how many slots did the finger cross" is just that division, independent of which slot
+ * this drag started on.
+ */
+function SwappableThumbnail({
+  slotValue,
+  slotHeight,
+  option,
+  mediaType,
+  disabled,
+  onReclaim,
+  onSwap,
+}: {
+  slotValue: number;
+  slotHeight: number;
+  option: EvaluatorOption;
+  mediaType: string | null;
+  disabled: boolean;
+  onReclaim: (slotNumber: number) => void;
+  onSwap: (sourceValue: number, targetValue: number) => void;
+}) {
+  const translateY = useSharedValue(0);
+
+  const tap = Gesture.Tap()
+    .enabled(!disabled)
+    .maxDistance(10)
+    .onEnd((_event, success) => {
+      if (success) runOnJS(onReclaim)(slotValue);
+    });
+
+  const pan = Gesture.Pan()
+    .enabled(!disabled)
+    .activateAfterLongPress(SWAP_LONG_PRESS_MS)
+    .onUpdate((event) => {
+      translateY.value = event.translationY;
+    })
+    .onEnd((event) => {
+      // Downward drag moves toward the bottom of the column, where rank 1 sits after
+      // 15.3's flip - value decreases as the finger moves down, hence the negation.
+      const delta = -Math.round(event.translationY / slotHeight);
+      translateY.value = withSpring(0, CARD_REJECT_SPRING);
+      runOnJS(onSwap)(slotValue, slotValue + delta);
+    });
+
+  const followFinger = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+    zIndex: translateY.value === 0 ? 0 : 1,
+  }));
+
+  return (
+    <GestureDetector gesture={Gesture.Race(pan, tap)}>
+      <Animated.View
+        style={[styles.slotThumbnailPressable, followFinger]}
+        accessible
+        accessibilityRole="button"
+        accessibilityLabel={`Rank ${slotValue}: ${option.label ?? "this card"}. Tap to remove it, or hold and drag to swap with another rank.`}
+        accessibilityState={{ disabled }}
+      >
+        <SlotThumbnail option={option} mediaType={mediaType} />
+      </Animated.View>
+    </GestureDetector>
   );
 }
 
