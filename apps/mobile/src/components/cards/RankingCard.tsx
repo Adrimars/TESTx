@@ -37,6 +37,8 @@ const PROXIMITY_FALLOFF = 170;
 const MAX_SLOT_SCALE = 1.45;
 /** Fixed so the label row's presence never shifts the slots' own centre. */
 const END_LABEL_HEIGHT = 28;
+/** Side length of the notch diamond that cuts a rank slot into a tag shape (15.2). */
+const NOTCH_SIZE = 14;
 
 type RankingCardProps = {
   question: EvaluatorQuestion;
@@ -46,9 +48,13 @@ type RankingCardProps = {
 };
 
 /**
- * Ranking as drag-to-slot: the same target column style as Rating, but every option is
- * its own card and each slot takes exactly one of them.
+ * Ranking as drag-to-slot: the same target-column mechanics as Rating (`DropTarget`,
+ * `resolveDropTarget`, `targetProximity` in swipe.ts), but every option is its own card,
+ * each slot takes exactly one of them, and the slots render as notched rank tags rather
+ * than Rating's pills (15.2) - a scale and a strict order should not look like the same
+ * component wearing two labels.
  *
+
  * The prompt and the "N of M" status line are static chrome drawn by this component's own
  * outer "Card" surface; only the photo is the draggable `SwipeCard`, so a touch on either
  * text line never starts a drag. The slot column sits in its own reserved space beside the
@@ -316,6 +322,11 @@ function RankSlot({
 
   return (
     <View style={styles.slotWrap}>
+      {/* The notch is what makes a rank slot read as a tag rather than Rating's pill: a
+          diamond the same colour as the card behind it, half overlapping the slot's left
+          edge so it reads as a cut corner rather than a separate shape drawn on top. It
+          sits outside the slot's own `overflow: "hidden"` so the cut isn't clipped away. */}
+      <View style={styles.notch} pointerEvents="none" />
       <Animated.View style={[styles.slot, filled && styles.slotFilled, animated]}>
         {filled && option ? (
           <TapZone
@@ -397,18 +408,37 @@ const styles = StyleSheet.create({
     fontSize: 11,
     textAlign: "center",
   },
-  slotWrap: { alignItems: "center", justifyContent: "center", height: SLOT_HEIGHT },
+  slotWrap: {
+    width: SLOT_WIDTH,
+    height: SLOT_HEIGHT,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  // A tag, not a pill (15.2): a squarer rect than Rating's capsule, with a corner cut by
+  // `notch` below - a shape that reads as "strict order", never as "this is a score".
   slot: {
     width: SLOT_WIDTH,
     height: SLOT_HEIGHT,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 12,
+    borderRadius: 8,
     borderWidth: 2,
     borderStyle: "dashed",
     // Target pill at rest, per prd.md §16.6 - matches RatingCard's pill.
     backgroundColor: theme.colors.surfaceOverlay,
     overflow: "hidden",
+  },
+  // Sits outside `slot`'s clip, centred on its left edge, coloured to match the card
+  // surface behind it - so it reads as a bite taken out of the slot's corner.
+  notch: {
+    position: "absolute",
+    left: -NOTCH_SIZE / 2,
+    top: "50%",
+    marginTop: -NOTCH_SIZE / 2,
+    width: NOTCH_SIZE,
+    height: NOTCH_SIZE,
+    backgroundColor: theme.colors.surfaceRaised,
+    transform: [{ rotate: "45deg" }],
   },
   slotFilled: {
     borderStyle: "solid",
