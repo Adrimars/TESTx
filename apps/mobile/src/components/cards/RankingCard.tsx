@@ -34,6 +34,10 @@ const SLOT_GAP = 10;
 /** Gap between the photo and the answer column - real layout space, not an overlay margin. */
 const COLUMN_GAP = 12;
 const CARD_SLOT_INSET = 16;
+/** Horizontal padding on the photo+column row - has to come out of photoWidth's own
+ * derivation below, or the row's flex children get compressed to fit the padded space
+ * while the hit-test math keeps assuming the uncompressed width. */
+const ROW_PADDING = theme.spacing(2);
 const HIT_RADIUS = 52;
 const PROXIMITY_FALLOFF = 170;
 const MAX_SLOT_SCALE = 1.45;
@@ -96,7 +100,7 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
   const worstLabel = question.config.worstLabel ?? DEFAULT_RANKING_WORST_LABEL;
 
   const cardWidth = width - CARD_SLOT_INSET * 2;
-  const photoWidth = cardWidth - COLUMN_GAP - SLOT_WIDTH;
+  const photoWidth = cardWidth - ROW_PADDING * 2 - COLUMN_GAP - SLOT_WIDTH;
 
   // Owned here (not inside SwipeCard) because Rating/Ranking need the finger position to
   // light up the target column - see SwipeCard's `position`/`pointer` doc. That means a
@@ -364,8 +368,11 @@ function RankSlot({
   return (
     <View style={styles.slotWrap}>
       {/* The notch is what makes a rank slot read as a tag rather than Rating's pill: a
-          diamond the same colour as the card behind it, half overlapping the slot's left
-          edge so it reads as a cut corner rather than a separate shape drawn on top. It
+          diamond the same colour as the card behind it, half overlapping the slot's outer
+          (right) edge so it reads as a cut corner rather than a separate shape drawn on
+          top. Deliberately not the left edge: that's where the dragged card arrives from
+          (see `centerX`'s derivation above), and a notch there would sit on the incoming
+          thumbnail's leading edge mid-drag instead of reading as the slot's own shape. It
           sits outside the slot's own `overflow: "hidden"` so the cut isn't clipped away. */}
       <View style={styles.notch} pointerEvents="none" />
       <Animated.View style={[styles.slot, filled && styles.slotFilled, animated]}>
@@ -503,7 +510,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     gap: COLUMN_GAP,
-    paddingHorizontal: theme.spacing(2),
+    paddingHorizontal: ROW_PADDING,
     paddingBottom: theme.spacing(2),
   },
   column: {
@@ -543,11 +550,11 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surfaceOverlay,
     overflow: "hidden",
   },
-  // Sits outside `slot`'s clip, centred on its left edge, coloured to match the card
-  // surface behind it - so it reads as a bite taken out of the slot's corner.
+  // Sits outside `slot`'s clip, centred on its outer (right) edge, coloured to match the
+  // card surface behind it - so it reads as a bite taken out of the slot's corner.
   notch: {
     position: "absolute",
-    left: -NOTCH_SIZE / 2,
+    right: -NOTCH_SIZE / 2,
     top: "50%",
     marginTop: -NOTCH_SIZE / 2,
     width: NOTCH_SIZE,

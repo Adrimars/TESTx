@@ -27,6 +27,10 @@ const PILL_GAP = 10;
 const COLUMN_GAP = 12;
 /** CardStack insets each card slot by this much; the card is that much narrower. */
 const CARD_SLOT_INSET = 16;
+/** Horizontal padding on the photo+column row - has to come out of photoWidth's own
+ * derivation below, or the row's flex children get compressed to fit the padded space
+ * while the hit-test math keeps assuming the uncompressed width. */
+const ROW_PADDING = theme.spacing(2);
 /** How far from a pill's centre a release still counts as landing on it. */
 const HIT_RADIUS = 52;
 /** Distance over which a pill grows as the card approaches. */
@@ -74,7 +78,7 @@ export function RatingCard({ question, isActive, onAnswer }: RatingCardProps) {
   }, [min, max]);
 
   const cardWidth = width - CARD_SLOT_INSET * 2;
-  const photoWidth = cardWidth - COLUMN_GAP - PILL_WIDTH;
+  const photoWidth = cardWidth - ROW_PADDING * 2 - COLUMN_GAP - PILL_WIDTH;
 
   /**
    * Pill centres as offsets from the photo's own centre - `SwipeCard`'s gesture math
@@ -271,7 +275,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     gap: COLUMN_GAP,
-    paddingHorizontal: theme.spacing(2),
+    paddingHorizontal: ROW_PADDING,
   },
   hint: {
     color: theme.colors.textSecondary,
