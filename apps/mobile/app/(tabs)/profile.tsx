@@ -150,21 +150,21 @@ export default function ProfileScreen() {
             searchable
           />
           <Field
-            label="City"
+            label="City (Optional)"
             value={city}
             onChangeText={setCity}
             error={errors.city}
             placeholder="Optional"
           />
           <Field
-            label="Native language"
+            label="Native language (Optional)"
             value={nativeLanguage}
             onChangeText={setNativeLanguage}
             error={errors.nativeLanguage}
             placeholder="Optional"
           />
           <Field
-            label="Occupation"
+            label="Occupation (Optional)"
             value={occupation}
             onChangeText={setOccupation}
             error={errors.occupation}

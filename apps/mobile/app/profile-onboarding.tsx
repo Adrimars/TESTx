@@ -120,7 +120,7 @@ export default function ProfileOnboardingScreen() {
           searchable
         />
         <Field
-          label="City"
+          label="City (Optional)"
           value={city}
           onChangeText={setCity}
           error={errors.city}
