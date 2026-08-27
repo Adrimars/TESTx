@@ -27,20 +27,31 @@ export async function issueMobileAuthCode(prisma: PrismaClient, userId: string):
 /**
  * Redeems a code exactly once. The update is conditional on the row still being
  * unconsumed, so two concurrent exchanges cannot both succeed.
+ *
+ * The read deliberately comes *before* the write. Marking consumed first and only
+ * then reading the userId leaves a window where `purgeExpiredAuthCodes` can delete
+ * the row in between - the code is burned and no token is ever issued, stranding a
+ * user who did nothing wrong. Reading first cannot fail that way: if the row is
+ * gone by the time the update runs, `count` is 0 and nothing was consumed.
  */
 export async function consumeMobileAuthCode(
   prisma: PrismaClient,
   code: string
 ): Promise<string | null> {
+  const record = await prisma.mobileAuthCode.findUnique({ where: { code } });
+  if (!record) return null;
+
   const result = await prisma.mobileAuthCode.updateMany({
     where: { code, consumedAt: null, expiresAt: { gt: new Date() } },
     data: { consumedAt: new Date() },
   });
 
+  // Still the single point of truth for "was this redemption the winning one" - two
+  // concurrent exchanges both read the row, but only one update matches an unconsumed
+  // one, so exactly one caller gets a userId back.
   if (result.count === 0) return null;
 
-  const record = await prisma.mobileAuthCode.findUnique({ where: { code } });
-  return record?.userId ?? null;
+  return record.userId;
 }
 
 /** Housekeeping so redeemed and stale codes do not accumulate indefinitely. */
