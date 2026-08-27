@@ -23,8 +23,12 @@ type SessionValue = {
   hasProfile: boolean;
   /**
    * True when the signed-in user has never been shown the KVKK Article 10 disclosure.
-   * Google-registered accounts are created by the OAuth callback, which cannot show it,
-   * so they land here and must pass /aydinlatma before reaching the app.
+   *
+   * Google-registered accounts are the case this was built for - the OAuth callback
+   * creates them and cannot show the disclosure - but the condition is deliberately the
+   * absence of the stamp, not the presence of a googleId. Any account predating the
+   * column is in the same position: it was never shown the text, so it is shown the text.
+   * That is a real change for existing users, and the correct one.
    */
   needsAydinlatma: boolean;
   signIn: (email: string, password: string) => Promise<CurrentUser>;
