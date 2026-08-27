@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
 import { FirstTestWalkthrough } from "@/components/FirstTestWalkthrough";
@@ -13,7 +13,6 @@ import { theme } from "@/lib/theme";
 import { useFirstTestWalkthrough } from "@/lib/tutorial";
 
 export default function FeedScreen() {
-  const router = useRouter();
   const { user } = useSession();
   // An explicit testId opens that test instead of whatever is next in line - the seam a
   // deep link, or the home screen's "Start test" button, uses to open one directly.
