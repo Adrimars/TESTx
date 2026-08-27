@@ -75,7 +75,9 @@ export default function ProfileOnboardingScreen() {
         body: JSON.stringify(parsed.data),
       });
       await refreshUser();
-      router.replace("/dashboard");
+      // The mandatory hands-on practice test (17.x) - see practice-test.tsx's own doc for
+      // why this is where it's triggered, rather than a persisted seen-it flag.
+      router.replace("/practice-test");
     } catch (error) {
       Alert.alert(
         "Could not save profile",

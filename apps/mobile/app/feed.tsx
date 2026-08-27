@@ -3,14 +3,12 @@ import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
-import { FirstTestWalkthrough } from "@/components/FirstTestWalkthrough";
 import { RedirectToDashboard } from "@/components/RedirectToDashboard";
 import { TestDeck } from "@/components/feed/TestDeck";
 import { useSession } from "@/lib/session";
 import { useInProgressTest } from "@/lib/submissionQueue";
 import { useEvaluatorTest, useNextTest } from "@/lib/test";
 import { theme } from "@/lib/theme";
-import { useFirstTestWalkthrough } from "@/lib/tutorial";
 
 export default function FeedScreen() {
   const { user } = useSession();
@@ -30,12 +28,6 @@ export default function FeedScreen() {
   // A test finished-but-abandoned answer set (11.4) - only ever offered back when it
   // matches the test actually being opened, never a leftover from a different one.
   const inProgress = useInProgressTest(user?.id, testId);
-
-  // Mounted here rather than in TestDeck: TestDeck is keyed per test and remounts on
-  // every continue in the feed (see its own doc), which would replay the walkthrough at
-  // the first test-to-test transition. This screen is the stable seam the evaluator
-  // actually lands on once, before any test - real or loading - is visible underneath.
-  const walkthrough = useFirstTestWalkthrough();
 
   let content: React.ReactNode;
 
@@ -80,14 +72,7 @@ export default function FeedScreen() {
     );
   }
 
-  return (
-    <>
-      {content}
-      {walkthrough.shouldShow ? (
-        <FirstTestWalkthrough onComplete={walkthrough.complete} onSkip={walkthrough.skip} />
-      ) : null}
-    </>
-  );
+  return content;
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
