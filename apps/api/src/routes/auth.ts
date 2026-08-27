@@ -10,7 +10,11 @@ import {
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../lib/jwt";
 import { setAuthCookies, clearAuthCookies } from "../lib/cookies";
 import { authenticateUser } from "../middleware/authenticate";
-import { issueMobileAuthCode, consumeMobileAuthCode } from "../services/mobileAuth.service";
+import {
+  MAX_AUTH_CODE_LENGTH,
+  issueMobileAuthCode,
+  consumeMobileAuthCode,
+} from "../services/mobileAuth.service";
 
 const BEARER_PREFIX = /^Bearer /i;
 
@@ -233,7 +237,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
     async (request, reply) => {
     const { code } = (request.body ?? {}) as { code?: unknown };
-    if (typeof code !== "string" || !code) {
+    if (typeof code !== "string" || !code || code.length > MAX_AUTH_CODE_LENGTH) {
       return reply.status(400).send({ error: "BAD_REQUEST", message: "Missing code" });
     }
 

@@ -7,6 +7,15 @@ import type { PrismaClient } from "@testx/database";
  */
 const CODE_TTL_MS = 2 * 60 * 1000;
 
+/**
+ * Upper bound on a code the exchange endpoint will even look up. `createAuthCodeValue`
+ * produces 43 characters; the headroom is only so a future change to the byte count is
+ * not an outage. Anything longer cannot be one of ours, so it is rejected before it
+ * reaches the database rather than being handed to an indexed lookup as a query
+ * parameter of arbitrary size.
+ */
+export const MAX_AUTH_CODE_LENGTH = 128;
+
 export function createAuthCodeValue(): string {
   return randomBytes(32).toString("base64url");
 }
