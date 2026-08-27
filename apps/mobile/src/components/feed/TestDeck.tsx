@@ -30,6 +30,7 @@ import {
   writeInProgressTest,
   writePendingSubmission,
   type InProgressTest,
+  type PendingSubmission,
 } from "@/lib/submissionQueue";
 import {
   prefetchAvailableTests,
@@ -167,6 +168,10 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
     });
   }, [userId, test.id, sessionToken, deck.index, deck.answers, deck.canGoBack, deck.isComplete]);
 
+  // The finished payload, held from the first attempt so "Try now" can re-send exactly
+  // what was queued rather than rebuilding one from a deck that is already complete.
+  const payloadRef = useRef<PendingSubmission | null>(null);
+
   useEffect(() => {
     if (!deck.isComplete || phase !== "answering") return;
     setPhase("submitting");
@@ -183,6 +188,7 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
         }
     );
     const payload = { testId: test.id, sessionToken, answers };
+    payloadRef.current = payload;
 
     void (async () => {
       // The test is finished; what needs protecting from here on is this payload, not
@@ -190,33 +196,42 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
       // loop even starts, so a kill mid-retry still has it queued for next launch.
       await clearInProgressTest(userId);
       await writePendingSubmission(userId, payload);
-      const outcome = await submitWithBackoff(queryClient, userId, payload);
-
-      switch (outcome.status) {
-        case "success":
-          setResult(outcome.result);
-          setPhase("popup");
-          break;
-        case "settled":
-          // The test is decided one way or another already (submitted, paused, closed,
-          // full) - nothing here is fixed by showing an error, so just move on.
-          setResult(null);
-          void advance();
-          break;
-        case "rejected":
-          setErrorMessage(outcome.message);
-          setPhase("error");
-          break;
-        case "pending":
-          // Backoff exhausted on network failures alone. The payload stays queued on
-          // device and gets one more attempt on next launch (`retryPendingSubmissionOnce`
-          // in _layout.tsx) - showing a fake success now would risk the flagged-zero-
-          // points outcome this whole path exists to avoid.
-          setPhase("pendingSync");
-          break;
-      }
+      await submitAndRoute(payload);
     })();
   }, [deck.isComplete, phase]);
+
+  /**
+   * Sends a finished payload and moves the deck into whatever phase the outcome calls
+   * for. Shared by the first attempt and by `retrySubmit` so the two route identically -
+   * only the one-time persistence writes above are specific to the first attempt.
+   */
+  async function submitAndRoute(payload: PendingSubmission) {
+    const outcome = await submitWithBackoff(queryClient, userId, payload);
+
+    switch (outcome.status) {
+      case "success":
+        setResult(outcome.result);
+        setPhase("popup");
+        break;
+      case "settled":
+        // The test is decided one way or another already (submitted, paused, closed,
+        // full) - nothing here is fixed by showing an error, so just move on.
+        setResult(null);
+        void advance();
+        break;
+      case "rejected":
+        setErrorMessage(outcome.message);
+        setPhase("error");
+        break;
+      case "pending":
+        // Backoff exhausted on network failures alone. The payload stays queued on
+        // device and gets one more attempt on next launch (`retryPendingSubmissionOnce`
+        // in _layout.tsx) - showing a fake success now would risk the flagged-zero-
+        // points outcome this whole path exists to avoid.
+        setPhase("pendingSync");
+        break;
+    }
+  }
 
   /** Moves the feed into whatever test comes next, or ends it. */
   async function advance() {
@@ -230,9 +245,19 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
     }
   }
 
+  /**
+   * "Try now" on the pendingSync screen. Re-sends the already-queued payload directly
+   * rather than dropping `phase` back to "answering": the deck is still complete, so
+   * that rewind immediately re-fired the submission effect - redoing `clearInProgressTest`
+   * and `writePendingSubmission` for a payload already on disk, and rendering the
+   * answering UI for a frame with no card left to show.
+   */
   function retrySubmit() {
+    const payload = payloadRef.current;
+    if (!payload) return;
     setErrorMessage(null);
-    setPhase("answering");
+    setPhase("submitting");
+    void submitAndRoute(payload);
   }
 
   async function handleSignOut() {
