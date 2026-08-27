@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
 import { FirstTestWalkthrough } from "@/components/FirstTestWalkthrough";
+import { RedirectToDashboard } from "@/components/RedirectToDashboard";
 import { TestDeck } from "@/components/feed/TestDeck";
 import { useSession } from "@/lib/session";
 import { useInProgressTest } from "@/lib/submissionQueue";
@@ -13,7 +14,7 @@ import { useFirstTestWalkthrough } from "@/lib/tutorial";
 
 export default function FeedScreen() {
   const router = useRouter();
-  const { user, signOut } = useSession();
+  const { user } = useSession();
   // An explicit testId opens that test instead of whatever is next in line - the seam a
   // deep link, or the home screen's "Start test" button, uses to open one directly.
   const { testId: routeTestId } = useLocalSearchParams<{ testId?: string }>();
@@ -36,11 +37,6 @@ export default function FeedScreen() {
   // the first test-to-test transition. This screen is the stable seam the evaluator
   // actually lands on once, before any test - real or loading - is visible underneath.
   const walkthrough = useFirstTestWalkthrough();
-
-  async function handleSignOut() {
-    await signOut();
-    router.replace("/login");
-  }
 
   let content: React.ReactNode;
 
@@ -70,14 +66,10 @@ export default function FeedScreen() {
       </Shell>
     );
   } else if (!test.data) {
-    content = (
-      <Shell>
-        <Text style={styles.title}>Nothing to answer right now</Text>
-        <Text style={styles.subtitle}>New tests show up here as they open.</Text>
-        <Button label="Profile" variant="secondary" onPress={() => router.push("/profile")} />
-        <Button label="Sign out" variant="quiet" onPress={handleSignOut} />
-      </Shell>
-    );
+    // Silent redirect, same reasoning as TestDeck's own empty phase (RedirectToDashboard's
+    // doc): Dashboard's own eligibility check renders the "nothing to answer" message,
+    // so this is only the hop back to it, not a second screen saying the same thing.
+    content = <RedirectToDashboard />;
   } else {
     content = (
       <TestDeck
