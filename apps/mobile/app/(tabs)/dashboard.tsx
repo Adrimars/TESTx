@@ -1,26 +1,35 @@
+import { useEffect } from "react";
 import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useRouter } from "expo-router";
+import { useQueryClient } from "@tanstack/react-query";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Button } from "@/components/Button";
 import { useSession } from "@/lib/session";
-import { useAvailableTests, useBalance } from "@/lib/test";
+import { Button } from "@/components/Button";
+import { useAvailableTests, useBalance, prefetchNextTest } from "@/lib/test";
 import { theme } from "@/lib/theme";
 
 /**
- * The app's landing tab (16.4/16.5).
+ * The app's landing tab.
  *
- * No longer a list to pick from (prd.md §15.4 already specified this; the old `home.tsx`
- * contradicted it) - just the balance and one Start button. Eligibility is checked here,
- * before ever entering the feed, so "nothing available" reads as this tab's own inline
- * empty state rather than a flash of the feed screen's matching one.
+ * No longer where a test is started (that moved to the Tests tab, a launcher rather than
+ * a screen - see (tabs)/_layout.tsx) - this is balance plus status. Eligibility is still
+ * checked here, off the same query the Tests tab's own empty-state redirect lands back
+ * on: whichever of them determines there is nothing to answer, this is the one place that
+ * actually renders that message, so it has to stay accurate regardless of which one asked.
  */
 export default function DashboardScreen() {
-  const router = useRouter();
   const { user } = useSession();
   const tests = useAvailableTests();
   const balance = useBalance();
+  const queryClient = useQueryClient();
 
   const hasEligibleTest = Boolean(tests.data && tests.data.length > 0);
+
+  // Warms the Tests tab's launch query ahead of time (see prefetchNextTest's own doc) -
+  // Dashboard is the landing tab on every cold start and after every sign-in, so by the
+  // time anyone actually taps Tests, this has almost always already resolved.
+  useEffect(() => {
+    void prefetchNextTest(queryClient);
+  }, [queryClient]);
 
   return (
     <SafeAreaView style={styles.flex} edges={["top", "bottom"]}>
@@ -64,7 +73,10 @@ export default function DashboardScreen() {
               </Text>
             </View>
           ) : (
-            <Button label="Start" onPress={() => router.push("/feed")} />
+            <View style={styles.stateCard}>
+              <Text style={styles.stateTitle}>Tests are waiting for you</Text>
+              <Text style={styles.stateBody}>Open the Tests tab below to start answering.</Text>
+            </View>
           )}
         </View>
       </ScrollView>

@@ -15,7 +15,7 @@ import { useFirstTestWalkthrough } from "@/lib/tutorial";
 export default function FeedScreen() {
   const { user } = useSession();
   // An explicit testId opens that test instead of whatever is next in line - the seam a
-  // deep link, or the home screen's "Start test" button, uses to open one directly.
+  // deep link uses to open one directly.
   const { testId: routeTestId } = useLocalSearchParams<{ testId?: string }>();
   const [testId, setTestId] = useState<string | undefined>(routeTestId);
   const nextTest = useNextTest();

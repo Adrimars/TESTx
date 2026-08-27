@@ -1,5 +1,5 @@
-import { Tabs } from "expo-router";
-import { LayoutGrid, Settings, ShoppingBag, User } from "lucide-react-native";
+import { Tabs, router } from "expo-router";
+import { LayoutGrid, Play, Settings, ShoppingBag, User } from "lucide-react-native";
 import { confirmLeavingUnsavedProfileChanges } from "@/lib/unsavedProfileChanges";
 import { theme } from "@/lib/theme";
 
@@ -34,10 +34,29 @@ function guardedTabListeners({
 }
 
 /**
- * The persistent bottom tab bar (16.4): Dashboard/Shop/Profile/Settings, replacing the old
+ * The Tests tab is a launcher, not a destination: pressing it never switches to a screen
+ * of its own (tests.tsx is only the restored-state fallback) - it pushes straight into
+ * /feed, the same full-screen deck the old Dashboard "Start" button opened, chosen for the
+ * next test by /evaluator/next-test, warmed ahead of time by prefetchNextTest on Dashboard.
+ * Same unsaved-Profile guard as every other tab first.
+ */
+function testsTabListeners() {
+  return {
+    tabPress: (e: { preventDefault: () => void }) => {
+      e.preventDefault();
+      void confirmLeavingUnsavedProfileChanges().then((canLeave) => {
+        if (canLeave) router.push("/feed");
+      });
+    },
+  };
+}
+
+/**
+ * The persistent bottom tab bar: Dashboard/Shop/Tests/Profile/Settings, replacing the old
  * stack-of-screens-plus-footer-buttons pattern (`home.tsx`'s footer row, `profile.tsx`'s
  * own in-screen danger zone). `feed.tsx` and every auth/onboarding screen stay outside this
- * group as full-screen stack routes - a test in progress should never show tab chrome.
+ * group as full-screen stack routes - a test in progress should never show tab chrome, which
+ * is also why Tests is a launcher rather than a screen: see testsTabListeners below.
  */
 export default function TabsLayout() {
   return (
@@ -67,6 +86,14 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => <ShoppingBag color={color} size={size} strokeWidth={1.5} />,
         }}
         listeners={guardedTabListeners}
+      />
+      <Tabs.Screen
+        name="tests"
+        options={{
+          title: "Tests",
+          tabBarIcon: ({ color, size }) => <Play color={color} size={size} strokeWidth={1.5} />,
+        }}
+        listeners={testsTabListeners}
       />
       <Tabs.Screen
         name="profile"

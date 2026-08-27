@@ -89,6 +89,23 @@ export function useNextTest() {
   });
 }
 
+/**
+ * Warms the `next-test` cache ahead of the Tests tab actually being opened.
+ *
+ * The tab is a launcher (see (tabs)/tests.tsx / _layout.tsx): tapping it pushes straight
+ * into the feed with no screen of its own, so whatever `useNextTest` would otherwise fetch
+ * there needs to already be in cache or the evaluator lands on a spinner for the one screen
+ * that is supposed to feel instant. Dashboard calls this on mount, since it's the landing
+ * tab on every cold start and after every sign-in - by the time anyone reaches Tests, this
+ * has almost always already resolved.
+ */
+export function prefetchNextTest(queryClient: QueryClient) {
+  return queryClient.prefetchQuery({
+    queryKey: ["next-test"],
+    queryFn: () => apiFetch<NextTestSummary>("/evaluator/next-test"),
+  });
+}
+
 function fetchTest(testId: string) {
   return apiFetch<EvaluatorTest>(`/evaluator/tests/${testId}`);
 }
