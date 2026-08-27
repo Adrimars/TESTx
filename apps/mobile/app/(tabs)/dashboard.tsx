@@ -1,4 +1,4 @@
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
@@ -26,7 +26,11 @@ export default function DashboardScreen() {
     <SafeAreaView style={styles.flex} edges={["top", "bottom"]}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.headerText}>
-          <Text style={styles.greeting}>TESTx</Text>
+          <Image
+            source={require("../../assets/images/testx-logo.png")}
+            style={styles.greeting}
+            resizeMode="contain"
+          />
           <Text style={styles.email} numberOfLines={1}>
             {user?.email ?? ""}
           </Text>
@@ -72,7 +76,7 @@ const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: theme.colors.surfaceBase },
   content: { padding: theme.spacing(2.5), gap: theme.spacing(2) },
   headerText: { gap: 2 },
-  greeting: { color: theme.colors.textPrimary, fontSize: 26, fontWeight: "700", letterSpacing: 0.5 },
+  greeting: { width: 110, height: 30 },
   email: { color: theme.colors.textSecondary, fontSize: 13 },
   balanceCard: {
     gap: theme.spacing(0.5),

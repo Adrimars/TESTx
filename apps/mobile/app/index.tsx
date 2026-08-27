@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSession } from "@/lib/session";
 import { theme } from "@/lib/theme";
@@ -20,7 +20,11 @@ export default function SplashScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.wordmark}>TESTx</Text>
+      <Image
+        source={require("../assets/images/testx-logo.png")}
+        style={styles.wordmark}
+        resizeMode="contain"
+      />
       <ActivityIndicator color={theme.colors.accent} />
     </View>
   );
@@ -35,9 +39,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing(2),
   },
   wordmark: {
-    color: theme.colors.textPrimary,
-    fontSize: 34,
-    fontWeight: "700",
-    letterSpacing: 1,
+    width: 150,
+    height: 40,
   },
 });

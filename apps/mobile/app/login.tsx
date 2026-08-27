@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
@@ -62,7 +62,11 @@ export default function LoginScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <Text style={styles.wordmark}>TESTx</Text>
+        <Image
+          source={require("../assets/images/testx-logo.png")}
+          style={styles.wordmark}
+          resizeMode="contain"
+        />
 
         <Field
           label="Email"
@@ -126,11 +130,9 @@ const styles = StyleSheet.create({
     gap: theme.spacing(2),
   },
   wordmark: {
-    color: theme.colors.textPrimary,
-    fontSize: 34,
-    fontWeight: "700",
-    letterSpacing: 1,
-    textAlign: "center",
+    width: 150,
+    height: 40,
+    alignSelf: "center",
     marginBottom: theme.spacing(2),
   },
   divider: { flexDirection: "row", alignItems: "center", gap: theme.spacing(1.5) },
