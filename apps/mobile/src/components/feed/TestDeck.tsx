@@ -207,7 +207,15 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
       await writePendingSubmission(userId, payload);
       await submitAndRoute(payload);
     })();
-  }, [deck.isComplete, phase]);
+    // Every value the body reads is listed, including the ones this effect used to
+    // capture silently. They were only ever stable because the test query is fetched
+    // with staleTime: Infinity - a caching detail this component has no business
+    // depending on for correctness, and one nothing stops a later change from relaxing.
+    //
+    // Re-running is harmless: the guard above bails unless the deck has just completed
+    // and nothing has started submitting yet, and setPhase("submitting") runs
+    // synchronously on the one pass that gets through.
+  }, [deck.isComplete, deck.answers, phase, test, sessionToken, userId, queryClient]);
 
   /**
    * Sends a finished payload and moves the deck into whatever phase the outcome calls
