@@ -24,6 +24,7 @@ export function buildCurrentUser(user: UserWithProfile): CurrentUser {
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
     avatarId: user.avatarId,
+    aydinlatmaAcknowledgedAt: user.aydinlatmaAcknowledgedAt?.toISOString() ?? null,
     evaluatorProfile: user.evaluatorProfile
       ? {
           id: user.evaluatorProfile.id,

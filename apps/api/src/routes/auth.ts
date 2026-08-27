@@ -183,6 +183,39 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     return reply.send(buildCurrentUser(user));
   });
 
+  /**
+   * Records that the signed-in user has been shown the KVKK Article 10 disclosure.
+   *
+   * Mobile registration stamps `aydinlatmaAcknowledgedAt` inline, but a Google-registered
+   * account is created by the OAuth callback, which never shows the disclosure - Google's
+   * own consent screen is not a substitute for it (see kvkk-compliance-research.md, the
+   * roadmap section). The mobile app therefore shows the disclosure after such a sign-in
+   * and calls this once it has been read.
+   *
+   * This is an acknowledgment of a disclosure, never explicit consent: Kurul Ilke Karari
+   * 2026/347 forbids conflating the two, so `acikRizaAcceptedAt` is deliberately untouched
+   * here. Already-stamped accounts keep their original timestamp - the first time the user
+   * actually saw the text is the date worth holding.
+   */
+  app.post("/aydinlatma", { preHandler: [authenticateUser] }, async (request, reply) => {
+    const userId = request.user!.id;
+
+    await app.prisma.user.updateMany({
+      where: { id: userId, aydinlatmaAcknowledgedAt: null },
+      data: { aydinlatmaAcknowledgedAt: new Date() },
+    });
+
+    const user = await app.prisma.user.findUnique({
+      where: { id: userId },
+      include: { evaluatorProfile: true },
+    });
+    if (!user) {
+      return reply.status(404).send({ error: "NOT_FOUND", message: "User not found" });
+    }
+
+    return reply.send(buildCurrentUser(user));
+  });
+
   app.get("/google", async (request, reply) => {
     const { platform } = request.query as { platform?: string };
     // The state round-trips through Google so the callback knows whether to

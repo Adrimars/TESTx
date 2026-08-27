@@ -21,11 +21,19 @@ type SessionValue = {
   /** True until the stored token has been checked on launch. */
   initializing: boolean;
   hasProfile: boolean;
+  /**
+   * True when the signed-in user has never been shown the KVKK Article 10 disclosure.
+   * Google-registered accounts are created by the OAuth callback, which cannot show it,
+   * so they land here and must pass /aydinlatma before reaching the app.
+   */
+  needsAydinlatma: boolean;
   signIn: (email: string, password: string) => Promise<CurrentUser>;
   signUp: (payload: MobileRegisterPayload) => Promise<CurrentUser>;
   signInWithCode: (code: string) => Promise<CurrentUser>;
   signOut: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  /** Records the acknowledgment server-side and adopts the updated user. */
+  acknowledgeAydinlatma: () => Promise<void>;
 };
 
 const SessionContext = createContext<SessionValue | null>(null);
@@ -121,18 +129,33 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setUser(await apiFetch<CurrentUser>("/auth/me"));
   }, []);
 
+  const acknowledgeAydinlatma = useCallback(async () => {
+    setUser(await apiFetch<CurrentUser>("/auth/aydinlatma", { method: "POST" }));
+  }, []);
+
   const value = useMemo<SessionValue>(
     () => ({
       user,
       initializing,
       hasProfile: user?.evaluatorProfile != null,
+      needsAydinlatma: user != null && user.aydinlatmaAcknowledgedAt == null,
       signIn,
       signUp,
       signInWithCode,
       signOut,
       refreshUser,
+      acknowledgeAydinlatma,
     }),
-    [user, initializing, signIn, signUp, signInWithCode, signOut, refreshUser]
+    [
+      user,
+      initializing,
+      signIn,
+      signUp,
+      signInWithCode,
+      signOut,
+      refreshUser,
+      acknowledgeAydinlatma,
+    ]
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
