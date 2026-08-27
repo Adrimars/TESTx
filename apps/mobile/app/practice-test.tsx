@@ -1,11 +1,12 @@
 import { useEffect } from "react";
-import { CheckSquare, Hand, ListOrdered, MoveHorizontal, MoveVertical } from "lucide-react-native";
+import { useRouter } from "expo-router";
+import { CheckSquare, Hand, ListOrdered, MoveHorizontal, MoveVertical, PartyPopper } from "lucide-react-native";
 import { StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Button } from "@/components/Button";
 import { CardStack } from "@/components/cards/CardStack";
 import { QuestionCard } from "@/components/cards/QuestionCard";
 import { ProgressBar } from "@/components/feed/ProgressBar";
-import { RedirectToDashboard } from "@/components/RedirectToDashboard";
 import { useDeck } from "@/lib/deck";
 import type { EvaluatorQuestion } from "@/lib/test";
 import { markGestureHintsSeen } from "@/lib/tutorial";
@@ -104,7 +105,7 @@ const PRACTICE_STEPS: { question: EvaluatorQuestion; Icon: StepIcon; instruction
   {
     Icon: ListOrdered,
     instruction:
-      "Drag each card onto an open slot to put it in order. Hold and drag a card that's already placed to swap it with another.",
+      "Drag each card onto an open slot to put it in order. Hold and drag a placed card to swap it with another - or just tap a placed card to pull it back out and place it again.",
     question: {
       id: "practice-ranking",
       testId: "practice",
@@ -142,6 +143,7 @@ const PRACTICE_QUESTIONS = PRACTICE_STEPS.map((step) => step.question);
  * screen is reached, so relaunching goes straight past it.
  */
 export default function PracticeTestScreen() {
+  const router = useRouter();
   const deck = useDeck(PRACTICE_QUESTIONS);
 
   // Also retires the mid-test drag hints for Rating/Ranking (useGestureTutorial) - this
@@ -153,7 +155,10 @@ export default function PracticeTestScreen() {
   }, [deck.isComplete]);
 
   if (deck.isComplete) {
-    return <RedirectToDashboard />;
+    // A held screen with its own explicit continue, not an auto-redirect like the real
+    // deck's equivalent (RedirectToDashboard) - this is the one moment worth congratulating
+    // rather than hopping straight past.
+    return <PracticeCompleteScreen onContinue={() => router.replace("/dashboard")} />;
   }
 
   const stepIndex = deck.index;
@@ -187,8 +192,41 @@ export default function PracticeTestScreen() {
   );
 }
 
+/** Shown once, after the last practice step - see PracticeTestScreen's own doc for why
+ * this holds instead of redirecting straight through. */
+function PracticeCompleteScreen({ onContinue }: { onContinue: () => void }) {
+  return (
+    <SafeAreaView style={styles.flex} edges={["top", "bottom"]}>
+      <View style={styles.completeContainer}>
+        <PartyPopper size={48} color={theme.colors.accent} strokeWidth={1.5} />
+        <Text style={styles.completeTitle}>Nice work!</Text>
+        <Text style={styles.completeBody}>
+          That's every kind of question you'll see. You're ready to start solving real
+          tests and earning points.
+        </Text>
+        <Button label="Start solving tests" onPress={onContinue} />
+      </View>
+    </SafeAreaView>
+  );
+}
+
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: theme.colors.surfaceBase },
+  completeContainer: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: theme.spacing(1.5),
+    padding: theme.spacing(3),
+  },
+  completeTitle: { color: theme.colors.textPrimary, fontSize: 24, fontWeight: "700" },
+  completeBody: {
+    color: theme.colors.textSecondary,
+    fontSize: 15,
+    lineHeight: 21,
+    textAlign: "center",
+    marginBottom: theme.spacing(1),
+  },
   header: {
     flexDirection: "row",
     alignItems: "center",
