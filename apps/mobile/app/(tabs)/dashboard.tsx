@@ -6,33 +6,25 @@ import { CircleCheck, Flame, TrendingUp } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useSession } from "@/lib/session";
 import { Button } from "@/components/Button";
-import {
-  useAvailableTests,
-  useBalance,
-  useEvaluatorStats,
-  prefetchNextTest,
-  type EvaluatorStats,
-} from "@/lib/test";
+import { useBalance, useEvaluatorStats, prefetchNextTest, type EvaluatorStats } from "@/lib/test";
 import { theme } from "@/lib/theme";
 
 /**
- * The app's landing tab: balance, activity stats, and status.
+ * The app's landing tab: balance and activity stats, nothing else.
  *
  * No longer where a test is started (that moved to the Tests tab, a launcher rather than
- * a screen - see (tabs)/_layout.tsx). Eligibility is still checked here, off the same
- * query the Tests tab's own empty-state redirect lands back on: whichever of them
- * determines there is nothing to answer, this is the one place that actually renders
- * that message, so it has to stay accurate regardless of which one asked.
+ * a screen - see (tabs)/_layout.tsx) - and no longer where "nothing to answer right now"
+ * gets said either. That message now belongs entirely to the Tests tab's own pre-check
+ * (an alert, staying put), so Dashboard doesn't need its own copy of the same eligibility
+ * state just to repeat it a second way.
  */
 export default function DashboardScreen() {
   const router = useRouter();
   const { user } = useSession();
-  const tests = useAvailableTests();
   const balance = useBalance();
   const stats = useEvaluatorStats();
   const queryClient = useQueryClient();
 
-  const hasEligibleTest = Boolean(tests.data && tests.data.length > 0);
   const missingProfileFields = getMissingOptionalProfileFields(user);
 
   // Warms the Tests tab's launch query ahead of time (see prefetchNextTest's own doc) -
@@ -122,30 +114,6 @@ export default function DashboardScreen() {
         ) : stats.isPending ? (
           <ActivityIndicator color={theme.colors.textSecondary} />
         ) : null}
-
-        <View style={styles.startSection}>
-          {tests.isPending ? (
-            <ActivityIndicator color={theme.colors.textSecondary} />
-          ) : tests.isError ? (
-            <View style={styles.stateCard}>
-              <Text style={styles.stateTitle}>Could not load tests</Text>
-              <Text style={styles.stateBody}>{tests.error.message}</Text>
-              <Button label="Try again" variant="secondary" onPress={() => void tests.refetch()} />
-            </View>
-          ) : !hasEligibleTest ? (
-            <View style={styles.stateCard}>
-              <Text style={styles.stateTitle}>Nothing to answer right now</Text>
-              <Text style={styles.stateBody}>
-                New tests appear here as they open. Check back later.
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.stateCard}>
-              <Text style={styles.stateTitle}>Tests are waiting for you</Text>
-              <Text style={styles.stateBody}>Open the Tests tab below to start answering.</Text>
-            </View>
-          )}
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -320,16 +288,4 @@ const styles = StyleSheet.create({
   activityTitle: { color: theme.colors.textPrimary, fontSize: 14, fontWeight: "600" },
   activityDate: { color: theme.colors.textSecondary, fontSize: 12 },
   activityPoints: { color: theme.colors.accent, fontSize: 14, fontWeight: "700" },
-  startSection: { marginTop: theme.spacing(1) },
-  stateCard: {
-    gap: theme.spacing(1),
-    padding: theme.spacing(2.5),
-    borderRadius: 16,
-    alignItems: "center",
-    backgroundColor: theme.colors.surfaceRaised,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.colors.borderHairline,
-  },
-  stateTitle: { color: theme.colors.textPrimary, fontSize: 16, fontWeight: "600" },
-  stateBody: { color: theme.colors.textSecondary, fontSize: 14, textAlign: "center" },
 });

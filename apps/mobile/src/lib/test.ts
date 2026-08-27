@@ -100,7 +100,7 @@ export function useNextTest() {
  * has almost always already resolved.
  */
 export function prefetchNextTest(queryClient: QueryClient) {
-  return queryClient.prefetchQuery({
+  return queryClient.fetchQuery({
     queryKey: ["next-test"],
     queryFn: () => apiFetch<NextTestSummary>("/evaluator/next-test"),
   });
