@@ -187,6 +187,7 @@ export function useSubmitTest() {
       void queryClient.invalidateQueries({ queryKey: ["balance"] });
       void queryClient.invalidateQueries({ queryKey: ["available-tests"] });
       void queryClient.invalidateQueries({ queryKey: ["next-test"] });
+      void queryClient.invalidateQueries({ queryKey: ["stats"] });
     },
   });
 }
@@ -195,5 +196,31 @@ export function useBalance() {
   return useQuery({
     queryKey: ["balance"],
     queryFn: () => apiFetch<{ balance: number }>("/evaluator/balance"),
+  });
+}
+
+export type EvaluatorStats = {
+  totalCompleted: number;
+  completedThisWeek: number;
+  currentStreakDays: number;
+  /** Oldest first, one entry per day, zero-filled for a day with nothing answered. */
+  pointsByDay: { date: string; points: number }[];
+  /** Newest first. */
+  recentActivity: {
+    testId: string;
+    title: string;
+    pointsEarned: number;
+    isFlagged: boolean;
+    completedAt: string;
+  }[];
+};
+
+/** Dashboard's activity summary - counts, streak, a short points history, and the most
+ * recent tests answered. Server-aggregated (see GET /evaluator/stats) rather than
+ * recomputed here from a full response history the client has no other reason to fetch. */
+export function useEvaluatorStats() {
+  return useQuery({
+    queryKey: ["stats"],
+    queryFn: () => apiFetch<EvaluatorStats>("/evaluator/stats"),
   });
 }

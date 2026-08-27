@@ -588,6 +588,84 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ balance: profile.balance });
   });
 
+  app.get("/stats", authEval, async (request, reply) => {
+    const userId = request.user!.id;
+
+    // One evaluator's own responses only, so this is bounded by how many tests that one
+    // account has ever answered - small enough to aggregate in JS rather than needing a
+    // grouped SQL query for what's otherwise a per-user list already this cheap to fetch.
+    const responses = await app.prisma.testResponse.findMany({
+      where: { userId },
+      orderBy: { completedAt: "desc" },
+      select: {
+        testId: true,
+        pointsEarned: true,
+        isFlagged: true,
+        completedAt: true,
+        test: { select: { title: true } },
+      },
+    });
+
+    const totalCompleted = responses.length;
+
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    // Monday-start week. getDay() is 0 (Sun) .. 6 (Sat); this maps Sunday to 6 days since
+    // Monday instead of -1, so the subtraction never goes negative.
+    const daysSinceMonday = (now.getDay() + 6) % 7;
+    startOfWeek.setHours(0, 0, 0, 0);
+    startOfWeek.setDate(startOfWeek.getDate() - daysSinceMonday);
+    const completedThisWeek = responses.filter((r) => r.completedAt >= startOfWeek).length;
+
+    const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+    const completedDates = new Set(responses.map((r) => dayKey(r.completedAt)));
+
+    // Consecutive calendar days with at least one completed test, walking back from today.
+    // A day with nothing yet doesn't break a streak that already covers yesterday - only
+    // a full missed day does - so the walk starts at today only if today already qualifies.
+    let currentStreakDays = 0;
+    const cursor = new Date(now);
+    cursor.setHours(0, 0, 0, 0);
+    if (!completedDates.has(dayKey(cursor))) cursor.setDate(cursor.getDate() - 1);
+    while (completedDates.has(dayKey(cursor))) {
+      currentStreakDays += 1;
+      cursor.setDate(cursor.getDate() - 1);
+    }
+
+    // Points earned per day, oldest first, zero-filled so the sparkline has one bar per
+    // day regardless of whether anything was answered that day.
+    const POINTS_HISTORY_DAYS = 14;
+    const pointsByDate = new Map<string, number>();
+    for (const r of responses) {
+      pointsByDate.set(dayKey(r.completedAt), (pointsByDate.get(dayKey(r.completedAt)) ?? 0) + r.pointsEarned);
+    }
+    const pointsByDay: { date: string; points: number }[] = [];
+    for (let i = POINTS_HISTORY_DAYS - 1; i >= 0; i -= 1) {
+      const d = new Date(now);
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() - i);
+      const key = dayKey(d);
+      pointsByDay.push({ date: key, points: pointsByDate.get(key) ?? 0 });
+    }
+
+    const RECENT_ACTIVITY_LIMIT = 8;
+    const recentActivity = responses.slice(0, RECENT_ACTIVITY_LIMIT).map((r) => ({
+      testId: r.testId,
+      title: r.test.title,
+      pointsEarned: r.pointsEarned,
+      isFlagged: r.isFlagged,
+      completedAt: r.completedAt.toISOString(),
+    }));
+
+    return reply.send({
+      totalCompleted,
+      completedThisWeek,
+      currentStreakDays,
+      pointsByDay,
+      recentActivity,
+    });
+  });
+
   app.get("/coupons", authEval, async (_request, reply) => {
     const coupons = await app.prisma.coupon.findMany({
       where: { isActive: true },
