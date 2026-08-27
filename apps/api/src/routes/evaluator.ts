@@ -372,6 +372,18 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
     });
     if (!profile) return reply.status(400).send({ error: "PROFILE_REQUIRED", message: "Complete your profile first" });
 
+    // Re-entry check, mirroring the submit endpoint's. Without it an evaluator who has
+    // already answered this test is handed a fresh session token with a `startedAt` of
+    // now, walks the whole deck again, and only learns it was pointless when the submit
+    // comes back ALREADY_SUBMITTED. Failing here costs them nothing and mints no token.
+    const existingResponse = await app.prisma.testResponse.findUnique({
+      where: { testId_userId: { testId: request.params.id, userId: request.user!.id } },
+      select: { id: true },
+    });
+    if (existingResponse) {
+      return reply.status(409).send({ error: "ALREADY_SUBMITTED", message: "You have already submitted this test" });
+    }
+
     const test = await app.prisma.test.findUnique({
       where: { id: request.params.id },
       include: {

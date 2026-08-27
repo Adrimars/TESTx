@@ -50,7 +50,16 @@ const PREFETCH_WINDOW = 2;
  * "not this one", not "something is broken". The list is re-fetched fresh on every
  * attempt, so trying the next candidate is a real retry, not a repeat of the same answer.
  */
-const UNAVAILABLE_NEXT_CODES = new Set(["NOT_AVAILABLE", "CAPACITY_REACHED", "NOT_ELIGIBLE", "NOT_FOUND"]);
+const UNAVAILABLE_NEXT_CODES = new Set([
+  "NOT_AVAILABLE",
+  "CAPACITY_REACHED",
+  "NOT_ELIGIBLE",
+  "NOT_FOUND",
+  // The fetch endpoint now rejects a test this evaluator already answered, rather than
+  // handing back a deck they cannot submit. That is the same "not this one" answer as
+  // the rest of this set - skip the candidate and try the next.
+  "ALREADY_SUBMITTED",
+]);
 const MAX_NEXT_TEST_ATTEMPTS = 3;
 
 /**
