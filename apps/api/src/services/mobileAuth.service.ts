@@ -54,10 +54,22 @@ export async function consumeMobileAuthCode(
   return record.userId;
 }
 
-/** Housekeeping so redeemed and stale codes do not accumulate indefinitely. */
+/**
+ * Housekeeping so redeemed and stale codes do not accumulate indefinitely.
+ *
+ * Both halves matter. Expiry alone left every redeemed code sitting until its TTL ran
+ * out, and a redeemed code is dead the moment it is stamped - `consumeMobileAuthCode`
+ * only ever matches on `consumedAt: null`, so keeping it buys nothing.
+ *
+ * Deleting a consumed row cannot strand a redemption in flight: the userId is read
+ * before the row is stamped, so the caller already has what it needs by the time this
+ * can see the row at all.
+ */
 export async function purgeExpiredAuthCodes(prisma: PrismaClient): Promise<number> {
   const { count } = await prisma.mobileAuthCode.deleteMany({
-    where: { expiresAt: { lt: new Date() } },
+    where: {
+      OR: [{ expiresAt: { lt: new Date() } }, { consumedAt: { not: null } }],
+    },
   });
   return count;
 }
