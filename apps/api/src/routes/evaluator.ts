@@ -255,7 +255,7 @@ function matchesDemographics(
 }
 
 export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
-  app.put("/profile", { preHandler: [authenticateUser] }, async (request, reply) => {
+  app.put("/profile", authEval, async (request, reply) => {
     const body = evaluatorProfileSchema.parse(request.body);
 
     const profileData = {
