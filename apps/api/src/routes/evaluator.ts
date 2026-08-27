@@ -290,7 +290,10 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
     const activeTests = await app.prisma.test.findMany({
       where: { status: "ACTIVE" },
       orderBy: { createdAt: "asc" },
-      include: { _count: { select: { responses: true } } },
+      // `questions` is counted here rather than per-test inside the loop below - same
+      // shape /available-tests already uses, and it keeps this endpoint at a fixed
+      // number of queries no matter how many candidates get skipped.
+      include: { _count: { select: { responses: true, questions: true } } },
     });
 
     const alreadyResponded = await app.prisma.testResponse.findMany({
@@ -312,7 +315,7 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
         advisoryTimeMin: test.advisoryTimeMin,
         rewardPoints: test.rewardPoints,
         minTimePerQuestion: test.minTimePerQuestion,
-        questionCount: await app.prisma.question.count({ where: { testId: test.id } }),
+        questionCount: test._count.questions,
       });
     }
 
