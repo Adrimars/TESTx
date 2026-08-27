@@ -29,13 +29,22 @@ const AI_USE_CASE_VALUES = optionValues(AI_USE_CASES);
 const AI_EXPERIENCE_VALUES = optionValues(AI_EXPERIENCE_OPTIONS);
 const AI_FREQUENCY_VALUES = optionValues(AI_FREQUENCY_OPTIONS);
 
+/**
+ * Trimmed and lower-cased before the format check runs, so "Name@Example.com" and
+ * " name@example.com " land on the exact same stored value as "name@example.com" - two
+ * registrations that differ only by case or stray whitespace would otherwise both
+ * succeed as distinct accounts, and a returning user retyping their email slightly
+ * differently would otherwise fail to log in to the one they already have.
+ */
+const emailSchema = z.string().trim().toLowerCase().email();
+
 export const registerSchema = z.object({
-  email: z.string().email(),
+  email: emailSchema,
   password: z.string().min(8),
 });
 
 export const loginSchema = z.object({
-  email: z.string().email(),
+  email: emailSchema,
   password: z.string().min(1),
 });
 
