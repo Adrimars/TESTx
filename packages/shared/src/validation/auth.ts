@@ -1,9 +1,33 @@
 import { z } from "zod";
-import { GENDERS, HOBBIES, HOBBIES_MAX } from "../constants";
+import {
+  AI_EXPERIENCE_OPTIONS,
+  AI_FREQUENCY_OPTIONS,
+  AI_USE_CASES,
+  EDUCATION_LEVELS,
+  GENDERS,
+  HOBBIES,
+  HOBBIES_MAX,
+} from "../constants";
 
-/** The bare values out of `HOBBIES`, for `z.enum` - keeps `hobbies` a closed set rather
- * than free text an evaluator (or a replayed request) could put anything into. */
-const HOBBY_VALUES = HOBBIES.map((hobby) => hobby.value) as [string, ...string[]];
+/**
+ * The bare values out of each predefined option list, for `z.enum` - these keep the
+ * profile's closed-set fields closed rather than free text an evaluator (or a replayed
+ * request) could put anything into.
+ *
+ * Every one of these fields is rendered by both profile forms as a picker over exactly
+ * these constants, so a value outside the list can only come from a hand-rolled request.
+ * They also feed demographic targeting and analytics, which is the practical reason the
+ * server has to enforce what the picker already offers: one junk value is a row nothing
+ * can group by.
+ */
+const optionValues = (options: readonly { value: string }[]) =>
+  options.map((option) => option.value) as [string, ...string[]];
+
+const HOBBY_VALUES = optionValues(HOBBIES);
+const EDUCATION_LEVEL_VALUES = optionValues(EDUCATION_LEVELS);
+const AI_USE_CASE_VALUES = optionValues(AI_USE_CASES);
+const AI_EXPERIENCE_VALUES = optionValues(AI_EXPERIENCE_OPTIONS);
+const AI_FREQUENCY_VALUES = optionValues(AI_FREQUENCY_OPTIONS);
 
 export const registerSchema = z.object({
   email: z.string().email(),
@@ -23,10 +47,10 @@ export const evaluatorProfileSchema = z.object({
   nativeLanguage: z.string().min(1).optional(),
   foreignLanguages: z.array(z.string().min(1)).optional().default([]),
   occupation: z.string().trim().optional(),
-  educationLevel: z.string().min(1).optional(),
-  aiUseCases: z.array(z.string().min(1)).optional().default([]),
-  aiExperience: z.string().min(1).optional(),
-  aiFrequency: z.string().min(1).optional(),
+  educationLevel: z.enum(EDUCATION_LEVEL_VALUES).optional(),
+  aiUseCases: z.array(z.enum(AI_USE_CASE_VALUES)).optional().default([]),
+  aiExperience: z.enum(AI_EXPERIENCE_VALUES).optional(),
+  aiFrequency: z.enum(AI_FREQUENCY_VALUES).optional(),
   hobbies: z.array(z.enum(HOBBY_VALUES)).max(HOBBIES_MAX).optional().default([]),
 });
 
