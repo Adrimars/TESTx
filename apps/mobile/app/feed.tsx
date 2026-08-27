@@ -24,23 +24,34 @@ export default function FeedScreen() {
     if (!testId && nextTest.data?.id) setTestId(nextTest.data.id);
   }, [testId, nextTest.data]);
 
-  const test = useEvaluatorTest(testId);
+  // `testId` only catches up to `nextTest.data.id` a render *after* nextTest resolves -
+  // the effect above runs post-commit, not during this render. That lag used to be
+  // invisible because nextTest was always still pending on that first render anyway, so
+  // the loading branch caught it. Now that Tests-tab prefetches it, nextTest can already
+  // be resolved (not pending) on this very first render while `testId` is still
+  // undefined - which used to fall straight through every branch below into "no test
+  // data, redirect to Dashboard", even though a real test was sitting right there in
+  // nextTest.data. Reading nextTest.data.id directly, rather than waiting on the state
+  // sync, closes that gap: everything below sees the real id from the first render on.
+  const effectiveTestId = testId ?? nextTest.data?.id;
+
+  const test = useEvaluatorTest(effectiveTestId);
   // A test finished-but-abandoned answer set (11.4) - only ever offered back when it
   // matches the test actually being opened, never a leftover from a different one.
-  const inProgress = useInProgressTest(user?.id, testId);
+  const inProgress = useInProgressTest(user?.id, effectiveTestId);
 
   let content: React.ReactNode;
 
   if (
-    (!testId && nextTest.isPending) ||
-    (Boolean(testId) && (test.isPending || inProgress.isPending))
+    (!effectiveTestId && nextTest.isPending) ||
+    (Boolean(effectiveTestId) && (test.isPending || inProgress.isPending))
   ) {
     content = (
       <Shell>
         <ActivityIndicator color={theme.colors.textSecondary} />
       </Shell>
     );
-  } else if ((!testId && nextTest.isError) || test.isError) {
+  } else if ((!effectiveTestId && nextTest.isError) || test.isError) {
     content = (
       <Shell>
         <Text style={styles.title}>Could not load a test</Text>
@@ -57,14 +68,15 @@ export default function FeedScreen() {
       </Shell>
     );
   } else if (!test.data) {
-    // Silent redirect, same reasoning as TestDeck's own empty phase (RedirectToDashboard's
-    // doc): Dashboard's own eligibility check renders the "nothing to answer" message,
-    // so this is only the hop back to it, not a second screen saying the same thing.
+    // Genuinely nothing: nextTest and (if an id was ever in hand) test have both settled
+    // with no data and no error. Same reasoning as TestDeck's own empty phase
+    // (RedirectToDashboard's doc): Dashboard's own eligibility check renders the "nothing
+    // to answer" message, so this is only the hop back to it.
     content = <RedirectToDashboard />;
   } else {
     content = (
       <TestDeck
-        key={testId}
+        key={effectiveTestId}
         test={test.data}
         resumedFrom={inProgress.data ?? undefined}
         onContinue={setTestId}
