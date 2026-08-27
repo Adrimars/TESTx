@@ -76,8 +76,14 @@ export default function ProfileOnboardingScreen() {
       });
       await refreshUser();
       // The mandatory hands-on practice test (17.x) - see practice-test.tsx's own doc for
-      // why this is where it's triggered, rather than a persisted seen-it flag.
-      router.replace("/practice-test");
+      // why this is where it's triggered, rather than a persisted seen-it flag. Named here
+      // rather than sprung silently, so the deck that opens next doesn't read as a real
+      // test the account already got assigned.
+      Alert.alert(
+        "You're all set!",
+        "Now let's do a short, hands-on tutorial so you know how each kind of question works.",
+        [{ text: "Let's go", onPress: () => router.replace("/practice-test") }]
+      );
     } catch (error) {
       Alert.alert(
         "Could not save profile",
