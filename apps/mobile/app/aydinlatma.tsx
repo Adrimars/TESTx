@@ -1,11 +1,12 @@
 import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { Button } from "@/components/Button";
 import {
   AYDINLATMA_METNI_IS_PLACEHOLDER,
   AYDINLATMA_METNI_SECTIONS,
   AYDINLATMA_METNI_TITLE,
 } from "@/content/aydinlatmaMetni";
+import { useRegistrationDraft } from "@/lib/registrationDraft";
 import { theme } from "@/lib/theme";
 
 /**
@@ -16,15 +17,16 @@ import { theme } from "@/lib/theme";
  */
 export default function AydinlatmaScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{
-    email?: string;
-    password?: string;
-    confirmPassword?: string;
-    ageConfirmed?: string;
-  }>();
+  const { updateDraft } = useRegistrationDraft();
 
+  /**
+   * The acknowledgment is recorded in the in-memory draft rather than handed back as a
+   * route param. That keeps the half-typed credentials out of navigation state on the
+   * way back, and makes the flag unforgeable by deep link - only this button sets it.
+   */
   function handleAcknowledge() {
-    router.replace({ pathname: "/register", params: { ...params, acknowledged: "1" } });
+    updateDraft({ acknowledged: true });
+    router.replace("/register");
   }
 
   return (

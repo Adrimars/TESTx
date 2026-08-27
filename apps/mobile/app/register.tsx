@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { Check } from "lucide-react-native";
 import { MOBILE_MIN_AGE } from "@testx/shared";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
 import { useSession } from "@/lib/session";
 import { getDeviceId } from "@/lib/device";
+import { useRegistrationDraft } from "@/lib/registrationDraft";
 import { checkField, registerSchema } from "@/lib/validation";
 import { theme } from "@/lib/theme";
 
@@ -18,26 +19,23 @@ import { theme } from "@/lib/theme";
  * Age itself is never persisted here (16.8) - the numeric field this screen used to show
  * only ever existed to gate under-18 signups client-side; the real, persisted
  * `EvaluatorProfile.age` is still collected once, on profile-onboarding.tsx.
+ *
+ * The form survives the detour to /aydinlatma in `RegistrationDraftProvider`, not in
+ * navigation params - see registrationDraft.tsx for why the password must not be one.
  */
 export default function RegisterScreen() {
   const router = useRouter();
   const { signUp } = useSession();
-  const params = useLocalSearchParams<{
-    email?: string;
-    password?: string;
-    confirmPassword?: string;
-    ageConfirmed?: string;
-    acknowledged?: string;
-  }>();
+  const { draft, updateDraft, clearDraft } = useRegistrationDraft();
 
-  const [email, setEmail] = useState(params.email ?? "");
-  const [password, setPassword] = useState(params.password ?? "");
-  const [confirmPassword, setConfirmPassword] = useState(params.confirmPassword ?? "");
-  const [ageConfirmed, setAgeConfirmed] = useState(params.ageConfirmed === "1");
+  const [email, setEmail] = useState(draft.email);
+  const [password, setPassword] = useState(draft.password);
+  const [confirmPassword, setConfirmPassword] = useState(draft.confirmPassword);
+  const [ageConfirmed, setAgeConfirmed] = useState(draft.ageConfirmed);
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [busy, setBusy] = useState(false);
 
-  const acknowledged = params.acknowledged === "1";
+  const acknowledged = draft.acknowledged;
 
   function validate(): boolean {
     const next: Record<string, string | null> = {
@@ -54,10 +52,8 @@ export default function RegisterScreen() {
 
   function handleContinueToDisclosure() {
     if (!validate()) return;
-    router.push({
-      pathname: "/aydinlatma",
-      params: { email, password, confirmPassword, ageConfirmed: ageConfirmed ? "1" : "0" },
-    });
+    updateDraft({ email, password, confirmPassword, ageConfirmed });
+    router.push("/aydinlatma");
   }
 
   async function handleCreateAccount() {
@@ -73,6 +69,9 @@ export default function RegisterScreen() {
         // No acik riza is collected in v1; the plan explicitly says not to build
         // that checkbox speculatively while its legal basis is unconfirmed.
       });
+      // The account exists; nothing is left to resume, so drop the credentials from
+      // memory rather than leaving them in the provider for the rest of the session.
+      clearDraft();
       router.replace("/profile-onboarding");
     } catch (error) {
       Alert.alert(
