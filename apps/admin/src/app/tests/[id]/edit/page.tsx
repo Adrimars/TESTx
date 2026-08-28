@@ -16,7 +16,13 @@ import {
   PauseCircle,
 } from "lucide-react";
 import type { Gender, MediaType, QuestionType, TestStatus } from "@testx/shared";
-import { COUNTRIES, CITIES_BY_COUNTRY, RANKING_MAX_OPTIONS, RANKING_MIN_OPTIONS } from "@testx/shared";
+import {
+  COUNTRIES,
+  CITIES_BY_COUNTRY,
+  RANKING_MAX_OPTIONS,
+  RANKING_MIN_OPTIONS,
+  autoAttentionCheckCount,
+} from "@testx/shared";
 import {
   Alert,
   Badge,
@@ -39,7 +45,7 @@ import {
   Select,
 } from "@testx/ui";
 import { apiFetch } from "@/lib/api";
-import { statusVariant } from "@/lib/status";
+import { UNTITLED_TEST, statusVariant } from "@/lib/status";
 import type { AdminMedia, AdminQuestion, AdminTestDetail, Paginated } from "@/lib/admin-types";
 
 type OptionDraft = { label: string; mediaId: string };
@@ -48,6 +54,8 @@ type QuestionDraft = {
   type: QuestionType;
   prompt: string;
   mediaType: MediaType;
+  /** The media the question is about, as opposed to the media its options offer. */
+  questionMediaId: string;
   options: OptionDraft[];
   isAttentionCheck: boolean;
   isTrapDuplicate: boolean;
@@ -66,6 +74,7 @@ const EMPTY_QUESTION: QuestionDraft = {
   type: "SINGLE_SELECT",
   prompt: "",
   mediaType: "TEXT",
+  questionMediaId: "",
   options: [{ label: "", mediaId: "" }, { label: "", mediaId: "" }],
   isAttentionCheck: false,
   isTrapDuplicate: false,
@@ -79,6 +88,16 @@ const EMPTY_QUESTION: QuestionDraft = {
   bestLabel: "",
   worstLabel: "",
 };
+
+/** Types answered through a list of options — selection questions and ranking alike. */
+function usesOptions(type: QuestionType) {
+  return type === "SINGLE_SELECT" || type === "MULTI_SELECT" || type === "RANKING";
+}
+
+/** Only select questions can carry an attention check's "pick this exact option" grading key. */
+function canBeAttentionCheck(type: QuestionType) {
+  return type === "SINGLE_SELECT" || type === "MULTI_SELECT";
+}
 
 const GENDERS: Gender[] = ["MALE", "FEMALE", "OTHER", "UNDISCLOSED"];
 const FILE_MEDIA_TYPES: Array<Exclude<MediaType, "TEXT">> = ["IMAGE", "VIDEO", "AUDIO"];
@@ -106,6 +125,7 @@ function toDraft(question?: AdminQuestion): QuestionDraft {
     type: question.type,
     prompt: question.prompt,
     mediaType: question.mediaType ?? "TEXT",
+    questionMediaId: question.mediaId ?? "",
     options:
       question.options.length > 0
         ? question.options.map((option) => ({ label: option.label ?? "", mediaId: option.mediaId ?? "" }))
@@ -151,6 +171,7 @@ export default function TestEditorPage() {
   const deactivateDialogRef = useRef<HTMLDialogElement>(null);
   const deleteDraftDialogRef = useRef<HTMLDialogElement>(null);
   const deleteQuestionDialogRef = useRef<HTMLDialogElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
   const [pendingDeleteQuestionId, setPendingDeleteQuestionId] = useState<string | null>(null);
   const [test, setTest] = useState<AdminTestDetail | null>(null);
   const [media, setMedia] = useState<AdminMedia[]>([]);
@@ -218,6 +239,14 @@ export default function TestEditorPage() {
     void fetchTest();
   }, [fetchTest]);
 
+  // A blank test arrives here straight from the picker, still called "Untitled test" —
+  // so naming it is the first thing waiting for the cursor.
+  useEffect(() => {
+    if (!loading && test?.status === "DRAFT" && test.title === UNTITLED_TEST) {
+      titleInputRef.current?.select();
+    }
+  }, [loading, test?.status, test?.title]);
+
   async function fetchMedia(mediaType: MediaType) {
     if (mediaType === "TEXT") {
       setMedia([]);
@@ -261,26 +290,19 @@ export default function TestEditorPage() {
       if (draft.worstLabel.trim()) config.worstLabel = draft.worstLabel.trim();
     }
 
-    const options =
-      draft.type === "RATING"
-        ? draft.options
-            .filter((option) => option.label.trim() || option.mediaId)
-            .slice(0, 1)
-            .map((option, index) => ({
-              label: option.label.trim() || undefined,
-              mediaId: option.mediaId || undefined,
-              order: index + 1,
-            }))
-        : draft.options.map((option, index) => ({
-            label: option.label.trim() || undefined,
-            mediaId: option.mediaId || undefined,
-            order: index + 1,
-          }));
+    const options = usesOptions(draft.type)
+      ? draft.options.map((option, index) => ({
+          label: option.label.trim() || undefined,
+          mediaId: option.mediaId || undefined,
+          order: index + 1,
+        }))
+      : [];
 
     return {
       type: draft.type,
       prompt: draft.prompt.trim(),
       mediaType: draft.mediaType,
+      mediaId: draft.mediaType === "TEXT" ? null : draft.questionMediaId || null,
       config,
       options,
       isAttentionCheck: draft.isAttentionCheck,
@@ -406,10 +428,27 @@ export default function TestEditorPage() {
     }
   }
 
+  // A rating question on a file media type has nothing to rate without its media, which the
+  // API rejects — so the button says so before the round trip.
+  const needsQuestionMedia =
+    draft.type === "RATING" && draft.mediaType !== "TEXT" && !draft.questionMediaId;
+  const canSaveQuestion = Boolean(draft.prompt.trim()) && !needsQuestionMedia;
+
   if (loading) return <p className="text-sm text-muted-foreground">Loading test...</p>;
   if (!test) return <Alert>{error || "Test not found"}</Alert>;
 
   const totalMinimum = Number(minTimePerQuestion || 0) * test.questions.length;
+
+  // Activation tops the test up to the attention-check quota its length earns. Admins had no
+  // way to know a question they never wrote was about to appear, so it is stated up front.
+  const scoredQuestionCount = test.questions.filter(
+    (question) => !question.isAttentionCheck && !question.isTrapDuplicate
+  ).length;
+  const attentionCheckCount = test.questions.filter((question) => question.isAttentionCheck).length;
+  const plannedAttentionChecks = Math.max(
+    0,
+    autoAttentionCheckCount(scoredQuestionCount) - attentionCheckCount
+  );
 
   return (
     <div className="space-y-6">
@@ -463,6 +502,7 @@ export default function TestEditorPage() {
                 <div className="grid gap-4 lg:grid-cols-2">
                   <Field label="Title" htmlFor="title">
                     <Input
+                      ref={titleInputRef}
                       id="title"
                       placeholder="Test title"
                       value={title}
@@ -741,7 +781,25 @@ export default function TestEditorPage() {
                   <dd className="tabular-nums">{formatTotalMinimum(totalMinimum)}</dd>
                 </div>
               )}
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">Attention checks</dt>
+                <dd className="tabular-nums">{attentionCheckCount}</dd>
+              </div>
             </dl>
+
+            {isDraft && (
+              <p className="text-xs text-muted-foreground">
+                {plannedAttentionChecks > 0
+                  ? `${plannedAttentionChecks} attention check${
+                      plannedAttentionChecks === 1 ? "" : "s"
+                    } will be added on activation (${scoredQuestionCount} scored question${
+                      scoredQuestionCount === 1 ? "" : "s"
+                    }).`
+                  : `No attention checks will be added on activation (${scoredQuestionCount} scored question${
+                      scoredQuestionCount === 1 ? "" : "s"
+                    }).`}
+              </p>
+            )}
 
             <div className="flex flex-col gap-2 border-t border-border pt-4">
               {isDraft && (
@@ -834,10 +892,12 @@ export default function TestEditorPage() {
                           : type === "RATING"
                           ? clampOptions(current.options, 0, 1)
                           : current.options,
+                      // Rating and ranking questions cannot carry an attention check's
+                      // "pick this exact option" key, so the flag goes with the type.
+                      isAttentionCheck: canBeAttentionCheck(type) ? current.isAttentionCheck : false,
                       // Neither check is meaningful for a ranking (prd.md 5.3.4): a trap
                       // duplicate compares option identity, which a ranking selects in full by
                       // construction, and there is no admin-facing way to key a "correct" order.
-                      isAttentionCheck: type === "RANKING" ? false : current.isAttentionCheck,
                       isTrapDuplicate: type === "RANKING" ? false : current.isTrapDuplicate,
                       trapSourceId: type === "RANKING" ? "" : current.trapSourceId,
                     }));
@@ -849,7 +909,14 @@ export default function TestEditorPage() {
                   <option value="RANKING">Ranking</option>
                 </Select>
               </Field>
-              <Field label="Option media" hint="Changing this clears the options.">
+              <Field
+                label={draft.type === "RATING" ? "Media type" : "Option media"}
+                hint={
+                  draft.type === "RATING"
+                    ? "The kind of media evaluators will be rating."
+                    : "Changing this clears the options."
+                }
+              >
                 <Select
                   aria-label="Option media type"
                   value={draft.mediaType}
@@ -858,6 +925,7 @@ export default function TestEditorPage() {
                     setDraft((current) => ({
                       ...current,
                       mediaType,
+                      questionMediaId: "",
                       options: clampOptions(
                         [],
                         current.type === "RANKING" ? RANKING_MIN_OPTIONS : current.type === "RATING" ? 0 : 2,
@@ -881,63 +949,70 @@ export default function TestEditorPage() {
                 />
               </Field>
             </div>
+
+            {/*
+              What the question is *about*, as opposed to what its options offer. A rating
+              question cannot carry options at all, so this is the only place the thing being
+              rated can come from.
+            */}
+            {draft.mediaType !== "TEXT" && (
+              <Field
+                label={draft.type === "RATING" ? "Media to rate" : "Question media"}
+                optional={draft.type !== "RATING"}
+                hint={
+                  draft.type === "RATING"
+                    ? "Shown above the rating scale."
+                    : "Shown above the options — the media the question asks about."
+                }
+              >
+                <Select
+                  aria-label="Question media"
+                  value={draft.questionMediaId}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, questionMediaId: event.target.value }))
+                  }
+                >
+                  <option value="">
+                    {media.length === 0
+                      ? `No ${draft.mediaType.toLowerCase()} media in the library`
+                      : "Select media"}
+                  </option>
+                  {media.map((item) => (
+                    <option key={item.id} value={item.id}>{item.fileName}</option>
+                  ))}
+                </Select>
+              </Field>
+            )}
           </section>
 
-          {(draft.type === "SINGLE_SELECT" ||
-            draft.type === "MULTI_SELECT" ||
-            draft.type === "RANKING" ||
-            draft.type === "RATING") && (
+          {usesOptions(draft.type) && (
             <section className="space-y-3 border-t border-border pt-5">
               <div className="flex items-center justify-between">
                 <h3 className="text-meta uppercase text-muted-foreground">
-                  {draft.type === "RATING"
-                    ? "Subject (optional)"
-                    : `Options (${draft.options.length})`}
+                  {`Options (${draft.options.length})`}
                   {draft.type === "RANKING" && ` — ${RANKING_MIN_OPTIONS} to ${RANKING_MAX_OPTIONS} required`}
                 </h3>
-                {draft.type !== "RATING" && (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() =>
-                      setDraft((current) => ({
-                        ...current,
-                        options: [...current.options, { label: "", mediaId: "" }],
-                      }))
-                    }
-                    disabled={draft.options.length >= (draft.type === "RANKING" ? RANKING_MAX_OPTIONS : 10)}
-                  >
-                    <Plus className="size-4" aria-hidden />
-                    Add Option
-                  </Button>
-                )}
-              </div>
-
-              {draft.type === "RATING" && (
-                <p className="text-sm text-muted-foreground">
-                  What evaluators are rating — a photo, clip, sound, or short label. Leave it empty to
-                  rate the prompt text alone.
-                </p>
-              )}
-
-              {draft.type === "RATING" && draft.options.length === 0 ? (
                 <Button
                   variant="secondary"
                   size="sm"
                   onClick={() =>
-                    setDraft((current) => ({ ...current, options: [{ label: "", mediaId: "" }] }))
+                    setDraft((current) => ({
+                      ...current,
+                      options: [...current.options, { label: "", mediaId: "" }],
+                    }))
                   }
+                  disabled={draft.options.length >= (draft.type === "RANKING" ? RANKING_MAX_OPTIONS : 10)}
                 >
                   <Plus className="size-4" aria-hidden />
-                  Add Subject
+                  Add Option
                 </Button>
-              ) : null}
+              </div>
 
               {draft.options.map((option, index) => (
                 <div key={index} className="grid gap-2 lg:grid-cols-[1fr_1fr_auto]">
                   <Input
-                    placeholder={draft.type === "RATING" ? "Subject label" : `Option ${index + 1} label`}
-                    aria-label={draft.type === "RATING" ? "Subject label" : `Option ${index + 1} label`}
+                    placeholder={`Option ${index + 1} label`}
+                    aria-label={`Option ${index + 1} label`}
                     value={option.label}
                     onChange={(event) => updateOption(index, { label: event.target.value })}
                   />
@@ -945,7 +1020,7 @@ export default function TestEditorPage() {
                     <Input value="Text option" aria-label="Option media" disabled />
                   ) : (
                     <Select
-                      aria-label={draft.type === "RATING" ? "Subject media" : `Option ${index + 1} media`}
+                      aria-label={`Option ${index + 1} media`}
                       value={option.mediaId}
                       onChange={(event) => updateOption(index, { mediaId: event.target.value })}
                     >
@@ -957,7 +1032,7 @@ export default function TestEditorPage() {
                   )}
                   <Button
                     variant="ghost"
-                    aria-label={draft.type === "RATING" ? "Remove subject" : `Remove option ${index + 1}`}
+                    aria-label={`Remove option ${index + 1}`}
                     className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                     onClick={() =>
                       setDraft((current) => ({
@@ -965,11 +1040,7 @@ export default function TestEditorPage() {
                         options: current.options.filter((_, itemIndex) => itemIndex !== index),
                       }))
                     }
-                    disabled={
-                      draft.type === "RATING"
-                        ? false
-                        : draft.options.length <= (draft.type === "RANKING" ? RANKING_MIN_OPTIONS : 2)
-                    }
+                    disabled={draft.options.length <= (draft.type === "RANKING" ? RANKING_MIN_OPTIONS : 2)}
                   >
                     <Trash2 className="size-4" aria-hidden />
                     Remove
@@ -1066,18 +1137,21 @@ export default function TestEditorPage() {
               {draft.type === "RANKING"
                 ? "Ranking questions aren't eligible as an attention check or trap duplicate."
                 : "A question can be an attention check or a trap duplicate, not both."}
+              {!canBeAttentionCheck(draft.type) &&
+                draft.type !== "RANKING" &&
+                " Only single and multi select questions can be attention checks."}
             </p>
             <div className="grid gap-4 lg:grid-cols-3">
               <label
                 className={`flex min-h-11 items-center gap-2 text-sm ${
-                  draft.isTrapDuplicate || draft.type === "RANKING" ? "text-muted-foreground" : ""
+                  draft.isTrapDuplicate || !canBeAttentionCheck(draft.type) ? "text-muted-foreground" : ""
                 }`}
               >
                 <input
                   type="checkbox"
                   className="size-4 rounded border-input accent-primary"
                   checked={draft.isAttentionCheck}
-                  disabled={draft.isTrapDuplicate || draft.type === "RANKING"}
+                  disabled={draft.isTrapDuplicate || !canBeAttentionCheck(draft.type)}
                   onChange={(event) =>
                     setDraft((current) => ({
                       ...current,
@@ -1140,7 +1214,7 @@ export default function TestEditorPage() {
           <Button variant="secondary" onClick={() => questionDialogRef.current?.close()} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={saveQuestion} disabled={saving || !draft.prompt.trim()}>
+          <Button onClick={saveQuestion} disabled={saving || !canSaveQuestion}>
             {saving ? "Saving..." : "Save Question"}
           </Button>
         </DialogFooter>

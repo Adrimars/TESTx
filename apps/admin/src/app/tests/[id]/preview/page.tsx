@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, GripVertical } from "lucide-react";
 import {
   Alert,
   Badge,
@@ -61,6 +61,41 @@ function QuestionPreview({ question }: { question: AdminQuestion }) {
             </button>
           ))}
         </div>
+      </div>
+    );
+  }
+
+  if (question.type === "RANKING") {
+    // Evaluators see the options shuffled and rank them; the preview shows the authored order.
+    const bestLabel = typeof question.config.bestLabel === "string" ? question.config.bestLabel : "Best";
+    const worstLabel = typeof question.config.worstLabel === "string" ? question.config.worstLabel : "Worst";
+    return (
+      <div className="space-y-3">
+        <div className="flex justify-between text-xs font-medium text-muted-foreground">
+          <span>{bestLabel}</span>
+          <span>{worstLabel}</span>
+        </div>
+        <ol className="grid gap-2.5">
+          {question.options.map((option, index) => (
+            <li
+              key={option.id}
+              className="flex items-center gap-3 rounded-lg border-2 border-border p-2.5"
+            >
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-sm font-bold tabular-nums text-muted-foreground">
+                {index + 1}
+              </span>
+              {option.mediaId && question.mediaType === "IMAGE" && (
+                <img
+                  src={`${API_URL}/media/${option.mediaId}/file`}
+                  alt={optionLabel(question, index)}
+                  className="h-12 w-20 shrink-0 rounded-md bg-muted object-cover"
+                />
+              )}
+              <span className="min-w-0 flex-1 text-sm font-medium">{optionLabel(question, index)}</span>
+              <GripVertical className="size-5 shrink-0 text-muted-foreground" aria-hidden />
+            </li>
+          ))}
+        </ol>
       </div>
     );
   }
@@ -162,6 +197,14 @@ export default function TestPreviewPage() {
             </div>
 
             <h2 className="text-xl font-semibold leading-snug text-foreground">{question.prompt}</h2>
+
+            {question.mediaId && (
+              <img
+                src={`${API_URL}/media/${question.mediaId}/file`}
+                alt={question.prompt}
+                className="max-h-80 w-full rounded-lg border border-border bg-muted object-contain"
+              />
+            )}
 
             <QuestionPreview question={question} />
 

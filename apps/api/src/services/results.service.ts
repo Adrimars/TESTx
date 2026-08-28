@@ -44,14 +44,32 @@ export type RatingAggregation = {
   distribution: Array<{ value: number; count: number }>;
 };
 
+export type RankingAggregation = {
+  /** One entry per option, best average rank first. */
+  ranks: Array<{
+    optionId: string;
+    label: string | null;
+    mediaId: string | null;
+    mediaUrl: string | null;
+    /** 1-based mean position across responses; null when nobody ranked the question. */
+    averageRank: number | null;
+    /** How many evaluators put this option in each position, index 0 = first place. */
+    positionCounts: number[];
+  }>;
+};
+
 export type QuestionResult = {
   questionId: string;
   prompt: string;
   type: QuestionType;
   mediaType: ResultQuestion["mediaType"];
+  /** The media the question was about, if any — the image rated, the clip ranked. */
+  mediaId: string | null;
+  mediaUrl: string | null;
   answeredCount: number;
   options?: OptionAggregation[];
   rating?: RatingAggregation;
+  ranking?: RankingAggregation;
 };
 
 export type SegmentBy = "gender" | "ageGroup" | "country";
@@ -66,6 +84,8 @@ function aggregateQuestion(question: ResultQuestion, answers: ResultAnswer[]): Q
     prompt: question.prompt,
     type: question.type,
     mediaType: question.mediaType,
+    mediaId: question.mediaId,
+    mediaUrl: question.mediaId ? `/media/${question.mediaId}/file` : null,
     answeredCount: answers.length,
   };
 
@@ -90,6 +110,44 @@ function aggregateQuestion(question: ResultQuestion, answers: ResultAnswer[]): Q
         percentage: denominator > 0 ? round((count / denominator) * 100) : 0,
       };
     });
+    return base;
+  }
+
+  // Ranking answers ride on `selectedOptions`, where the array position *is* the rank.
+  if (question.type === "RANKING") {
+    const optionCount = question.options.length;
+    const rankSums = new Map<string, number>();
+    const rankCounts = new Map<string, number>();
+    const positions = new Map<string, number[]>();
+    for (const option of question.options) {
+      positions.set(option.id, new Array<number>(optionCount).fill(0));
+    }
+
+    for (const answer of answers) {
+      answer.selectedOptions.forEach((optionId, index) => {
+        const slots = positions.get(optionId);
+        if (!slots || index >= optionCount) return;
+        slots[index] = (slots[index] ?? 0) + 1;
+        rankSums.set(optionId, (rankSums.get(optionId) ?? 0) + index + 1);
+        rankCounts.set(optionId, (rankCounts.get(optionId) ?? 0) + 1);
+      });
+    }
+
+    const ranks = question.options.map((option) => {
+      const count = rankCounts.get(option.id) ?? 0;
+      return {
+        optionId: option.id,
+        label: option.label,
+        mediaId: option.mediaId,
+        mediaUrl: option.mediaId ? `/media/${option.mediaId}/file` : null,
+        averageRank: count > 0 ? round((rankSums.get(option.id) ?? 0) / count) : null,
+        positionCounts: positions.get(option.id) ?? [],
+      };
+    });
+
+    // Best average rank first — an unranked option sorts last rather than ahead of everything.
+    ranks.sort((a, b) => (a.averageRank ?? Infinity) - (b.averageRank ?? Infinity));
+    base.ranking = { ranks };
     return base;
   }
 

@@ -30,6 +30,10 @@ export type AdminQuestion = {
   type: QuestionType;
   prompt: string;
   mediaType: MediaType | null;
+  /** The media the question is about — rated, ranked or judged. Never selectable. */
+  mediaId: string | null;
+  media: AdminMedia | null;
+  mediaUrl: string | null;
   order: number;
   config: Record<string, unknown>;
   isAttentionCheck: boolean;
@@ -112,14 +116,31 @@ export type RatingAggregation = {
   distribution: Array<{ value: number; count: number }>;
 };
 
+export type RankingAggregation = {
+  /** One entry per option, best average rank first. */
+  ranks: Array<{
+    optionId: string;
+    label: string | null;
+    mediaId: string | null;
+    mediaUrl: string | null;
+    averageRank: number | null;
+    /** How many evaluators put this option in each position, index 0 = first place. */
+    positionCounts: number[];
+  }>;
+};
+
 export type QuestionResult = {
   questionId: string;
   prompt: string;
   type: QuestionType;
   mediaType: MediaType | null;
+  /** The media the question was about, if any — the image rated, the clip ranked. */
+  mediaId: string | null;
+  mediaUrl: string | null;
   answeredCount: number;
   options?: OptionAggregation[];
   rating?: RatingAggregation;
+  ranking?: RankingAggregation;
 };
 
 export type TestResults = {

@@ -148,6 +148,10 @@ model Question {
   type             QuestionType
   prompt           String
   mediaType        MediaType?
+  /// The media the question is *about* — the image being rated, the clip being ranked.
+  /// Shown above the answer UI; unlike a QuestionOption it is never selectable.
+  mediaId          String?          @db.Uuid
+  media            Media?           @relation(fields: [mediaId], references: [id], onDelete: SetNull)
   order            Int
   config           Json             @default("{}")
   isAttentionCheck Boolean          @default(false)
@@ -161,6 +165,7 @@ model Question {
 
   @@unique([testId, order])
   @@index([testId, order])
+  @@index([mediaId])
 }
 
 model QuestionOption {
@@ -188,6 +193,7 @@ model Media {
   tags        String[]          @default([])
   uploadedAt  DateTime          @default(now())
   options     QuestionOption[]
+  questions   Question[]
 
   @@index([fileType])
 }
@@ -217,6 +223,8 @@ model Answer {
   response         TestResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
   questionId       String       @db.Uuid
   question         Question     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  /// Selected option IDs. For ORDERING questions this is the evaluator's ranking: a full
+  /// permutation of the question's options, best-first — the array order carries the answer.
   selectedOptions  String[]     @default([]) @db.Uuid
   ratingValue      Int?
   timeSpentSeconds Int

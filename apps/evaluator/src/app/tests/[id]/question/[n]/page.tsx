@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, GripVertical } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, GripVertical } from "lucide-react";
 import { Button } from "@testx/ui";
 import { useTestSession } from "@/components/test-session-provider";
 import { resolveMediaUrl } from "@/lib/api";
@@ -69,6 +69,34 @@ function OptionMedia({ option }: { option: QuestionOption }) {
       alt={label}
       className="aspect-video w-full bg-muted object-cover"
       loading="lazy"
+    />
+  );
+}
+
+/** The media a question is about, shown once above the answer UI at a readable size. */
+function QuestionMediaPanel({ question }: { question: Question }) {
+  const url = resolveMediaUrl(question.media?.url ?? question.mediaUrl);
+  if (!url) return null;
+  const kind = question.media?.fileType ?? "IMAGE";
+  const label = question.media?.fileName ?? question.prompt;
+
+  if (kind === "VIDEO") {
+    return (
+      <video src={url} controls className="mb-5 w-full rounded-lg border border-border bg-muted" />
+    );
+  }
+  if (kind === "AUDIO") {
+    return (
+      <div className="mb-5 rounded-lg border border-border bg-muted p-4">
+        <audio src={url} controls className="w-full" />
+      </div>
+    );
+  }
+  return (
+    <img
+      src={url}
+      alt={label}
+      className="mb-5 max-h-96 w-full rounded-lg border border-border bg-muted object-contain"
     />
   );
 }
@@ -226,24 +254,11 @@ function RatingQuestion({
   );
 }
 
-function RankingThumbnail({ option }: { option: QuestionOption }) {
-  const url = resolveMediaUrl(option.media?.url ?? option.mediaUrl);
-  if (!url) return null;
-  const kind = option.media?.fileType ?? "IMAGE";
-  if (kind === "VIDEO" || kind === "AUDIO") {
-    return (
-      <div className="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
-        {kind}
-      </div>
-    );
-  }
-  return <img src={url} alt="" className="size-12 shrink-0 rounded-md bg-muted object-cover" loading="lazy" />;
-}
-
 /**
- * Standard drag-to-reorder list (prd.md 5.3.4). Native HTML5 drag covers desktop pointers;
- * the up/down buttons are the touch-friendly path (drag doesn't work on mobile browsers
- * without extra plumbing) and double as a keyboard-accessible fallback.
+ * A drag-to-rank list. Dragging is the whole interaction: grab a row anywhere and the rows
+ * under it move aside live, so the list always reads as its current ranking. Keyboard users
+ * get the same thing through the grip, which is focusable and moves its row with the arrow
+ * keys — and that path is what makes the list usable without a pointer at all.
  */
 function RankingQuestion({
   question,
@@ -255,26 +270,86 @@ function RankingQuestion({
   onReorder: (ids: string[]) => void;
 }) {
   const config = question.config as { bestLabel?: string; worstLabel?: string };
-  // Until the evaluator makes a first move, show the options in their authored order.
-  const items = order.length === question.options.length ? order : question.options.map((o) => o.id);
-  const dragIndex = useRef<number | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOffset, setDragOffset] = useState(0);
+  const [announcement, setAnnouncement] = useState("");
+  /** Pointer position the current drag is measured from; shifts as rows swap under it. */
+  const grabY = useRef(0);
+  const rowRefs = useRef(new Map<string, HTMLLIElement>());
 
-  function move(index: number, direction: -1 | 1) {
-    const target = index + direction;
-    if (target < 0 || target >= items.length) return;
-    const next = [...items];
-    [next[index], next[target]] = [next[target]!, next[index]!];
+  const byId = new Map(question.options.map((option) => [option.id, option]));
+  // The session seeds a shuffled order; fall back to the authored one if it is ever missing.
+  const ranked = order.length === question.options.length
+    ? order.map((id) => byId.get(id)).filter((option): option is QuestionOption => option !== undefined)
+    : question.options;
+
+  function optionName(option: QuestionOption, index: number) {
+    return option.label ?? option.media?.fileName ?? `Option ${index + 1}`;
+  }
+
+  function moveTo(from: number, to: number) {
+    if (to < 0 || to >= ranked.length || to === from) return;
+    const next = ranked.map((option) => option.id);
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved!);
     onReorder(next);
   }
 
-  function handleDrop(index: number) {
-    const from = dragIndex.current;
-    dragIndex.current = null;
-    if (from === null || from === index) return;
-    const next = [...items];
-    const [moved] = next.splice(from, 1);
-    next.splice(index, 0, moved!);
-    onReorder(next);
+  function startDrag(event: React.PointerEvent, id: string) {
+    // Ignore secondary buttons so a right-click never leaves a row stuck to the pointer.
+    if (event.button !== 0) return;
+    // Capture on the row, not the grip: the row is what carries the move handlers, and it
+    // keeps receiving them even when the pointer runs past the end of the list.
+    rowRefs.current.get(id)?.setPointerCapture(event.pointerId);
+    setDraggingId(id);
+    setDragOffset(0);
+    grabY.current = event.clientY;
+  }
+
+  function onDrag(event: React.PointerEvent) {
+    if (!draggingId) return;
+    const index = ranked.findIndex((option) => option.id === draggingId);
+    if (index < 0) return;
+
+    // Neighbours are measured live: their rows are not translated, so their midpoints are
+    // where the dragged row would land if it were dropped now.
+    const goingDown = event.clientY > grabY.current;
+    const neighbour = ranked[goingDown ? index + 1 : index - 1];
+    const rect = neighbour ? rowRefs.current.get(neighbour.id)?.getBoundingClientRect() : undefined;
+    const draggedRect = rowRefs.current.get(draggingId)?.getBoundingClientRect();
+
+    if (rect && draggedRect) {
+      const midpoint = rect.top + rect.height / 2;
+      if ((goingDown && event.clientY > midpoint) || (!goingDown && event.clientY < midpoint)) {
+        // Shift the reference point by the distance the row just travelled — measured between
+        // slots rather than by row height, so the gap between rows is accounted for and the
+        // row keeps sitting under the pointer instead of drifting away from it.
+        const slotTop = draggedRect.top - dragOffset;
+        grabY.current += rect.top - slotTop;
+        moveTo(index, goingDown ? index + 1 : index - 1);
+      }
+    }
+
+    setDragOffset(event.clientY - grabY.current);
+  }
+
+  function endDrag(event: React.PointerEvent) {
+    if (!draggingId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setDraggingId(null);
+    setDragOffset(0);
+  }
+
+  function onGripKeyDown(event: React.KeyboardEvent, index: number, option: QuestionOption) {
+    const direction = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+    if (direction === 0) return;
+    const target = index + direction;
+    if (target < 0 || target >= ranked.length) return;
+    event.preventDefault();
+    moveTo(index, target);
+    setAnnouncement(`${optionName(option, index)} moved to position ${target + 1} of ${ranked.length}.`);
   }
 
   return (
@@ -285,53 +360,64 @@ function RankingQuestion({
           <span>{config.worstLabel ?? "Worst"}</span>
         </div>
       )}
-      <ol className="space-y-2">
-        {items.map((optionId, index) => {
-          const option = question.options.find((o) => o.id === optionId);
-          if (!option) return null;
+
+      <ol className="grid gap-2.5">
+        {ranked.map((option, index) => {
+          const dragging = draggingId === option.id;
           return (
             <li
-              key={optionId}
-              draggable
-              onDragStart={() => {
-                dragIndex.current = index;
+              key={option.id}
+              ref={(element) => {
+                if (element) rowRefs.current.set(option.id, element);
+                else rowRefs.current.delete(option.id);
               }}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={() => handleDrop(index)}
-              className="flex items-center gap-3 rounded-lg border-2 border-border bg-card p-2.5"
+              onPointerMove={onDrag}
+              onPointerUp={endDrag}
+              onPointerCancel={endDrag}
+              style={dragging ? { transform: `translateY(${dragOffset}px)` } : undefined}
+              className={`flex select-none items-center gap-3 rounded-lg border-2 bg-card p-2.5 ${
+                dragging ? "z-10 border-primary shadow-lg" : "border-border hover:border-primary/40"
+              }`}
             >
-              <GripVertical className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold tabular-nums text-foreground">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-sm font-bold tabular-nums text-muted-foreground">
                 {index + 1}
               </span>
-              <RankingThumbnail option={option} />
-              <span className="min-w-0 flex-1 truncate text-sm font-medium">
-                {option.label ?? option.media?.fileName ?? "Option"}
+
+              {option.mediaUrl && (
+                <div className="w-24 shrink-0 overflow-hidden rounded-md">
+                  <OptionMedia option={option} />
+                </div>
+              )}
+              <span className="min-w-0 flex-1 text-sm font-medium text-foreground">
+                {optionName(option, index)}
               </span>
-              <div className="flex shrink-0 flex-col">
-                <button
-                  type="button"
-                  aria-label="Move up"
-                  onClick={() => move(index, -1)}
-                  disabled={index === 0}
-                  className="flex size-11 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
-                >
-                  <ChevronUp className="size-4" aria-hidden />
-                </button>
-                <button
-                  type="button"
-                  aria-label="Move down"
-                  onClick={() => move(index, 1)}
-                  disabled={index === items.length - 1}
-                  className="flex size-11 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
-                >
-                  <ChevronDown className="size-4" aria-hidden />
-                </button>
-              </div>
+
+              {/*
+                Dragging starts here rather than anywhere on the row for two reasons: a row can
+                hold a video or audio player whose controls need the same presses, and on a
+                phone a row-wide drag target would eat the scroll gesture.
+              */}
+              <button
+                type="button"
+                aria-label={`Reorder ${optionName(option, index)}, position ${index + 1} of ${
+                  ranked.length
+                }. Use the arrow keys to move it.`}
+                onPointerDown={(event) => startDrag(event, option.id)}
+                onKeyDown={(event) => onGripKeyDown(event, index, option)}
+                className={`flex min-h-11 w-11 shrink-0 touch-none items-center justify-center self-stretch rounded-md text-muted-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 ${
+                  dragging ? "cursor-grabbing bg-primary/10 text-primary" : "cursor-grab hover:bg-accent"
+                }`}
+              >
+                <GripVertical className="size-5" aria-hidden />
+              </button>
             </li>
           );
         })}
       </ol>
+
+      <p aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
     </div>
   );
 }
@@ -396,7 +482,10 @@ export default function QuestionPage() {
       return selected.length >= (config.minSelections ?? 1);
     }
     if (question!.type === "RATING") return ratingValue !== null;
-    if (question!.type === "RANKING") return selected.length === question!.options.length;
+    if (question!.type === "RANKING") {
+      // The list arrives pre-filled with a shuffle, so only a deliberate rearrangement counts.
+      return selected.length === question!.options.length && answer?.orderTouched === true;
+    }
     // A type this app cannot render yet must not trap the evaluator on a dead question
     // with Next disabled forever. Treating it as answerable lets them move past it, and
     // the empty answer submits as a skip, which the API accepts.
@@ -444,6 +533,8 @@ export default function QuestionPage() {
 
       <h1 className="mb-5 text-xl font-semibold leading-snug text-foreground">{question.prompt}</h1>
 
+      <QuestionMediaPanel question={question} />
+
       {question.type === "SINGLE_SELECT" && (
         <SingleSelectQuestion
           question={question}
@@ -469,7 +560,7 @@ export default function QuestionPage() {
         <RankingQuestion
           question={question}
           order={selected}
-          onReorder={(ids) => setAnswer(question.id, { selectedOptionIds: ids })}
+          onReorder={(ids) => setAnswer(question.id, { selectedOptionIds: ids, orderTouched: true })}
         />
       )}
       {!RENDERABLE_TYPES.has(question.type) && (

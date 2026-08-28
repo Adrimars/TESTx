@@ -11,6 +11,8 @@ export const questionSchema = z.object({
   type: z.enum(QUESTION_TYPES),
   prompt: z.string().min(1),
   mediaType: z.enum(MEDIA_TYPES).nullable().optional(),
+  /** The media the question is about, shown above the answer UI. Never selectable. */
+  mediaId: z.string().uuid().nullable().optional(),
   config: z.record(z.unknown()).default({}),
   options: z.array(questionOptionSchema).default([]),
   isAttentionCheck: z.boolean().default(false),
