@@ -707,3 +707,383 @@ Phase 0 (Scaffolding) ──→ Phase 1 (Auth) ──→ Phase 2 (Media) ──�
 - [ ] Admin results page shows demographic breakdown
 - [ ] Responsive: evaluator app works on mobile
 - [ ] Rate limiting prevents auth endpoint abuse
+
+---
+
+## Phase 9: Mobile App — Foundation & Auth
+
+> Scope: see prd.md §15 for the full concept (continuous swipeable feed, per-question-type interactions, reward model, design language). This phase is scaffolding + the one required backend change.
+
+### 9.1 Backend — Bearer Token Auth
+- Extend `apps/api/src/middleware/authenticate.ts` (`authenticateUser`) to accept `Authorization: Bearer <token>` as a fallback when `request.cookies.access_token` is absent. Cookie path stays exactly as-is — web apps must be unaffected.
+- Update `/auth/register`, `/auth/login`, and `/auth/refresh` (`apps/api/src/routes/auth.ts`) to also return `{ accessToken, refreshToken }` in the JSON body, alongside the existing `setAuthCookies` call.
+- No new endpoints needed — `/evaluator/next-test`, `/evaluator/tests/:id`, `/evaluator/tests/:id/submit`, `/evaluator/balance` are reused unchanged from mobile.
+
+### 9.2 Mobile App Scaffolding
+- New `apps/mobile` package (Expo, TypeScript), added to `pnpm-workspace.yaml` and `turbo.json`.
+- `expo-router` file-based navigation; base screens: splash/auth-check, login, register, profile-onboarding, feed (empty placeholder for now).
+- Depend on `packages/shared` for Zod schemas/types (register/login/evaluatorProfile schemas reused as-is).
+- `@tanstack/react-query` client wired to the API base URL (env-configurable, mirrors `apps/evaluator`'s API client pattern).
+
+### 9.3 Mobile Auth & Onboarding
+- Login/register screens call `/auth/login` / `/auth/register`; store returned `accessToken`/`refreshToken` in `expo-secure-store`; attach `Authorization: Bearer` header on all subsequent requests.
+- Silent refresh: on 401, call `/auth/refresh` with the stored refresh token, retry once.
+- **Entry screen layout:** email/password and **Google sign-in are equally prominent, both on the first screen** (not Google buried behind an "other options" tap) — reuse the existing `/auth/google` web redirect flow via an in-app browser (`expo-auth-session`/`expo-web-browser`), landing back in the app with tokens.
+- **18+ age gate:** registration blocks self-declared ages under 18 (checked against the `age` field collected in profile onboarding, or a separate up-front birthdate/age check before that step). See `kvkk-compliance-research.md` §5 — this sidesteps the unresolved TMK minor-consent question rather than trying to answer it. **This is separate from, and should not be confused with, the store's own age-rating/content questionnaire** (App Store Connect / Google Play IARC) — answer those honestly based on actual app content (likely 4+/9+, since TESTx has no mature content by design), don't force a hard 18+ store rating just because registration itself is gated at 18+ (`appstore-playstore-compliance-research.md` §5, §9c).
+- **KVKK — two separate steps (revised, not the old single checkbox), mobile-only:** see `kvkk-compliance-research.md` (full research) and prd.md §15.9 for the reasoning; Kurul İlke Kararı 2026/347 prohibits merging disclosure and consent.
+  - Add `aydinlatmaAcknowledgedAt DateTime?` and `acikRizaAcceptedAt DateTime?` to `User` (Prisma migration) — **replaces** the previously planned single `kvkkAcceptedAt` field.
+  - Registration flow shows (1) a dedicated Aydınlatma Metni screen — full Article 10 disclosure text, explicitly mentioning Google infrastructure involvement — with a non-consent "read/acknowledged" confirmation, blocking registration until acknowledged; then (2) a **separate, narrowly-labeled açık rıza checkbox**, only if needed at all. Since the avatar is a bundled preset picker (8.4), not a photo upload, the only realistic candidate left is the Google cross-border transfer, pending legal confirmation — don't attach consent to account/demographic data that already rests on contract-performance, per the 2021/389 precedent. If legal review confirms Google's own DPA/standard-contract terms already cover the transfer, v1 may need **no açık rıza checkbox at all** — don't build one speculatively.
+  - **Blocker, not just a nice-to-have:** the actual Aydınlatma Metni / Açık Rıza Metni text content doesn't exist yet anywhere in the repo. Drafting it (legal skeleton is in `kvkk-compliance-research.md`) and getting a KVKK-experienced lawyer's sign-off is required before this ships to production, even though the UI/schema work above can proceed in parallel.
+  - Web registration is untouched (prd.md §15.11).
+- Profile onboarding screen: native form for `evaluatorProfileSchema` fields (age, gender, country, city, etc.), calling `PUT /evaluator/profile` — required before `/evaluator/next-test` will return anything (`PROFILE_REQUIRED`).
+
+### 9.4 Profile & Account Management
+- New `User.avatarId Int?` field (Prisma migration) — no upload endpoint, no photo storage. A fixed set of **8–10 preset avatar images** ships as static assets bundled inside the `apps/mobile` app itself (not served from the backend); `avatarId` just records which one the evaluator picked.
+- Profile screen: every `EvaluatorProfile` field editable in place (reuses `evaluatorProfileSchema` + `PUT /evaluator/profile`), plus an **avatar picker** — a grid of the 8–10 bundled presets, tap to select, `PUT /users/me` with the chosen `avatarId`.
+- Logout: clear `expo-secure-store` tokens, return to the entry screen.
+
+### 9.4a Account Deletion
+- **Confirmed hard blocker for both stores** (`appstore-playstore-compliance-research.md` §3, §9a) — Apple Guideline 5.1.1(v) and Google Play's account-deletion policy both require genuine in-app, self-service account deletion the moment an app supports account creation, with no MVP exception and no "email support to delete" carve-out (that carve-out is limited to "highly-regulated industries," which TESTx isn't). Deactivation/sign-out alone does not satisfy either policy. This must land **before** any store submission, not after.
+- Backend: a `DELETE /users/me` endpoint that deletes the `User` row (cascades `EvaluatorProfile` — already `onDelete: Cascade` in the schema) and disposes of/anonymizes `TestResponse`/`Answer` history, subject to whatever disclosed retention TESTx keeps for fraud-prevention/legal purposes (both stores explicitly allow disclosed retention exceptions, same as KVKK Article 7/11 — see `kvkk-compliance-research.md` §6).
+- Mobile: a "Delete Account" action on the profile screen (discoverable, not buried in a sub-menu three taps deep), with an explicit confirmation step before the irreversible call.
+- Google Play additionally requires a **web-reachable deletion request path** outside the app (covers a user who already deleted the app) — a simple hosted form or documented deletion-request page satisfies this; the in-app path remains primary.
+- Shared backend endpoint is available to both mobile and web — decide separately whether `apps/evaluator` gets its own "Delete Account" UI entry point (only mobile is store-gated, but the KVKK deletion right applies regardless of platform, so parity is the more coherent long-term move even though not required for this phase's exit criteria).
+
+### 9.5 Device-Based Multi-Account Guard
+- A points-for-answers economy is a natural target for one person farming rewards through multiple fake accounts. Web has no defense against this beyond email/Google-ID uniqueness; mobile can do better because a device identity is available.
+- At registration, the mobile app sends a stable device identifier (`expo-application`'s installation ID, or a Play Integrity/App Attest attestation token if stronger assurance is needed later) alongside the register call.
+- Backend: new `DeviceRegistration` record (`deviceId`, `userId`, `createdAt`) or a `User.registrationDeviceId String?` column (Prisma migration). Registration is not hard-blocked on a repeat device (avoids false positives from shared/family devices) — instead, a repeat-device signup is flagged (e.g., a new `isDeviceFlagged Boolean` on `EvaluatorProfile`, or reuse the existing flagging vocabulary from `qualityService`) for review, same spirit as the existing response-flagging system rather than a hard account block.
+- This is v1-scoped as detection/flagging, not prevention — an actual ban/appeal workflow is a follow-up if farming turns out to be a real problem in practice.
+
+### 9.6 Minimum App Version Enforcement (Forced Update)
+- Needed because the question-type set grows over time (Ranking now, more later per Phase 13's pattern) — an old app build that doesn't know how to render a new `QuestionType` must not be allowed to silently break or crash mid-feed.
+- Backend: a small `GET /mobile/min-version` endpoint (or a static config value) returning the current minimum supported app version.
+- Mobile: on launch, compare the running app's version (`expo-application` or `expo-updates` version info) against the minimum; if below it, show a **non-dismissible "update required" screen** with a direct link to the App Store/Play Store listing — no partial/degraded access to the feed. This is the "force update" policy chosen over graceful per-question-type degradation.
+- Whenever Phase 13 (or any future phase) ships a new `QuestionType`, bump the enforced minimum version as part of that phase's rollout so older installs are forced to update before they can hit a question type they can't render.
+
+### Phase 9 Exit Criteria
+- [ ] A request with only an `Authorization: Bearer` header (no cookie) succeeds against an authenticated endpoint; a request with only the cookie still succeeds unchanged
+- [ ] `/auth/login` and `/auth/register` responses include `accessToken`/`refreshToken` in the JSON body in addition to setting cookies
+- [ ] Mobile app can register, log in, complete profile onboarding, and reach an authenticated placeholder feed screen
+- [ ] Registration is blocked for self-declared ages under 18
+- [ ] Registration is blocked until the Aydınlatma Metni is acknowledged (setting `User.aydinlatmaAcknowledgedAt`); the açık rıza checkbox (setting `User.acikRizaAcceptedAt`) is presented as a visibly separate action, not merged with or nested inside the disclosure acknowledgment
+- [ ] Registration is **not** blocked by the açık rıza checkbox for any user who declines it, unless that specific consented processing is genuinely required for the account to function (per the 2021/389 precedent in `kvkk-compliance-research.md` §8)
+- [ ] Aydınlatma Metni / Açık Rıza Metni text content has been drafted and signed off by a KVKK-experienced lawyer before this phase ships to production (tracked separately from the engineering work, which can proceed against placeholder text)
+- [ ] Google sign-in is reachable directly from the entry screen, not nested behind another tap
+- [ ] Evaluator can edit every profile field and pick/change a preset avatar after registration; changes persist across app restarts
+- [ ] Evaluator can delete their account from the profile screen (with confirmation); `DELETE /users/me` removes the account and cascades associated data per the disclosed retention rule; a deleted account cannot log back in
+- [ ] A web-reachable account-deletion request path exists outside the app (Google Play requirement)
+- [ ] Logout clears stored tokens and returns to the entry screen; a subsequent app launch requires login again
+- [ ] Expired access token triggers a silent refresh via the stored refresh token without logging the user out
+- [ ] Web apps (`apps/evaluator`, `apps/admin`) pass their existing auth flows unmodified
+- [ ] A registration from a device that already has an account flags the new signup (`isDeviceFlagged` or equivalent) without blocking it
+- [ ] An app build below the enforced minimum version shows the non-dismissible update screen and cannot reach the feed; a build at or above it launches normally
+
+---
+
+## Phase 10: Mobile App — Swipe Engine (Per-Question-Type Cards)
+
+### 10.1 Card Primitive
+- Shared gesture-driven card component (`react-native-gesture-handler` + `react-native-reanimated`): tracks drag position, exposes directional/target-proximity callbacks, animates fly-away/snap-back and commit transitions.
+- Card stack renderer: active card + 1–2 peeking cards behind it, pulled from an in-memory queue of upcoming questions.
+
+### 10.2 Single Select — 2 Options
+- Full-screen card, two labeled zones (or implicit left/right meaning shown via option labels/media), swipe right → first option, swipe left → second option, commit on release past a distance/velocity threshold.
+
+### 10.3 Single Select — 3+ Options
+- Card rendered without swipe-to-choose; tappable option list docked below (reuse selection styling patterns from `apps/evaluator`'s `OptionShell`, ported to React Native).
+
+### 10.4 Multi Select
+- Sub-deck of one card per option; swipe right = include, swipe left = skip; enforce `config.minSelections`/`maxSelections` from the question; sub-deck completion advances the outer feed to the next question.
+
+### 10.5 Rating (Drag-to-Target)
+- 5 target pills fixed to the right edge, ordered top(1)→bottom(5). Proximity-based scale-up animation as the dragged card approaches a target. Release-over-target commits that value and advances; release elsewhere springs the card back to center uncommitted.
+- **Safe-area constraint:** the target column is laid out inside `react-native-safe-area-context`'s safe area, not raw screen edges — on iOS this keeps the top/bottom-most pills clear of the notch/Dynamic Island and the home-indicator strip; on Android it clears the gesture-navigation bar. Verify on at least one notched iPhone and one gesture-nav Android device, not just a simulator with default insets.
+
+### 10.6 Ranking (Drag-to-Slot)
+- **Depends on Phase 13** (Ranking is a new cross-app question type — schema, admin authoring, and web rendering land there; this subsection is the mobile card interaction only).
+- Reuses the Rating target-pill component with N slots (3–5) instead of 5, labeled 1→N. Each of the question's options is its own card in a sub-deck (same pattern as Multi Select's sub-deck); the evaluator drags each card, one at a time, onto an open slot.
+- Once a slot is filled it is removed as a valid drop target for the remaining cards (query the in-progress placement map before allowing a commit) — this is what makes the ordering strict rather than allowing ties.
+- Submits as the full ordered array of option IDs (index 0 = slot 1 = best) into the same `selectedOptionIds` shape the API already accepts — no new answer payload shape needed.
+
+### 10.7 Back / Undo
+- One level of recallable history: Back re-surfaces the previous card unanswered; a new swipe/drag replaces its answer; the deck then auto-resumes forward from that point.
+
+### 10.8 First-Run Gesture Tutorial
+- Swipe-left/right for Single Select and Multi Select needs no explanation (universal Tinder-style muscle memory), but **drag-to-target** (Rating, Ranking) is a novel gesture most users have never seen — an unexplained first encounter risks confused/careless answers, which directly pollutes the quality-control signal Phase 10.5/10.6 and `qualityService` are trying to protect.
+- On the evaluator's first-ever Rating card and first-ever Ranking card (tracked locally, e.g. `hasSeenRatingTutorial`/`hasSeenRankingTutorial` flags in device storage — not server state), overlay a brief animated hint (a ghost card visibly dragging itself to a target, 1-2 seconds, dismissable by starting to drag) before the real interaction becomes active. Does not repeat after the first showing.
+
+### Phase 10 Exit Criteria
+- [ ] Each question type (Single Select 2-option, Single Select 3+, Multi Select, Rating, Ranking) renders and can be answered entirely through its designed gesture/tap interaction, driven by real test data from `/evaluator/tests/:id`
+- [ ] Multi Select sub-deck respects configured min/max selections before advancing
+- [ ] Rating targets visibly enlarge on proximity and commit the correct 1–5 value on release, and stay clear of the device safe area on a notched iPhone and a gesture-nav Android device
+- [ ] Ranking slots fill in order, a filled slot rejects further drops, and the submitted order matches what the evaluator placed
+- [ ] Back reliably re-shows the previous card and accepts a new answer without corrupting later answers already given
+- [ ] Media (image/video/audio) loads and plays correctly inside a card for all `MediaType`s
+- [ ] The drag-to-target tutorial overlay shows exactly once per gesture type on a fresh install, then never again
+
+---
+
+## Phase 11: Mobile App — Continuous Feed, Progress & Rewards
+
+### 11.1 Feed Orchestration
+- Feed screen owns: current test's question queue, the in-memory answers map (same shape as `apps/evaluator`'s test-session state), and the "questions remaining" counter.
+- Background prefetch: when 1–2 questions remain in the current test, call `GET /evaluator/next-test`; if a test is returned, prefetch `GET /evaluator/tests/:id` and its first card's media before the current test's last card is even answered.
+
+### 11.2 Progress Indicator
+- Instagram-Stories-style thin segmented bars at the top, one segment per question in the current test; resets when the feed transitions into a new test.
+
+### 11.3 Test Completion & Reward
+- On the last answered card: fire `POST /evaluator/tests/:id/submit` with the full collected answers (background, non-blocking), decrement the remaining-questions counter to 0, and show a "test complete — you earned X points" popup using the response's `pointsEarned`.
+- If a next test was prefetched, dismiss the popup into a seamless continuation of the feed; otherwise show an empty/"come back later" state.
+- Handle `ALREADY_SUBMITTED` / `CAPACITY_REACHED` / `NOT_ELIGIBLE` responses gracefully by skipping to the next prefetch attempt instead of surfacing a raw error mid-feed.
+
+### 11.4 Submission Resilience (Offline-Safe Rewards)
+- The whole reward loop hinges on one background `submit` call succeeding at exactly the moment a phone is most likely to have a flaky connection or get backgrounded/killed (end of a session, user moving on). Losing a completed test's answers to a dropped request would cost an honest evaluator their earned points — this needs to be treated as a reliability requirement, not left to a bare `fetch`.
+- Persist the in-progress answers map (and the finished-but-not-yet-confirmed-submitted payload) to on-device storage (`expo-sqlite` or `@react-native-async-storage/async-storage`) as the evaluator progresses through a test, not just in memory — so a killed app doesn't lose an almost-finished test either.
+- On submit failure (network error, timeout — not a definitive rejection like `ALREADY_SUBMITTED`), keep the payload queued on-device and retry with backoff; also retry once automatically on next app launch if a submission was left pending.
+- Only clear the persisted payload once the server confirms success (or a definitive terminal rejection). Show the evaluator an honest "syncing…" state if a submission is still pending rather than falsely declaring completion.
+
+### Phase 11 Exit Criteria
+- [ ] Finishing a test's last question submits automatically and shows the correct points-earned popup
+- [ ] The next test (if any) begins with no visible loading gap after the completion popup
+- [ ] The remaining-questions counter and Stories-style progress bar stay in sync with the actual current test/question at all times, including after Back
+- [ ] Reaching the end of all eligible tests shows an empty state instead of erroring
+- [ ] Balance shown in the app matches `GET /evaluator/balance` after each completed test
+- [ ] Killing the app (or losing network) immediately after finishing a test's last card does not lose the completed answers — the pending submission retries and succeeds once connectivity/app state recovers
+- [ ] A submission that's still pending shows an honest "syncing" state rather than a false completion popup
+
+---
+
+## Phase 12: Mobile App — Design System Implementation
+
+> Full spec: prd.md §16 (Mobile Design System). This phase turns that spec into actual tokens/components — it is not a cosmetic pass at the end, it underpins every screen built in Phases 8–10, so token setup (11.1) should land early and get retrofitted, not bolted on last.
+
+### 12.1 Card Interaction Fixes (from Phase 10 field testing)
+- **Two-option comparison card only shows half the photo** — `TwoOptionCard` splits the card into two side-by-side halves, each rendering its option's photo through `CardMedia`'s cover crop; at half width most of the image is cropped out and never seen. Selecting/tapping a side should let the evaluator see that option's full, uncropped photo before committing to it.
+- **Peeking cards' text clutters the view** — `CardStack` keeps 1–2 upcoming cards visible behind the active one (10.7/prd.md §15.3) at only slightly reduced opacity, and their prompt/caption text stays legible enough to visually mix with the active card's own text. Peeking cards' text should be hidden or dimmed further so only the active card reads clearly.
+- **Ranking card gets stuck after the first placement** — `RankingCard` swaps `current` (the option being shown) in place on one persistent `SwipeCard` instance rather than remounting a fresh one per option, unlike `CardStack`, which unmounts a card specifically to reset its drag offset and committed latch (see `CardStack.tsx`'s own comment on this). After the first photo is dragged onto a slot, the next option's card doesn't reliably reset, leaving the rest of the ranking unreachable.
+- **Filled ranking slots show only a number, not the photo** — once a card is placed, its slot (`RankSlot`) shows just the rank number. A small thumbnail of the placed photo inside the slot would let the evaluator see their whole ranking at a glance.
+- **No way to revise one ranking placement** — the only undo is the outer deck's Back (10.7), which discards the *entire* question's placements, not one card. Tapping a filled slot should pull that card back out for re-placing without losing the other placements.
+
+### 12.2 Design Tokens
+- `apps/mobile` theme module encoding prd.md §16.2's color tokens (`surface-base`, `surface-raised`, `surface-overlay`, `border-hairline`, `text-primary`, `text-secondary`, `accent`, `accent-contrast`, `success`, `danger`) and §16.3's type scale, as plain constants or via `nativewind` if adopted in Phase 9.2.
+- Dark-only (no light theme in v1, prd.md §16.7) — no theme-switch logic needed yet.
+
+### 12.3 Motion Primitives
+- Shared `react-native-reanimated` spring presets matching prd.md §16.4: card-commit fly-off, card-reject snap-back, target-proximity scale curve, popup overshoot — implemented once and reused by every card/target component from Phase 10, not redefined per screen.
+- `expo-haptics` tick wired to the Rating/Ranking commit-threshold crossing.
+- **Tap-selection feedback for `OptionListCard` (10.3) and the option tiles inside `MultiSelectCard`'s summary state** — picking a tile currently just flips border/background color instantly, with no scale, checkmark, or fade transition. The swipe and drag cards already have motion (highlight opacity, fly-away, proximity scale); the tap-to-select path is the one interaction in the deck with none, and it should use the same spring presets defined above rather than a one-off `Animated.timing` bolted onto that component alone.
+
+### 12.4 Component Library
+- Card, target pill, progress-segment bar, counter chip, and empty/error state components per prd.md §16.6 — built as the shared primitives Phases 9–10 consume, so those phases don't each invent their own card/pill styling.
+
+### 12.5 Iconography & Media Treatment
+- `lucide-react-native` wired in with 1.5px stroke icons (prd.md §16.5); full-bleed crop (never letterbox) confirmed for image and video cards.
+
+### 12.6 Accessibility & Reduced Motion
+- Every gesture-driven interaction (swipe, drag-to-rate, drag-to-rank) gets a tap-based fallback path.
+- OS-level Reduce Motion setting collapses every spring from 12.3 to an instant/short fade, verified on both iOS and Android.
+- 44×44pt minimum touch target audit across all interactive elements, including target pills at rest size.
+- Safe-area audit: the Rating/Ranking target column (9.5/9.6) and any other edge-anchored chrome sit inside `react-native-safe-area-context` insets on every screen, checked against a notched iPhone and a gesture-nav Android device, not just default-inset simulators.
+
+### Phase 12 Exit Criteria
+- [ ] The two-option card's full-photo view, the peeking-card text clutter, and the Ranking card's stuck-after-first-placement bug (12.1) are all fixed and re-verified on-device
+- [ ] A design/style review confirms no default/unstyled native components remain on any mobile screen (auth, profile, feed, card, rewards, completion)
+- [ ] Color and type tokens are defined in one place and consumed everywhere — no ad-hoc hex values or font sizes scattered in screen code
+- [ ] Reduced-motion setting produces a usable tap-based fallback for every question type, verified on-device
+- [ ] Core interactions (swipe, drag-to-rate, drag-to-rank, undo, completion) use the shared spring presets from §12.3, not one-off animation code
+
+---
+
+## Phase 13: Ranking Question Type (Cross-App Rollout)
+
+> New `QuestionType` value — touches the database, the API, the admin app, and the web evaluator app, not just mobile. Should land before or alongside Phase 10.6, since mobile's ranking card depends on this existing.
+
+### 13.1 Database & Validation
+- Add `RANKING` to the `QuestionType` enum (`packages/database/prisma/schema.prisma`) + migration.
+- `apps/api/src/routes/evaluator.ts` `validateAnswers()`: for `RANKING`, require `selectedOptionIds` to be a permutation of exactly all of the question's option IDs (same length, no duplicates, every option covered) — reuses the existing array field, no new `Answer` column.
+- `PUBLIC_CONFIG_KEYS`/`publicConfig()`: expose whatever ranking-specific config the admin sets (e.g., endpoint labels) the same way `RATING`'s `min`/`max`/labels are exposed today.
+- `apps/api/src/services/quality.service.ts`: explicitly exclude `RANKING` from `COMPARABLE_TRAP_TYPES` (already true by construction — just confirm/document — prd.md §9.3).
+
+### 13.2 Admin Authoring UI
+- `apps/admin`: new question-type option in the test/question builder — pick 3–5 options (media or text), optional endpoint labels ("Best"/"Worst"). Enforce the 3–5 cap client- and server-side.
+
+### 13.3 Web Evaluator UI
+- `apps/evaluator`'s question-taking page (`apps/evaluator/src/app/tests/[id]/question/[n]/page.tsx`): new `RankingQuestion` component, standard drag-to-reorder list (no swipe/target styling needed here — prd.md §5.3.4), wired into `hasAnswer()`/`setAnswer()` alongside the existing three types.
+
+### Phase 13 Exit Criteria
+- [ ] Admin can create a test containing a Ranking question with 3–5 options
+- [ ] A submitted ranking answer that isn't a full permutation of the question's options is rejected with a 400
+- [ ] Web evaluator can complete a Ranking question via drag-to-reorder and submit successfully
+- [ ] Mobile evaluator can complete the same Ranking question via drag-to-slot (Phase 10.6) and both clients produce answers in the same stored shape
+
+---
+
+## Phase 14: Rewards Catalog (Admin + Mobile)
+
+> Catalog browsing is in scope now; the actual redemption/purchase action is deferred (prd.md §10.2a, §15.10, §15.11).
+
+### 14.1 Database & Backend
+- New `Coupon` model (`packages/database/prisma/schema.prisma`): `title`, `description`, `imageUrl`, `pointsCost`, `isActive`, `displayOrder` + migration.
+- Admin CRUD endpoints (`apps/api`): create/update/list/deactivate coupons.
+- Evaluator-facing read endpoint: `GET /evaluator/coupons` — active coupons only, ordered by `displayOrder`.
+
+### 14.2 Admin UI
+- New admin screen (prd.md §11.4): list + create/edit form for catalog items, image upload reusing the existing media-upload pattern, active/inactive toggle.
+
+### 14.3 Mobile Shop Screen
+- New feed-adjacent screen listing catalog items with image, title, point cost, and the evaluator's current balance (`GET /evaluator/balance`) for comparison.
+- Tapping an item's redeem action shows a "Coming Soon" state — no balance mutation in v1.
+- **Store-listing note** (`appstore-playstore-compliance-research.md` §9e): no policy issue with the "browsing only" design itself, but when store-listing copy/screenshots are written for this feature, don't depict or describe redemption as functional (e.g., a screenshot of tapping "Redeem" should show the "Coming Soon" state, not imply a working purchase) — otherwise it risks an Apple Guideline 2.3 / Google metadata-accuracy issue, unrelated to the rewards/gambling policies themselves.
+
+### Phase 14 Exit Criteria
+- [ ] Admin can create, edit, and deactivate catalog items; inactive items don't appear on mobile
+- [ ] Mobile Rewards screen lists active items in `displayOrder` with correct images, titles, and point costs
+- [ ] Tapping redeem shows "Coming Soon" and does not change the evaluator's balance
+- [ ] Evaluator's balance shown on the Rewards screen matches `GET /evaluator/balance`
+
+---
+
+## Phase 15: Mobile App — Rating/Ranking Redesign, Free-Form Multi-Select & First-Test Onboarding
+
+> Field feedback after Phase 12 shipped its design system and gesture fallbacks: Rating and Ranking read as the same component wearing two labels, the answer column sits on top of the photo instead of beside it, Ranking's revise flow needs a shortcut, Multi-Select's min forces a retry-loop nobody asked for, and a first-time evaluator gets no walkthrough at all before their first real test.
+
+### 15.1 Multi-Select: Independent Like/Dislike, No Forced Minimum
+- Each option in a Multi-Select sub-deck should be a fully independent "did you like this one or not" decision — swiping through and liking zero, some, or all of them is a complete, valid answer. Nothing about the flow should nudge the evaluator toward a middle-ground count.
+- `apps/mobile/src/lib/swipe.ts`'s `advanceSubDeck`: drop the `"reconsider"` step entirely — reaching the end of the queue always completes the question with whatever got included, never re-offers the skipped options to force a minimum. Confirmed safe: `apps/api/src/routes/evaluator.ts`'s `validateAnswers()` never enforced `minSelections` server-side in the first place (only `maxSelections` is checked) — this was a mobile-only UX choice, not a contract the API depends on, so removing it has no server-side follow-up.
+- `maxSelections` stays respected where an admin has actually set one (the API does enforce that upper bound, so mobile still has to pre-empt it exactly as `MultiSelectCard.tsx`'s `atMax` guard does today) — the difference is there's no floor, only an optional ceiling.
+- Out of scope for this phase: whether `minSelections` should be removed from the admin authoring UI (`apps/admin`) and web evaluator (`apps/evaluator`) entirely, or just stop being treated as a mobile retry-trigger. Decide at implementation time; don't silently change what other apps store/expect from the same config key.
+
+### 15.2 Rating vs. Ranking: Distinct Shapes, Not the Same Component Twice
+- Right now `RatingCard`'s pill (`borderRadius: PILL_HEIGHT / 2`, a capsule) and `RankingCard`'s slot (`borderRadius: 12`, a rounded square) already differ slightly, but share the same size, background, border, and column layout closely enough to read as one component reused with different numbers inside.
+- Make the shape difference deliberate and legible at a glance: Rating's targets read as **score pills** (the existing capsule shape, kept circular/pill-like — a scale, not a ranking); Ranking's targets read as **rank tags** — a distinct shape (e.g. a flagged/notched tag, or a numbered badge with a corner cut) that visually says "this is a strict order," not "this is a score."
+- Keep both still built on the same underlying target-column mechanics (`DropTarget`, `resolveDropTarget`, `targetProximity` in `lib/swipe.ts`) — the shape change is presentational (each component's own pill/slot render), not a rewrite of the drag-to-target math.
+
+### 15.3 Ranking's Column Flips; Rating's Stays, But Reads Unambiguously
+- **Ranking only**: reverse the column so slot 1 (best) sits at the **bottom** of the target column and the last slot (worst) sits at the **top** — the opposite of today's top-to-bottom 1→N. `RankingCard`'s `centerY` derivation and the `bestLabel`/`worstLabel` end-label placement both need to flip together, so the labels stay next to the slots they describe.
+- **Rating stays top-to-bottom, low-to-high, unchanged** — it is a scale, not a best/worst ordering, and must not start looking like Ranking's new convention just because they sit in similar columns. What does need to improve: right now direction only reads clearly if the admin bothers to set `minLabel`/`maxLabel` (prd.md's own coffee-study seed does, but nothing requires it). Make the "which end is better" direction unambiguous by default — e.g., a persistent low→high visual cue (arrow, gradient, or always-on end labels with sensible defaults like "Low"/"High" when the admin didn't set any) rather than relying entirely on optional admin-authored text.
+
+### 15.4 Drag Scoped to the Photo, Not the Whole Card (Rating & Ranking)
+- Currently `SwipeCard` wraps the entire card — prompt text included — in one draggable surface for every question type. For Rating and Ranking specifically, the prompt should be static chrome that never moves; only the photo/media area should be the grabbable, draggable surface.
+- Restructure `RatingCard`/`RankingCard` so the prompt (and Ranking's "N of M" status line) render **outside** the `SwipeCard`, with only `CardMedia` and its immediate frame inside the gesture-detecting surface. TwoOptionCard is unaffected — its whole-card swipe is the intended Tinder-style gesture there and wasn't part of this complaint.
+
+### 15.5 A Real Answer Gutter, Not an Overlay on the Photo (Rating & Ranking)
+- The target pill/slot column is currently an absolutely-positioned overlay drawn on top of part of the photo (`COLUMN_RIGHT_MARGIN`/`PILL_WIDTH` eating into the card's right edge). Give it dedicated, reserved space instead: the photo should be narrower and the column should sit beside it in real layout space, never covering any part of the image.
+- This pairs naturally with 15.4 — once the column has its own space and the drag surface is scoped to just the photo, the two changes together produce the intended layout: fixed prompt on top, draggable photo and static answer column side by side below it.
+
+### 15.6 Ranking: Hold One Placed Card, Swap It With Another Directly
+- Today, revising a ranking requires two steps: tap a filled slot to reclaim its card back to "current," then drag or tap it into a (possibly different) slot — see 12.1/12.6. Add a direct shortcut alongside that flow, not instead of it: press and hold an already-placed card's thumbnail and drag it onto a different filled slot to swap the two cards' positions in one motion (e.g. moving "Coffee 1" from slot 2 straight to where "Coffee 4" sits, and "Coffee 4" takes slot 2 in the same gesture) — no need to reclaim first.
+- Both paths must produce the same result: reclaim-then-place and hold-and-swap are two ways to reach the same `placements` map, not two different answer shapes.
+
+### 15.7 First-Test Onboarding Tutorial (Instagram-Style, Every Question Type)
+- New evaluators currently get no orientation at all before their first real test — the only teaching that exists is `lib/tutorial.ts`'s `useGestureTutorial`, and that's scoped narrowly to the Rating/Ranking drag gesture (10.8/12.1), shown mid-test on first encounter with each of those two types specifically.
+- Build a proper first-run walkthrough, shown once before a brand-new evaluator's very first test (tracked on-device, same durable-flag pattern as the existing gesture hints): a short, guided sequence — in the spirit of Instagram's own first-run/story-style tutorials — that demonstrates how to resolve *every* question type the evaluator is about to encounter (swipe-select, tap-list, multi-select swipe, drag-to-rate, drag-to-rank), not just the two gesture-novel ones.
+- Decide at implementation time whether this supersedes or wraps the existing per-type `useGestureTutorial` hints, since the two now cover overlapping ground.
+
+### Phase 15 Exit Criteria
+- [ ] A Multi-Select question can be completed having liked zero, some, or all options, with no forced re-offering of skipped ones
+- [ ] Rating's pills and Ranking's slots are visually distinct shapes at a glance, not the same component with different labels
+- [ ] Ranking's column shows slot 1 (best) at the bottom and the last slot (worst) at the top; Rating's column is unchanged and unambiguous about which end is better
+- [ ] Dragging a Rating or Ranking card only responds to touches on the photo — the prompt text never moves
+- [ ] The answer column sits beside the photo in its own space on Rating and Ranking cards, never overlapping the image
+- [ ] Holding a placed Ranking card and dragging it onto another filled slot swaps the two, without first tapping to reclaim
+- [ ] A brand-new evaluator sees a first-test walkthrough covering every question type exactly once, before their first real test begins
+
+---
+
+## Phase 16: Mobile App — Field-Test Feedback Round 2 (Navigation, Onboarding & Polish)
+
+> Feedback from a second on-device QA pass, this time against the Phase 15 build and the `phase16-qa` fixture tests (`packages/database/prisma/create-phase16-qa-tests.ts`). Covers a real navigation restructure (tab bar, dropping test-selection in favor of one Start button), two new profile-onboarding pieces (hobbies, an 18+ checkbox replacing a redundant age field), several motion/polish items, and a genuine bug found while testing: a stale cross-account session token.
+
+### 16.1 Ranking Swap: Both Cards Scale Up During the Hold-and-Swap Drag
+- `RankingCard.tsx`'s `SwappableThumbnail` (the hold-and-drag-to-swap gesture added in 15.6) currently only moves the held thumbnail (`translateY`) with no scale feedback, and the target slot it passes over has no reaction at all during a swap drag (the existing proximity-scale in `RankSlot`'s `animated` style only reacts to `pointerX`/`pointerY`, which the swap gesture never touches — it reads raw `translationY` instead).
+- Add a matching scale-up to both sides while a swap drag is in progress: the held thumbnail grows slightly as it's dragged (driven by `translateY`'s magnitude, same spring curve as `MAX_SLOT_SCALE`'s proximity effect), and the slot currently being crossed over highlights/grows the same way `RankSlot` already does for the drag-to-place gesture. Both settle back to resting scale once the swap commits (or the drag ends over empty space with no swap).
+- Reuse `MAX_SLOT_SCALE`/`PROXIMITY_FALLOFF` and the existing spring presets in `lib/motion.ts` rather than inventing new constants — this is the same "grow near a target" language already used elsewhere in this card, just extended to a gesture that didn't have it yet.
+
+### 16.2 Question-to-Question Entrance Transition (Rise + Fade + Scale-In)
+- `CardStack.tsx` currently computes each card's peek transform (`scale`, `translateY`, `opacity`) as a plain style object recalculated on every render — when `activeIndex` advances, the next card's depth goes from 1 to 0 and its style snaps instantly to the active position with no animation in between.
+- Animate that transition: as a card's `depth` crosses from peeking to active, ease its `scale`/`translateY`/`opacity` from the peek values up to the resting active values (scale 1, translateY 0, opacity 1) instead of snapping — reading as the card rising, fading in, and scaling up into place, building on the position it already peeks from rather than sliding in from off-screen.
+- Implementation: convert `CardStack`'s per-slot transform to a `useAnimatedStyle` driven by a shared value that's animated (not just set) on `activeIndex` change, using a new `CARD_ENTRANCE_SPRING` preset in `lib/motion.ts` (same family as the existing `POPUP_ENTRANCE_SPRING`, tuned for a much smaller distance). Respect Reduced Motion the same way every other spring in this file already does (collapse to `REDUCED_MOTION_FADE_MS`).
+- Scope: only the question-to-question entrance inside one test. The transition from one test's last card into the next test's first card (Phase 11.3's completion popup → seamless continuation) is unchanged — this item is specifically about consecutive cards within a test's queue.
+
+### 16.3 QA Fixture Fix: "Quick Picks" Multi-Select Had a Cap Its Own Prompt Denied
+- `create-phase16-qa-tests.ts`'s "Quick Picks" test, Q3 (`MULTI_SELECT`, "Select any of these that feel calming to you - zero, some, or all is a completely fine answer") sets `config: { maxSelections: 3 }` against 4 options — the prompt promises "all" is a valid answer but the config caps the evaluator at 3, contradicting itself. Root cause of feedback item #3.
+- Fix: drop `maxSelections` from that question's config (`config: {}`), so all 4 options can be liked, matching what the prompt already tells the evaluator.
+- Not a platform change — `maxSelections` enforcement itself (15.1: "stays respected where an admin has actually set one") is correct and unchanged; this is a one-fixture data correction, not new engineering.
+
+### 16.4 Bottom Tab Navigation: Dashboard / Shop / Profile / Settings
+- Replaces the current stack-of-screens-plus-footer-buttons pattern (`home.tsx`'s `styles.footer` row of "Rewards"/"Profile"/"Sign out" buttons, `profile.tsx`'s own in-screen "Sign out"/"Delete account" danger zone) with a persistent bottom tab bar, four tabs:
+  - **Dashboard** — today's `home.tsx` content minus the test list (see 16.5): balance card, greeting/status. The single Start button (16.5) lives here.
+  - **Shop** — today's `rewards.tsx` content (balance + coupon catalog, prd.md §15.10) moved under this tab, unchanged otherwise.
+  - **Profile** — today's `profile.tsx` demographic fields + avatar picker + Save, *minus* the danger zone. Gets the new hobbies field (16.7) and the optional-field labels (16.6).
+  - **Settings** — the danger zone split out of `profile.tsx`: Sign out, Delete account (with its existing confirmation flow), and a natural home for anything else account-level added later (app version, legal doc links).
+- `apps/mobile`: introduce an `expo-router` `(tabs)` group (`app/(tabs)/_layout.tsx` + `app/(tabs)/dashboard.tsx`, `shop.tsx` (renamed from `rewards.tsx`), `profile.tsx`, `settings.tsx`) for these four; `login.tsx`, `register.tsx`, `profile-onboarding.tsx`, `aydinlatma.tsx`, and `feed.tsx` stay outside the tab group as full-screen stack routes (feed in particular should not show tab chrome while a test is in progress).
+- `index.tsx`'s post-auth redirect target becomes `/(tabs)/dashboard` instead of `/home`.
+
+### 16.5 Single "Start" Button Replaces Test Selection
+- `home.tsx`'s per-test list (`useAvailableTests`, `TestCard`, individual "Start test" buttons) is removed from the Dashboard tab entirely — matches what prd.md §15.4 already specifies ("the evaluator does not pick a test from a list") but the current implementation contradicts.
+- Replace with one prominent **Start** button on the Dashboard tab. Tapping it enters the feed screen (`feed.tsx`), which resolves the next eligible test the same way it already does today (`useNextTest`/`useAvailableTests` + prefetch machinery from Phase 11 is unchanged) and begins the continuous cross-test feed described in Phase 11/prd.md §15.4 — the evaluator no longer sees or picks individual tests, they only ever see "Start."
+- If no test is currently eligible, tapping Start shows the existing "nothing available right now" empty state inline (reuse `home.tsx`'s current empty-state copy) rather than entering the feed screen.
+- **Explicit exit control inside the feed**: `feed.tsx`/`TestDeck.tsx` gets a visible close/back control (top corner, always reachable) that returns to the Dashboard tab at any point — mid-question or between tests — independent of the OS back gesture. An in-progress test's answers are preserved via the existing `writeInProgressTest`/resume machinery (`submissionQueue.ts`) so exiting mid-test and starting again later resumes rather than restarting, consistent with how resume already works today.
+
+### 16.6 Profile Fields: Label the Actually-Optional Ones
+- `evaluatorProfileSchema` (`packages/shared/src/validation/auth.ts`) treats `city`, `nativeLanguage`, and `occupation` as optional (`.optional()`), while `age`, `gender`, `country`, `educationLevel`, `aiExperience`, and `aiFrequency` are required. Today's `profile.tsx`/`profile-onboarding.tsx` only hint at this via a generic `placeholder="Optional"` inside the empty field, easy to miss.
+- Update the visible field labels themselves for the three optional fields: `"City"` → `"City (Optional)"`, `"Native language"` → `"Native language (Optional)"`, `"Occupation"` → `"Occupation (Optional)"`, in both `profile.tsx` and `profile-onboarding.tsx`. Required fields' labels are unchanged.
+
+### 16.7 Hobbies: Optional Predecided Multi-Select (Max 5)
+- New `EvaluatorProfile.hobbies String[] @default([])` field (`packages/database/prisma/schema.prisma`, same pattern as the existing `foreignLanguages`/`aiUseCases` array fields) + migration.
+- `evaluatorProfileSchema`: add `hobbies: z.array(z.string()).max(5).optional().default([])`, validated server-side against a fixed predecided list (new export, e.g. `packages/shared/src/constants.ts`'s `HOBBIES`) so arbitrary free text can't be submitted.
+- Proposed predecided list (18 items, open to adjustment): Reading, Cooking & Baking, Gaming, Sports & Fitness, Travel, Photography, Music, Movies & TV, Art & Painting, Gardening, Hiking & Outdoors, Writing, Yoga & Meditation, Board Games & Puzzles, Pets & Animals, DIY & Crafts, Fashion & Style, Technology & Gadgets.
+- UI: a tappable chip/tile grid (reuse the multi-select chip styling already used elsewhere in mobile forms where applicable) capped at 5 selections — the 6th tap on a new chip is a no-op until one is deselected, mirroring `MultiSelectCard`'s existing `atMax` guard pattern from Phase 15.1.
+- **Optional, not mandatory**: shown as a skippable step in `profile-onboarding.tsx` (a "Skip" affordance, doesn't block reaching the feed) and editable anytime afterward from the Profile tab (16.4).
+
+### 16.8 Registration: 18+ Checkbox Instead of Age Field; Password Confirmation + Show/Hide
+- **Age → legal checkbox.** `register.tsx`'s numeric `age` field only ever exists to gate under-18 signups (`mobileRegisterSchema.age.min(MOBILE_MIN_AGE)`, `packages/shared/src/validation/auth.ts:46-50`) — the number itself is never persisted (`apps/api/src/routes/auth.ts`'s `/register/mobile` handler never writes `input.age` to any column). The real demographic age is collected separately and *is* persisted, on `profile-onboarding.tsx` (`EvaluatorProfile.age`). Replace the registration screen's numeric age input with a single checkbox: **"I confirm I am 18 or older."** Unchecked blocks the Continue button, exactly like today's numeric validation does.
+  - `mobileRegisterSchema`: replace `age: z.number()...` with `ageConfirmed: z.literal(true, { errorMap: () => ({ message: "You must confirm you are 18 or older to create an account" }) })`. Nothing downstream changes — the field was never persisted, so this is purely a validation-shape change.
+  - `profile-onboarding.tsx`'s numeric age field and its own `MOBILE_MIN_AGE` floor check are **unchanged** — that's still where the real `EvaluatorProfile.age` gets collected once.
+- **Password confirmation.** `register.tsx` gets a second field, "Confirm password," validated client-side to match `password` before Continue is enabled (mismatch shows an inline error, same pattern as the existing `errors` state object).
+- **Show/hide password (eye icon).** A small eye-icon toggle on the right edge of every password field — both fields on `register.tsx`, and the existing single password field on `login.tsx` — flips `secureTextEntry` on the underlying `Field`/`TextInput`. Build as a small reusable addition to the shared `Field` component (`apps/mobile/src/components/Field.tsx`) rather than three separate one-off implementations, since all three password fields need identical behavior.
+
+### 16.9 Ranking Reclaim/Place Transition: Scale + Fade
+- `RankingCard.tsx`'s `reclaim()` (tap a filled slot → its card pops back to being the full-size `current` card) and `place()` (drag/tap the current card into a slot → it becomes a small filled-slot thumbnail) both happen with an instant snap today — no transition in either direction.
+- Add a simple scale + fade transition on both: on reclaim, the reappearing full card animates in from a slightly smaller/more-transparent state up to full size/opacity; on place, the slot's new thumbnail animates in from slightly larger/more-transparent down to its resting size/opacity. Not a position-matched morph (the thumbnail does not need to visually travel from the exact slot coordinates to the exact card coordinates, or vice versa) — a straightforward scale+fade using the existing `lib/motion.ts` spring presets is sufficient, consistent with 16.2's approach of reusing this file's shared presets rather than one-off animation code.
+
+### 16.10 Fix: Stale Cross-Account Session Token on Submission Retry
+- **Root cause of feedback item #10** ("This session token does not belong to this test"). `apps/mobile/src/lib/submissionQueue.ts` stores at most one pending test submission and one in-progress test **globally** — `PENDING_SUBMISSION_KEY`/`IN_PROGRESS_KEY` are fixed AsyncStorage keys, not scoped by user. `session.tsx`'s `signOut()` (line 107-110) only calls `clearTokens()` and resets in-memory user state; it never touches these AsyncStorage records.
+- Failure sequence: evaluator A finishes a test, the background submit doesn't confirm before they sign out and evaluator B logs in on the same device; at next app launch, `retryPendingSubmissionOnce()` (fired from `_layout.tsx`) reads evaluator A's leftover pending payload and resubmits it using evaluator B's now-active bearer token. `apps/api/src/routes/evaluator.ts`'s submit handler correctly rejects this — the session token's embedded `userId` (evaluator A) doesn't match the authenticated request's `userId` (evaluator B) — producing exactly this error, harmlessly from the backend's perspective but confusingly from the evaluator's.
+- Fix: scope `IN_PROGRESS_KEY`/`PENDING_SUBMISSION_KEY` by the signed-in user's id (e.g. suffix the AsyncStorage key, or namespace the stored JSON by `userId`) **and** have `signOut()` clear any pending/in-progress records that don't belong to the account being signed into next — belt-and-suspenders, since either alone closes the gap, but clearing on sign-out is also just correct hygiene (an abandoned session shouldn't leave silent background work queued). `retryPendingSubmissionOnce()` and `fetchInProgressForTest()` should only ever act on the currently authenticated user's own records.
+
+### Phase 16 Exit Criteria
+- [ ] Holding and dragging a placed Ranking card onto another filled slot scales both the held thumbnail and the slot it's crossing, settling back once the swap commits or is abandoned
+- [ ] Advancing from one question to the next inside a test animates the incoming card rising, fading in, and scaling up rather than snapping into place; Reduced Motion collapses this to a short fade
+- [ ] The "Quick Picks" QA fixture's calming-photos question accepts all 4 options selected, matching its own prompt
+- [ ] The app shows a persistent bottom tab bar with Dashboard, Shop, Profile, and Settings; Sign out and Delete account live under Settings, not Profile
+- [ ] The Dashboard tab shows balance/status and a single Start button — no list of individual tests to choose from
+- [ ] Tapping Start enters the continuous feed at the next eligible test; an explicit in-feed control exits back to the Dashboard tab at any point, mid-test or between tests, without losing progress
+- [ ] Profile screen labels read "City (Optional)", "Native language (Optional)", and "Occupation (Optional)"; required fields' labels are unchanged
+- [ ] A new evaluator can select up to 5 hobbies from the predecided list during onboarding, can skip the step entirely, and can add/change hobbies later from the Profile tab
+- [ ] Registration shows an "I confirm I am 18 or older" checkbox instead of a numeric age field; profile-onboarding's numeric age field is unaffected
+- [ ] Registration requires a matching "Confirm password" before proceeding; a mismatch shows an inline error
+- [ ] Every password field (register's two, login's one) has a working show/hide eye-icon toggle
+- [ ] Reclaiming a placed Ranking card and placing a card into a slot both animate with a scale+fade transition instead of snapping
+- [ ] Signing out on a device clears any pending/in-progress test records for that account; a different account signing in afterward never has a prior account's stale submission retried under its session
+
+---
+
+## Future / Backlog (Post-Mobile-MVP)
+
+Not scheduled into the phases above — tracked here so they aren't lost:
+
+- **Push notifications** for new/available tests (Expo Notifications), once there's a signal for when to send them.
+- **Coupon redemption/purchase execution** — actually spending points from the Phase 14 catalog (balance deduction, fulfillment/coupon-code delivery, transaction history). The catalog itself ships in Phase 14; this is only the "spend" action.
+- **KVKK consent on web** — Phase 9.3 adds it to mobile only; extending the same consent capture to `apps/evaluator`'s registration flow is a follow-up if legal/compliance asks for parity.
+- **Smarter quality-control algorithm** (prd.md §15.8): replace the flat per-test `minTimePerQuestion` with a computed per-question minimum (roughly `advisoryTimeMin ÷ 4`, formula TBD), summed per test, invisible to the evaluator. Add repeated-failure tracking (3–4 speed-check or consistency-check failures) as an additional reward-withholding signal on top of the existing single-flag behavior. Needs its own design pass — including how `advisoryTimeMin` is actually derived/used — before implementation.
+
+### Legal / Store Compliance (from `kvkk-compliance-research.md` and `appstore-playstore-compliance-research.md`, 2026-08-24)
+
+- **Have the Privacy Notice (Aydınlatma Metni) drafted by legal counsel** — `apps/mobile/src/content/aydinlatmaMetni.ts` is currently a placeholder and hasn't passed legal review.
+- **Prepare a separate Privacy Policy + Terms of Use document** — neither exists in the repo yet; required for both KVKK and Apple/Google store rules (the Privacy Notice does not substitute for these).
+- **Clarify the legal basis for data transfer to Google** (KVKK Article 9) — since Google OAuth sign-in is a continuous/routine dependency, explicit consent alone may not be sufficient; may need to rely on Google's standard contractual clauses/DPA instead — legal counsel approval required.
+- **Add an account deletion feature** — mandatory for both Apple (5.1.1v) and Google Play submission; currently only sign-out exists. Must be done before store launch.
+- **Clarify VERBİS exemption status** — employee count and annual balance sheet figures are pending; likely exempt at this scale, but not yet confirmed.

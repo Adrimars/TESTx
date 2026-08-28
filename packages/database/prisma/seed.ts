@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
+import { existsSync, readdirSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
@@ -23,6 +24,27 @@ const PLACEHOLDER_COLORS: [number, number, number][] = [
 
 const IMAGE_WIDTH = 400;
 const IMAGE_HEIGHT = 300;
+
+/**
+ * Where the committed seed imagery lives. Drop real photographs into a `custom/` folder
+ * beside it and they are used instead - the generated mockups are a fallback for a fresh
+ * clone, not a preference.
+ */
+function getSeedAssetDir(): { dir: string; isCustom: boolean } {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const custom = path.resolve(here, "seed-assets", "custom");
+  if (existsSync(custom) && readdirSync(custom).some((f) => /\.(png|jpe?g|webp)$/i.test(f))) {
+    return { dir: custom, isCustom: true };
+  }
+  return { dir: path.resolve(here, "seed-assets"), isCustom: false };
+}
+
+const MIME_BY_EXT: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+};
 
 function getSeedUploadDir(): string {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -200,6 +222,49 @@ async function main() {
     )
   );
 
+  // ── Studio imagery for the brand study ───────────────────────────────────
+  // Copied out of the repo rather than generated here: the tiny PNG encoder above can
+  // draw a gradient and nothing else, and a preference test whose options are four flat
+  // gradients cannot tell you anything about a preference.
+  const assets = getSeedAssetDir();
+  const assetFiles = readdirSync(assets.dir)
+    .filter((f) => /\.(png|jpe?g|webp)$/i.test(f))
+    .sort();
+
+  const studioMedia = await Promise.all(
+    assetFiles.map(async (fileName, index) => {
+      const id = `10000000-0000-0000-0000-${String(index + 1).padStart(12, "0")}`;
+      const target = path.join(uploadDir, fileName);
+      await fs.copyFile(path.join(assets.dir, fileName), target);
+      const { size } = await fs.stat(target);
+      const ext = path.extname(fileName).toLowerCase();
+
+      return prisma.media.upsert({
+        where: { id },
+        // Stored relative to the upload root so the row survives the project moving.
+        update: { sourceUrl: path.posix.join("seed", fileName), fileSize: size },
+        create: {
+          id,
+          fileName,
+          fileType: "IMAGE",
+          mimeType: MIME_BY_EXT[ext] ?? "image/png",
+          fileSize: size,
+          sourceType: "UPLOAD",
+          sourceUrl: path.posix.join("seed", fileName),
+          thumbnailUrl: `/media/${id}/file`,
+          tags: ["seed", "studio"],
+        },
+      });
+    })
+  );
+
+  /** Looks a studio image up by filename, so the questions read by what they show. */
+  const shot = (name: string) => {
+    const found = studioMedia.find((m) => m.fileName === name) ?? studioMedia[0];
+    if (!found) throw new Error("No seed imagery found - run generate-seed-images.py");
+    return found.id;
+  };
+
   // ── Test 1: ACTIVE — Photo Comparison ────────────────────────────────────
   const existingPhotoTest = await prisma.test.findFirst({
     where: { title: "Photo Preference Study", status: "ACTIVE" },
@@ -318,7 +383,231 @@ async function main() {
     });
   }
 
-  // ── Test 3: CLOSED — Text Survey (with responses for analytics) ───────────
+  // ── Test 3: ACTIVE — Coffee Brand Study (one question per type) ───────────
+  // The fixture for the mobile swipe engine. Every question type in one active test, on
+  // imagery you can actually form a preference about, because a card interaction can only
+  // really be judged against a question worth answering.
+  const existingStudy = await prisma.test.findFirst({
+    where: { title: "Coffee Brand Study", status: "ACTIVE" },
+  });
+
+  let studyTest = existingStudy;
+  if (!studyTest) {
+    studyTest = await prisma.test.create({
+      data: {
+        title: "Coffee Brand Study",
+        description:
+          "We are naming and packaging a new single-origin roaster. Tell us which designs land.",
+        status: "ACTIVE",
+        advisoryTimeMin: 4,
+        minTimePerQuestion: 8,
+        rewardPoints: 10,
+        questions: {
+          create: [
+            {
+              // Two options: the swipe-right / swipe-left card.
+              type: "SINGLE_SELECT",
+              prompt: "Which bag would you rather pick up off the shelf?",
+              mediaType: "IMAGE",
+              order: 1,
+              config: {},
+              options: {
+                create: [
+                  // Order matters: the first option is the swipe-right choice.
+                  { label: "Vertex", mediaId: shot("bag-modern.png"), order: 1 },
+                  { label: "Alder", mediaId: shot("bag-heritage.png"), order: 2 },
+                ],
+              },
+            },
+            {
+              // Three or more options: the docked tap list, no swipe-to-choose.
+              type: "SINGLE_SELECT",
+              prompt: "Which name sounds most like a coffee you would pay extra for?",
+              mediaType: "TEXT",
+              order: 2,
+              config: {},
+              options: {
+                create: [
+                  { label: "Alder", order: 1 },
+                  { label: "Vertex", order: 2 },
+                  { label: "Foundry", order: 3 },
+                  { label: "Meridian", order: 4 },
+                ],
+              },
+            },
+            {
+              // Sub-deck: one card per option, include/skip, bounded by min/max.
+              type: "MULTI_SELECT",
+              prompt: "Which of these feel like the same brand? Pick 2 to 3.",
+              mediaType: "IMAGE",
+              order: 3,
+              config: { minSelections: 2, maxSelections: 3 },
+              options: {
+                create: [
+                  { label: "Golden hour", mediaId: shot("mood-warm.png"), order: 1 },
+                  { label: "Early morning", mediaId: shot("mood-cool.png"), order: 2 },
+                  { label: "After hours", mediaId: shot("mood-dark.png"), order: 3 },
+                  { label: "First light", mediaId: shot("mood-fresh.png"), order: 4 },
+                ],
+              },
+            },
+            {
+              // Drag-to-target: five pills down the right edge.
+              type: "RATING",
+              prompt: "How premium does this packaging look to you?",
+              mediaType: "IMAGE",
+              order: 4,
+              config: { min: 1, max: 5, minLabel: "Supermarket", maxLabel: "Specialty" },
+              options: {
+                create: [{ label: "Foundry", mediaId: shot("bag-stamp.png"), order: 1 }],
+              },
+            },
+            {
+              // Drag-to-slot: four cards, four slots, strict order.
+              type: "RANKING",
+              prompt: "Rank these four bags from best to worst.",
+              mediaType: "IMAGE",
+              order: 5,
+              config: { bestLabel: "Best", worstLabel: "Worst" },
+              options: {
+                create: [
+                  { label: "Alder", mediaId: shot("bag-heritage.png"), order: 1 },
+                  { label: "Marlow", mediaId: shot("bag-blush.png"), order: 2 },
+                  { label: "Thicket", mediaId: shot("bag-forest.png"), order: 3 },
+                  { label: "Meridian", mediaId: shot("bag-cobalt.png"), order: 4 },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    });
+  }
+
+  // ── Test 3b: ACTIVE — Phase 12 QA Pass ────────────────────────────────────
+  // Isolates each interaction Phase 12 touched into its own question, with a prompt that
+  // says what to check - so a manual pass can go card by card instead of hunting for the
+  // right scenario across the other fixtures. Not a real study; delete freely once the
+  // phase ships.
+  const existingQaTest = await prisma.test.findFirst({
+    where: { title: "Phase 12 QA Pass", status: "ACTIVE" },
+  });
+
+  let qaTest = existingQaTest;
+  if (!qaTest) {
+    qaTest = await prisma.test.create({
+      data: {
+        title: "Phase 12 QA Pass",
+        description: "Design-system and gesture QA fixture - not a real study.",
+        status: "ACTIVE",
+        advisoryTimeMin: 3,
+        minTimePerQuestion: 5,
+        rewardPoints: 1,
+        questions: {
+          create: [
+            {
+              // Tap a half: opens the full-photo preview (12.1) with a "Choose" button.
+              // Also drag the card normally - confirms the preview's tap target isn't
+              // stealing the swipe gesture (12.6's TapZone fix).
+              type: "SINGLE_SELECT",
+              prompt:
+                "QA 1/6 - two-option photo: tap a side for the full preview and Choose from it, then answer the next one by swiping instead",
+              mediaType: "IMAGE",
+              order: 1,
+              config: {},
+              options: {
+                create: [
+                  { label: "Heritage bag", mediaId: shot("bag-heritage.png"), order: 1 },
+                  { label: "Modern bag", mediaId: shot("bag-modern.png"), order: 2 },
+                ],
+              },
+            },
+            {
+              // No photo to preview - a tap should commit immediately.
+              type: "SINGLE_SELECT",
+              prompt: "QA 2/6 - two-option text: tapping a side should commit immediately, no preview",
+              mediaType: "TEXT",
+              order: 2,
+              config: {},
+              options: {
+                create: [
+                  { label: "Left option", order: 1 },
+                  { label: "Right option", order: 2 },
+                ],
+              },
+            },
+            {
+              // 3+ option tap list: the Check icon (12.5) and the scale/fade tap feedback (12.3).
+              type: "SINGLE_SELECT",
+              prompt: "QA 3/6 - tap list: watch for the selection bump and the checkmark icon fading in",
+              mediaType: "TEXT",
+              order: 3,
+              config: {},
+              options: {
+                create: [
+                  { label: "First", order: 1 },
+                  { label: "Second", order: 2 },
+                  { label: "Third", order: 3 },
+                  { label: "Fourth", order: 4 },
+                ],
+              },
+            },
+            {
+              // Sub-deck: swipe AND the tap Skip/Pick buttons (12.6), plus hitting the cap.
+              type: "MULTI_SELECT",
+              prompt: "QA 4/6 - pick 2 to 3: try both swiping and tapping Skip/Pick, and hit the max",
+              mediaType: "IMAGE",
+              order: 4,
+              config: { minSelections: 2, maxSelections: 3 },
+              options: {
+                create: [
+                  { label: "Warm", mediaId: shot("mood-warm.png"), order: 1 },
+                  { label: "Cool", mediaId: shot("mood-cool.png"), order: 2 },
+                  { label: "Dark", mediaId: shot("mood-dark.png"), order: 3 },
+                  { label: "Fresh", mediaId: shot("mood-fresh.png"), order: 4 },
+                ],
+              },
+            },
+            {
+              // Drag onto a pill, then answer the idea of tapping one directly (12.6) -
+              // feel for the haptic tick (12.3) as a pill arms.
+              type: "RATING",
+              prompt: "QA 5/6 - rating: drag onto a number - then, on your next Rating question, just tap one",
+              mediaType: "IMAGE",
+              order: 5,
+              config: { min: 1, max: 5, minLabel: "Low", maxLabel: "High" },
+              options: {
+                create: [{ label: "Stamp", mediaId: shot("bag-stamp.png"), order: 1 }],
+              },
+            },
+            {
+              // Six slots, not four - room to place a few, reclaim one by tapping a
+              // filled slot (12.1), and place the rest by tapping open slots (12.6)
+              // instead of dragging every single one.
+              type: "RANKING",
+              prompt:
+                "QA 6/6 - rank all 6: drag a couple, tap a filled slot to pull it back out, tap the rest into open slots",
+              mediaType: "IMAGE",
+              order: 6,
+              config: { bestLabel: "Best", worstLabel: "Worst" },
+              options: {
+                create: [
+                  { label: "Heritage", mediaId: shot("bag-heritage.png"), order: 1 },
+                  { label: "Modern", mediaId: shot("bag-modern.png"), order: 2 },
+                  { label: "Blush", mediaId: shot("bag-blush.png"), order: 3 },
+                  { label: "Forest", mediaId: shot("bag-forest.png"), order: 4 },
+                  { label: "Cobalt", mediaId: shot("bag-cobalt.png"), order: 5 },
+                  { label: "Stamp", mediaId: shot("bag-stamp.png"), order: 6 },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    });
+  }
+
+  // ── Test 4: CLOSED — Text Survey (with responses for analytics) ───────────
   const existingClosedTest = await prisma.test.findFirst({
     where: { title: "Consumer Habits Survey", status: "CLOSED" },
   });
@@ -563,8 +852,15 @@ async function main() {
   console.log({
     admin: admin.email,
     evaluators: evaluators.length,
-    tests: { photoTest: photoTest.title, ratingTest: ratingTest.title, closedTest: closedTest.title },
-    media: medias.length,
+    tests: {
+      photoTest: photoTest.title,
+      ratingTest: ratingTest.title,
+      studyTest: studyTest.title,
+      qaTest: qaTest.title,
+      closedTest: closedTest.title,
+    },
+    media: medias.length + studioMedia.length,
+    imagery: assets.isCustom ? "custom photos" : "generated mockups",
   });
 }
 

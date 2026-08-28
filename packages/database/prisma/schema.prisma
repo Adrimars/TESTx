@@ -30,6 +30,7 @@ enum QuestionType {
   SINGLE_SELECT
   MULTI_SELECT
   RATING
+  RANKING
 }
 
 enum MediaType {
@@ -45,18 +46,60 @@ enum MediaSourceType {
 }
 
 model User {
-  id               String            @id @default(uuid()) @db.Uuid
-  email            String            @unique
-  passwordHash     String?
-  googleId         String?           @unique
-  role             UserRole          @default(EVALUATOR)
-  isVerified       Boolean           @default(false)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String?
+  googleId     String?  @unique
+  role         UserRole @default(EVALUATOR)
+  isVerified   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // KVKK: the Article 10 disclosure (aydinlatma) and any explicit consent
+  // (acik riza) are deliberately two separate timestamps. Kurul Ilke Karari
+  // 2026/347 prohibits collecting them as a single merged action, so they must
+  // never be set from one checkbox. Null means the step was not taken; mobile
+  // registration blocks on the first, and does not block on the second.
+  aydinlatmaAcknowledgedAt DateTime?
+  acikRizaAcceptedAt       DateTime?
+
+  /// Index into the avatar presets bundled with the mobile app. There is no
+  /// upload endpoint and no photo storage by design - this records a choice,
+  /// not an image, which keeps avatars out of KVKK's biometric/photo scope.
+  avatarId Int?
+
+  /// Device the account was registered from, when it registered through the
+  /// mobile app. Used only to notice one device creating several accounts in a
+  /// points economy. Deliberately not unique: shared and family devices are
+  /// legitimate, so a repeat is flagged for review rather than blocked.
+  registrationDeviceId String?
+  /// Set when registrationDeviceId already belonged to another account. This
+  /// lives on User rather than EvaluatorProfile (as the plan sketched) because
+  /// it is decided at registration, before any profile row exists.
+  isDeviceFlagged      Boolean @default(false)
+
   evaluatorProfile EvaluatorProfile?
   responses        TestResponse[]
+  mobileAuthCodes  MobileAuthCode[]
 
   @@index([role])
+  @@index([registrationDeviceId])
+}
+
+/// One-time code bridging the Google OAuth redirect back into the mobile app.
+/// The app cannot receive cookies, and putting tokens in the deep-link URL
+/// would leak them into OS logs and browser history, so the callback hands over
+/// a short-lived single-use code that is exchanged for the token pair instead.
+model MobileAuthCode {
+  id        String    @id @default(uuid()) @db.Uuid
+  code      String    @unique
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([expiresAt])
 }
 
 model EvaluatorProfile {
@@ -74,6 +117,7 @@ model EvaluatorProfile {
   aiUseCases       String[] @default([])
   aiExperience     String?
   aiFrequency      String?
+  hobbies          String[] @default([])
   balance          Int      @default(0)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -179,6 +223,22 @@ model Answer {
 
   @@unique([responseId, questionId])
   @@index([questionId])
+}
+
+/// Rewards catalog item (prd.md §11.2a / §12.4). Browsing only in v1 - redemption/purchase
+/// (balance deduction, fulfillment) is explicitly out of scope, see plan.md's Future/Backlog.
+model Coupon {
+  id           String   @id @default(uuid()) @db.Uuid
+  title        String
+  description  String?
+  imageUrl     String?
+  pointsCost   Int
+  isActive     Boolean  @default(true)
+  displayOrder Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([isActive, displayOrder])
 }
 
 model Template {

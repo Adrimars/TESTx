@@ -7,6 +7,15 @@ export type User = {
   isVerified: boolean;
   createdAt: string;
   updatedAt: string;
+  /** Index into AVATAR_PRESET_IDS, or null if the evaluator has not picked one. */
+  avatarId: number | null;
+  /**
+   * When the KVKK Article 10 disclosure was acknowledged, or null if it never was.
+   * Mobile registration stamps this at signup, but a Google-registered account starts
+   * null - the mobile app gates on this field to show the disclosure before the
+   * dashboard. Server-owned, so a client cannot claim to have seen it.
+   */
+  aydinlatmaAcknowledgedAt: string | null;
 };
 
 export type EvaluatorProfile = {
@@ -23,6 +32,7 @@ export type EvaluatorProfile = {
   aiUseCases: string[];
   aiExperience: string | null;
   aiFrequency: string | null;
+  hobbies: string[];
   balance: number;
   createdAt: string;
   updatedAt: string;

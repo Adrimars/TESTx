@@ -1,5 +1,5 @@
-import type { FastifyPluginAsync } from "fastify";
-import { registerSchema, loginSchema } from "@testx/shared";
+import type { FastifyPluginAsync, FastifyRequest } from "fastify";
+import { registerSchema, loginSchema, mobileRegisterSchema } from "@testx/shared";
 import {
   hashPassword,
   comparePassword,
@@ -10,6 +10,35 @@ import {
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from "../lib/jwt";
 import { setAuthCookies, clearAuthCookies } from "../lib/cookies";
 import { authenticateUser } from "../middleware/authenticate";
+import {
+  MAX_AUTH_CODE_LENGTH,
+  issueMobileAuthCode,
+  consumeMobileAuthCode,
+} from "../services/mobileAuth.service";
+
+const BEARER_PREFIX = /^Bearer /i;
+
+/**
+ * Web sends the refresh token as an httpOnly cookie. The mobile app holds it in
+ * secure storage and presents it in the request body (or as a bearer header),
+ * so both are accepted, cookie first.
+ */
+function extractRefreshToken(request: FastifyRequest): string | undefined {
+  const cookieToken = request.cookies.refresh_token;
+  if (cookieToken) return cookieToken;
+
+  const body = request.body as { refreshToken?: unknown } | undefined;
+  if (typeof body?.refreshToken === "string" && body.refreshToken.trim()) {
+    return body.refreshToken.trim();
+  }
+
+  const header = request.headers.authorization;
+  if (header && BEARER_PREFIX.test(header)) {
+    return header.replace(BEARER_PREFIX, "").trim() || undefined;
+  }
+
+  return undefined;
+}
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
   app.post("/register", async (request, reply) => {
@@ -27,9 +56,69 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     });
 
     const payload = { sub: user.id, role: user.role };
-    setAuthCookies(reply, signAccessToken(payload), signRefreshToken(payload));
-    return reply.status(201).send(buildCurrentUser(user));
+    const accessToken = signAccessToken(payload);
+    const refreshToken = signRefreshToken(payload);
+    setAuthCookies(reply, accessToken, refreshToken);
+    return reply.status(201).send({ ...buildCurrentUser(user), accessToken, refreshToken });
   });
+
+  /**
+   * Mobile registration. Separate from /register because it carries the KVKK
+   * steps and the 18+ gate, neither of which applies to web registration
+   * (prd.md 15.11 keeps that flow untouched).
+   */
+  app.post(
+    "/register/mobile",
+    // Tighter than the global default because this endpoint creates accounts,
+    // but deliberately not as tight as /login: registrations from one office or
+    // campus share a NAT address, and 9.5 already chose flagging over blocking
+    // as the answer to farming. This is defence in depth, not the gate.
+    { config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
+    async (request, reply) => {
+    const input = mobileRegisterSchema.parse(request.body);
+
+    const existing = await app.prisma.user.findUnique({ where: { email: input.email } });
+    if (existing) {
+      return reply.status(409).send({ error: "CONFLICT", message: "Email already registered" });
+    }
+
+    // A points-for-answers economy invites one person farming rewards through
+    // several accounts. A repeat device is flagged for review, never blocked -
+    // shared and family devices are legitimate, and a false positive here would
+    // lock out a real evaluator.
+    const isDeviceFlagged = input.deviceId
+      ? (await app.prisma.user.count({ where: { registrationDeviceId: input.deviceId } })) > 0
+      : false;
+
+    const now = new Date();
+    const passwordHash = await hashPassword(input.password);
+    const user = await app.prisma.user.create({
+      data: {
+        email: input.email,
+        passwordHash,
+        role: "EVALUATOR",
+        isVerified: true,
+        aydinlatmaAcknowledgedAt: now,
+        // Only stamped when explicit consent was actually given. Declining it
+        // must not block registration, so this stays null in that case.
+        acikRizaAcceptedAt: input.acikRizaAccepted ? now : null,
+        registrationDeviceId: input.deviceId ?? null,
+        isDeviceFlagged,
+      },
+      include: { evaluatorProfile: true },
+    });
+
+    if (isDeviceFlagged) {
+      app.log.warn({ userId: user.id }, "registration from a device that already has an account");
+    }
+
+    const payload = { sub: user.id, role: user.role };
+    const accessToken = signAccessToken(payload);
+    const refreshToken = signRefreshToken(payload);
+    setAuthCookies(reply, accessToken, refreshToken);
+    return reply.status(201).send({ ...buildCurrentUser(user), accessToken, refreshToken });
+    }
+  );
 
   app.post(
     "/login",
@@ -47,8 +136,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       }
 
       const payload = { sub: user.id, role: user.role };
-      setAuthCookies(reply, signAccessToken(payload), signRefreshToken(payload));
-      return reply.send(buildCurrentUser(user));
+      const accessToken = signAccessToken(payload);
+      const refreshToken = signRefreshToken(payload);
+      setAuthCookies(reply, accessToken, refreshToken);
+      return reply.send({ ...buildCurrentUser(user), accessToken, refreshToken });
     }
   );
 
@@ -58,7 +149,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.post("/refresh", async (request, reply) => {
-    const token = request.cookies.refresh_token;
+    const token = extractRefreshToken(request);
     if (!token) {
       return reply.status(401).send({ error: "UNAUTHORIZED", message: "No refresh token" });
     }
@@ -77,7 +168,9 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
         path: "/",
         maxAge: 15 * 60,
       });
-      return reply.send({ ok: true });
+      // The refresh token is not rotated (web behaviour is unchanged); it is
+      // echoed back so cookie-less clients can keep storing a single pair.
+      return reply.send({ ok: true, accessToken: newAccessToken, refreshToken: token });
     } catch {
       return reply.status(401).send({ error: "UNAUTHORIZED", message: "Invalid refresh token" });
     }
@@ -94,9 +187,81 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     return reply.send(buildCurrentUser(user));
   });
 
-  app.get("/google", async (_request, reply) => {
-    return reply.redirect(getGoogleOAuthUrl());
+  /**
+   * Records that the signed-in user has been shown the KVKK Article 10 disclosure.
+   *
+   * Mobile registration stamps `aydinlatmaAcknowledgedAt` inline, but a Google-registered
+   * account is created by the OAuth callback, which never shows the disclosure - Google's
+   * own consent screen is not a substitute for it (see kvkk-compliance-research.md, the
+   * roadmap section). The mobile app therefore shows the disclosure after such a sign-in
+   * and calls this once it has been read.
+   *
+   * This is an acknowledgment of a disclosure, never explicit consent: Kurul Ilke Karari
+   * 2026/347 forbids conflating the two, so `acikRizaAcceptedAt` is deliberately untouched
+   * here. Already-stamped accounts keep their original timestamp - the first time the user
+   * actually saw the text is the date worth holding.
+   */
+  app.post("/aydinlatma", { preHandler: [authenticateUser] }, async (request, reply) => {
+    const userId = request.user!.id;
+
+    await app.prisma.user.updateMany({
+      where: { id: userId, aydinlatmaAcknowledgedAt: null },
+      data: { aydinlatmaAcknowledgedAt: new Date() },
+    });
+
+    const user = await app.prisma.user.findUnique({
+      where: { id: userId },
+      include: { evaluatorProfile: true },
+    });
+    if (!user) {
+      return reply.status(404).send({ error: "NOT_FOUND", message: "User not found" });
+    }
+
+    return reply.send(buildCurrentUser(user));
   });
+
+  app.get("/google", async (request, reply) => {
+    const { platform } = request.query as { platform?: string };
+    // The state round-trips through Google so the callback knows whether to
+    // finish in a browser (web) or hand back to the app via a deep link.
+    return reply.redirect(getGoogleOAuthUrl(platform === "mobile" ? "mobile" : undefined));
+  });
+
+  /**
+   * Exchanges the one-time code delivered to the app's deep link for a token
+   * pair. Tokens are deliberately never placed in the redirect URL itself,
+   * which would leak them into OS logs and browser history.
+   */
+  app.post(
+    "/google/exchange",
+    { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
+    async (request, reply) => {
+    const { code } = (request.body ?? {}) as { code?: unknown };
+    if (typeof code !== "string" || !code || code.length > MAX_AUTH_CODE_LENGTH) {
+      return reply.status(400).send({ error: "BAD_REQUEST", message: "Missing code" });
+    }
+
+    const userId = await consumeMobileAuthCode(app.prisma, code);
+    if (!userId) {
+      return reply
+        .status(401)
+        .send({ error: "UNAUTHORIZED", message: "Invalid or expired code" });
+    }
+
+    const user = await app.prisma.user.findUnique({
+      where: { id: userId },
+      include: { evaluatorProfile: true },
+    });
+    if (!user) {
+      return reply.status(404).send({ error: "NOT_FOUND", message: "User not found" });
+    }
+
+    const payload = { sub: user.id, role: user.role };
+    const accessToken = signAccessToken(payload);
+    const refreshToken = signRefreshToken(payload);
+    return reply.send({ ...buildCurrentUser(user), accessToken, refreshToken });
+    }
+  );
 
   app.get("/google/callback", async (request, reply) => {
     const { code } = request.query as { code?: string };
@@ -106,6 +271,14 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     try {
       const currentUser = await handleGoogleCallback(app.prisma, code);
+
+      const { state } = request.query as { state?: string };
+      if (state === "mobile") {
+        const authCode = await issueMobileAuthCode(app.prisma, currentUser.id);
+        const scheme = process.env.MOBILE_APP_SCHEME ?? "testx";
+        return reply.redirect(`${scheme}://auth?code=${encodeURIComponent(authCode)}`);
+      }
+
       const payload = { sub: currentUser.id, role: currentUser.role };
       setAuthCookies(reply, signAccessToken(payload), signRefreshToken(payload));
       const redirectUrl = process.env.EVALUATOR_APP_URL ?? "http://localhost:3000";

@@ -12,9 +12,14 @@ export function EvaluatorShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const balance = user?.evaluatorProfile?.balance ?? 0;
   const isAuthPage = pathname === "/login" || pathname === "/register";
+  // Google Play requires the deletion path to be reachable by someone who has
+  // already uninstalled the app, so it must render without a session instead of
+  // bouncing to /login. It also must not force the onboarding redirect on a
+  // signed-in user who only came here to delete the account.
+  const isPublicPage = pathname === "/delete-account";
 
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading || isPublicPage) return;
     if (!user) {
       if (!isAuthPage) router.replace("/login");
       return;
@@ -25,7 +30,11 @@ export function EvaluatorShell({ children }: { children: React.ReactNode }) {
     if (user.evaluatorProfile && pathname === "/onboarding") {
       router.replace("/dashboard");
     }
-  }, [user, isLoading, isAuthPage, pathname, router]);
+  }, [user, isLoading, isAuthPage, isPublicPage, pathname, router]);
+
+  if (isPublicPage) {
+    return <div className="min-h-screen bg-background text-foreground">{children}</div>;
+  }
 
   if (isAuthPage) {
     return (

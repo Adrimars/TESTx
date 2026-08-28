@@ -46,6 +46,7 @@ const PUBLIC_CONFIG_KEYS: Record<string, readonly string[]> = {
   SINGLE_SELECT: [],
   MULTI_SELECT: ["minSelections", "maxSelections"],
   RATING: ["min", "max", "minLabel", "maxLabel"],
+  RANKING: ["bestLabel", "worstLabel"],
 };
 
 function toConfig(raw: unknown): Record<string, unknown> {
@@ -89,6 +90,8 @@ type QuestionForValidation = {
  *
  * Under-filled answers (nothing selected, no rating) are deliberately *not* rejected:
  * they are reachable by an honest evaluator and are the quality service's call to make.
+ * The one exception is RANKING, where a *partially* filled order is not something the
+ * client can produce honestly — see the check below.
  */
 function validateAnswers(
   submitted: SubmittedAnswer[],
@@ -135,6 +138,20 @@ function validateAnswers(
       const maxSelections = numberOr(config.maxSelections, question.options.length);
       if (selected.length > maxSelections) {
         return { message: `Question ${questionId} accepts at most ${maxSelections} options` };
+      }
+      answers.push({ ...base, selectedOptionIds: selected });
+      continue;
+    }
+
+    if (question.type === "RANKING") {
+      // A ranking only means something as a strict total order, so a partial order is
+      // rejected rather than stored — unlike the other types there is no coherent way to
+      // read "options 1 and 3 placed, 2 left out". An empty array stays legal: that is a
+      // skipped question, which every other type allows and the quality service judges.
+      if (selected.length > 0 && selected.length !== question.options.length) {
+        return {
+          message: `Question ${questionId} must rank all ${question.options.length} options`,
+        };
       }
       answers.push({ ...base, selectedOptionIds: selected });
       continue;
@@ -238,7 +255,7 @@ function matchesDemographics(
 }
 
 export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
-  app.put("/profile", { preHandler: [authenticateUser] }, async (request, reply) => {
+  app.put("/profile", authEval, async (request, reply) => {
     const body = evaluatorProfileSchema.parse(request.body);
 
     const profileData = {
@@ -253,6 +270,7 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
       aiUseCases: body.aiUseCases ?? [],
       aiExperience: body.aiExperience ?? null,
       aiFrequency: body.aiFrequency ?? null,
+      hobbies: body.hobbies ?? [],
     };
     const profile = await app.prisma.evaluatorProfile.upsert({
       where: { userId: request.user!.id },
@@ -272,7 +290,10 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
     const activeTests = await app.prisma.test.findMany({
       where: { status: "ACTIVE" },
       orderBy: { createdAt: "asc" },
-      include: { _count: { select: { responses: true } } },
+      // `questions` is counted here rather than per-test inside the loop below - same
+      // shape /available-tests already uses, and it keeps this endpoint at a fixed
+      // number of queries no matter how many candidates get skipped.
+      include: { _count: { select: { responses: true, questions: true } } },
     });
 
     const alreadyResponded = await app.prisma.testResponse.findMany({
@@ -294,11 +315,58 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
         advisoryTimeMin: test.advisoryTimeMin,
         rewardPoints: test.rewardPoints,
         minTimePerQuestion: test.minTimePerQuestion,
-        questionCount: await app.prisma.question.count({ where: { testId: test.id } }),
+        questionCount: test._count.questions,
       });
     }
 
     return reply.send(null);
+  });
+
+  /**
+   * Every test this evaluator could take right now.
+   *
+   * `/next-test` answers "what should I do next", which is all a one-at-a-time feed needs.
+   * A home screen has to show what is on offer before anyone commits to answering, so it
+   * needs the list - same eligibility rules, no cap on how many come back.
+   */
+  app.get("/available-tests", authEval, async (request, reply) => {
+    const profile = await app.prisma.evaluatorProfile.findUnique({
+      where: { userId: request.user!.id },
+    });
+    if (!profile) return reply.status(400).send({ error: "PROFILE_REQUIRED", message: "Complete your profile first" });
+
+    const activeTests = await app.prisma.test.findMany({
+      where: { status: "ACTIVE" },
+      orderBy: { createdAt: "asc" },
+      include: {
+        _count: { select: { responses: true, questions: true } },
+      },
+    });
+
+    const alreadyResponded = await app.prisma.testResponse.findMany({
+      where: { userId: request.user!.id },
+      select: { testId: true },
+    });
+    const respondedIds = new Set(alreadyResponded.map((r) => r.testId));
+
+    const available = activeTests
+      .filter((test) => {
+        if (respondedIds.has(test.id)) return false;
+        if (test.responseCap !== null && test._count.responses >= test.responseCap) return false;
+        return matchesDemographics(profile, test.demographicFilters);
+      })
+      .map((test) => ({
+        id: test.id,
+        title: test.title,
+        description: test.description,
+        status: test.status,
+        advisoryTimeMin: test.advisoryTimeMin,
+        rewardPoints: test.rewardPoints,
+        minTimePerQuestion: test.minTimePerQuestion,
+        questionCount: test._count.questions,
+      }));
+
+    return reply.send(available);
   });
 
   app.get<{ Params: { id: string } }>("/tests/:id", authEval, async (request, reply) => {
@@ -306,6 +374,18 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
       where: { userId: request.user!.id },
     });
     if (!profile) return reply.status(400).send({ error: "PROFILE_REQUIRED", message: "Complete your profile first" });
+
+    // Re-entry check, mirroring the submit endpoint's. Without it an evaluator who has
+    // already answered this test is handed a fresh session token with a `startedAt` of
+    // now, walks the whole deck again, and only learns it was pointless when the submit
+    // comes back ALREADY_SUBMITTED. Failing here costs them nothing and mints no token.
+    const existingResponse = await app.prisma.testResponse.findUnique({
+      where: { testId_userId: { testId: request.params.id, userId: request.user!.id } },
+      select: { id: true },
+    });
+    if (existingResponse) {
+      return reply.status(409).send({ error: "ALREADY_SUBMITTED", message: "You have already submitted this test" });
+    }
 
     const test = await app.prisma.test.findUnique({
       where: { id: request.params.id },
@@ -506,5 +586,100 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
     });
     if (!profile) return reply.status(400).send({ error: "PROFILE_REQUIRED", message: "Complete your profile first" });
     return reply.send({ balance: profile.balance });
+  });
+
+  app.get("/stats", authEval, async (request, reply) => {
+    const userId = request.user!.id;
+
+    // One evaluator's own responses only, so this is bounded by how many tests that one
+    // account has ever answered - small enough to aggregate in JS rather than needing a
+    // grouped SQL query for what's otherwise a per-user list already this cheap to fetch.
+    const responses = await app.prisma.testResponse.findMany({
+      where: { userId },
+      orderBy: { completedAt: "desc" },
+      select: {
+        testId: true,
+        pointsEarned: true,
+        isFlagged: true,
+        completedAt: true,
+        test: { select: { title: true } },
+      },
+    });
+
+    const totalCompleted = responses.length;
+
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    // Monday-start week. getDay() is 0 (Sun) .. 6 (Sat); this maps Sunday to 6 days since
+    // Monday instead of -1, so the subtraction never goes negative.
+    const daysSinceMonday = (now.getDay() + 6) % 7;
+    startOfWeek.setHours(0, 0, 0, 0);
+    startOfWeek.setDate(startOfWeek.getDate() - daysSinceMonday);
+    const completedThisWeek = responses.filter((r) => r.completedAt >= startOfWeek).length;
+
+    const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+    const completedDates = new Set(responses.map((r) => dayKey(r.completedAt)));
+
+    // Consecutive calendar days with at least one completed test, walking back from today.
+    // A day with nothing yet doesn't break a streak that already covers yesterday - only
+    // a full missed day does - so the walk starts at today only if today already qualifies.
+    let currentStreakDays = 0;
+    const cursor = new Date(now);
+    cursor.setHours(0, 0, 0, 0);
+    if (!completedDates.has(dayKey(cursor))) cursor.setDate(cursor.getDate() - 1);
+    while (completedDates.has(dayKey(cursor))) {
+      currentStreakDays += 1;
+      cursor.setDate(cursor.getDate() - 1);
+    }
+
+    // Points earned per day, oldest first, zero-filled so the sparkline has one bar per
+    // day regardless of whether anything was answered that day.
+    const POINTS_HISTORY_DAYS = 14;
+    const pointsByDate = new Map<string, number>();
+    for (const r of responses) {
+      pointsByDate.set(dayKey(r.completedAt), (pointsByDate.get(dayKey(r.completedAt)) ?? 0) + r.pointsEarned);
+    }
+    const pointsByDay: { date: string; points: number }[] = [];
+    for (let i = POINTS_HISTORY_DAYS - 1; i >= 0; i -= 1) {
+      const d = new Date(now);
+      d.setHours(0, 0, 0, 0);
+      d.setDate(d.getDate() - i);
+      const key = dayKey(d);
+      pointsByDay.push({ date: key, points: pointsByDate.get(key) ?? 0 });
+    }
+
+    const RECENT_ACTIVITY_LIMIT = 8;
+    const recentActivity = responses.slice(0, RECENT_ACTIVITY_LIMIT).map((r) => ({
+      testId: r.testId,
+      title: r.test.title,
+      pointsEarned: r.pointsEarned,
+      isFlagged: r.isFlagged,
+      completedAt: r.completedAt.toISOString(),
+    }));
+
+    return reply.send({
+      totalCompleted,
+      completedThisWeek,
+      currentStreakDays,
+      pointsByDay,
+      recentActivity,
+    });
+  });
+
+  app.get("/coupons", authEval, async (_request, reply) => {
+    const coupons = await app.prisma.coupon.findMany({
+      where: { isActive: true },
+      orderBy: { displayOrder: "asc" },
+    });
+    return reply.send(
+      coupons.map((coupon) => ({
+        id: coupon.id,
+        title: coupon.title,
+        description: coupon.description,
+        imageUrl: coupon.imageUrl,
+        pointsCost: coupon.pointsCost,
+        displayOrder: coupon.displayOrder,
+      }))
+    );
   });
 };

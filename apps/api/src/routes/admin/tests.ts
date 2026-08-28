@@ -2,6 +2,8 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import type { MediaType, QuestionInput, QuestionType, TestStatus } from "@testx/shared";
 import {
+  RANKING_MAX_OPTIONS,
+  RANKING_MIN_OPTIONS,
   calculateTestReward,
   createTestSchema,
   questionSchema,
@@ -147,8 +149,36 @@ function validateQuestionShape(input: QuestionInput) {
     return;
   }
 
-  if (input.options.length > 0) {
-    throw Object.assign(new Error("Rating questions cannot have options"), { statusCode: 400 });
+  if (input.type === "RANKING") {
+    if (
+      input.options.length < RANKING_MIN_OPTIONS ||
+      input.options.length > RANKING_MAX_OPTIONS
+    ) {
+      throw Object.assign(
+        new Error(
+          `Ranking questions require ${RANKING_MIN_OPTIONS} to ${RANKING_MAX_OPTIONS} options`
+        ),
+        { statusCode: 400 }
+      );
+    }
+    for (const option of input.options) {
+      if (!option.label && !option.mediaId) {
+        throw Object.assign(new Error("Each ranking option needs a label or media item"), {
+          statusCode: 400,
+        });
+      }
+    }
+    return;
+  }
+
+  // A rating question may carry exactly one option: the thing being rated. Without it a
+  // rating can only ever be about the prompt text, since a question has no media of its
+  // own - the renderers read the subject from options[0].
+  if (input.options.length > 1) {
+    throw Object.assign(
+      new Error("Rating questions take at most one option, the item being rated"),
+      { statusCode: 400 }
+    );
   }
 }
 

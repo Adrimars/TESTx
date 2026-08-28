@@ -2,13 +2,16 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { ArrowLeft, ArrowRight, Check } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, ChevronDown, ChevronUp, GripVertical } from "lucide-react";
 import { Button } from "@testx/ui";
 import { useTestSession } from "@/components/test-session-provider";
 import { resolveMediaUrl } from "@/lib/api";
 import type { Question, QuestionOption } from "@/lib/test-types";
 
 /** Shared frame for a selectable option, so text and media options behave the same. */
+/** Question types this page knows how to render. */
+const RENDERABLE_TYPES = new Set(["SINGLE_SELECT", "MULTI_SELECT", "RATING", "RANKING"]);
+
 function OptionShell({
   selected,
   onClick,
@@ -186,9 +189,16 @@ function RatingQuestion({
   const min = config.min ?? 1;
   const max = config.max ?? 5;
   const values = Array.from({ length: max - min + 1 }, (_, i) => min + i);
+  // A rating question carries at most one option: the item being rated.
+  const subject = question.options[0];
 
   return (
     <div className="space-y-3">
+      {subject ? (
+        <div className="overflow-hidden rounded-lg border border-border bg-card">
+          <OptionMedia option={subject} />
+        </div>
+      ) : null}
       <div className="flex flex-wrap gap-2">
         {values.map((v) => (
           <button
@@ -212,6 +222,116 @@ function RatingQuestion({
           <span>{config.maxLabel ?? ""}</span>
         </div>
       )}
+    </div>
+  );
+}
+
+function RankingThumbnail({ option }: { option: QuestionOption }) {
+  const url = resolveMediaUrl(option.media?.url ?? option.mediaUrl);
+  if (!url) return null;
+  const kind = option.media?.fileType ?? "IMAGE";
+  if (kind === "VIDEO" || kind === "AUDIO") {
+    return (
+      <div className="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted text-[10px] font-medium text-muted-foreground">
+        {kind}
+      </div>
+    );
+  }
+  return <img src={url} alt="" className="size-12 shrink-0 rounded-md bg-muted object-cover" loading="lazy" />;
+}
+
+/**
+ * Standard drag-to-reorder list (prd.md 5.3.4). Native HTML5 drag covers desktop pointers;
+ * the up/down buttons are the touch-friendly path (drag doesn't work on mobile browsers
+ * without extra plumbing) and double as a keyboard-accessible fallback.
+ */
+function RankingQuestion({
+  question,
+  order,
+  onReorder,
+}: {
+  question: Question;
+  order: string[];
+  onReorder: (ids: string[]) => void;
+}) {
+  const config = question.config as { bestLabel?: string; worstLabel?: string };
+  // Until the evaluator makes a first move, show the options in their authored order.
+  const items = order.length === question.options.length ? order : question.options.map((o) => o.id);
+  const dragIndex = useRef<number | null>(null);
+
+  function move(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= items.length) return;
+    const next = [...items];
+    [next[index], next[target]] = [next[target]!, next[index]!];
+    onReorder(next);
+  }
+
+  function handleDrop(index: number) {
+    const from = dragIndex.current;
+    dragIndex.current = null;
+    if (from === null || from === index) return;
+    const next = [...items];
+    const [moved] = next.splice(from, 1);
+    next.splice(index, 0, moved!);
+    onReorder(next);
+  }
+
+  return (
+    <div className="space-y-3">
+      {(config.bestLabel || config.worstLabel) && (
+        <div className="flex justify-between text-xs font-medium text-muted-foreground">
+          <span>{config.bestLabel ?? "Best"}</span>
+          <span>{config.worstLabel ?? "Worst"}</span>
+        </div>
+      )}
+      <ol className="space-y-2">
+        {items.map((optionId, index) => {
+          const option = question.options.find((o) => o.id === optionId);
+          if (!option) return null;
+          return (
+            <li
+              key={optionId}
+              draggable
+              onDragStart={() => {
+                dragIndex.current = index;
+              }}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={() => handleDrop(index)}
+              className="flex items-center gap-3 rounded-lg border-2 border-border bg-card p-2.5"
+            >
+              <GripVertical className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold tabular-nums text-foreground">
+                {index + 1}
+              </span>
+              <RankingThumbnail option={option} />
+              <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                {option.label ?? option.media?.fileName ?? "Option"}
+              </span>
+              <div className="flex shrink-0 flex-col">
+                <button
+                  type="button"
+                  aria-label="Move up"
+                  onClick={() => move(index, -1)}
+                  disabled={index === 0}
+                  className="flex size-11 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                >
+                  <ChevronUp className="size-4" aria-hidden />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Move down"
+                  onClick={() => move(index, 1)}
+                  disabled={index === items.length - 1}
+                  className="flex size-11 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-30"
+                >
+                  <ChevronDown className="size-4" aria-hidden />
+                </button>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }
@@ -276,7 +396,11 @@ export default function QuestionPage() {
       return selected.length >= (config.minSelections ?? 1);
     }
     if (question!.type === "RATING") return ratingValue !== null;
-    return false;
+    if (question!.type === "RANKING") return selected.length === question!.options.length;
+    // A type this app cannot render yet must not trap the evaluator on a dead question
+    // with Next disabled forever. Treating it as answerable lets them move past it, and
+    // the empty answer submits as a skip, which the API accepts.
+    return !RENDERABLE_TYPES.has(question!.type);
   }
 
   function goNext() {
@@ -340,6 +464,19 @@ export default function QuestionPage() {
           value={ratingValue}
           onRate={(v) => setAnswer(question.id, { ratingValue: v })}
         />
+      )}
+      {question.type === "RANKING" && (
+        <RankingQuestion
+          question={question}
+          order={selected}
+          onReorder={(ids) => setAnswer(question.id, { selectedOptionIds: ids })}
+        />
+      )}
+      {!RENDERABLE_TYPES.has(question.type) && (
+        <div className="rounded-lg border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+          This question type is not available on the web yet. Skip it here, or answer it in
+          the TESTx mobile app.
+        </div>
       )}
 
       {/* Pinned to the bottom on phones, inline on desktop. */}

@@ -3,6 +3,7 @@ import { Readable } from "node:stream";
 import fsPromises from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import type { PrismaClient, Prisma } from "@testx/database";
 import type { FastifyReply } from "fastify";
 import type { MultipartFile } from "@fastify/multipart";
@@ -15,8 +16,28 @@ const MAX_FILE_SIZE_BY_TYPE: Record<FileMediaType, number> = {
   AUDIO: 500 * 1024 * 1024,
 };
 
+/**
+ * Monorepo root. The upload root is anchored here rather than to process.cwd() so the API
+ * and the seed script agree on where uploads live no matter which directory they are
+ * started from - they previously disagreed, and only stored absolute paths papered over it.
+ */
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
+
 export function getUploadDir(): string {
-  return path.resolve(process.env.UPLOAD_DIR ?? "./uploads");
+  const configured = process.env.UPLOAD_DIR ?? "./uploads";
+  return path.isAbsolute(configured) ? configured : path.resolve(REPO_ROOT, configured);
+}
+
+/**
+ * Turns a stored media path into a real one.
+ *
+ * New rows store a path relative to the upload root, because an absolute path is only
+ * true for the machine and the directory that wrote it - moving the project orphaned
+ * every upload, with the database still confidently pointing at a folder that no longer
+ * existed. Older absolute values are still honoured so existing rows keep working.
+ */
+export function resolveUploadPath(sourceUrl: string): string {
+  return path.isAbsolute(sourceUrl) ? sourceUrl : path.resolve(getUploadDir(), sourceUrl);
 }
 
 export function getCacheDir(): string {
@@ -102,7 +123,8 @@ export async function uploadFile(prisma: PrismaClient, file: MultipartFile) {
       mimeType: file.mimetype,
       fileSize,
       sourceType: "UPLOAD",
-      sourceUrl: filePath,
+      // Relative to the upload root, so the row survives the project moving.
+      sourceUrl: storedName,
       thumbnailUrl,
       tags: [],
     },
@@ -140,7 +162,7 @@ export async function deleteMedia(prisma: PrismaClient, id: string) {
   }
 
   if (media.sourceType === "UPLOAD" && media.sourceUrl) {
-    await fsPromises.unlink(media.sourceUrl).catch(() => {});
+    await fsPromises.unlink(resolveUploadPath(media.sourceUrl)).catch(() => {});
   } else if (media.sourceType === "GOOGLE_DRIVE") {
     const cacheDir = getCacheDir();
     const ext = media.mimeType ? extFromMime(media.mimeType) : "bin";
@@ -161,14 +183,15 @@ export async function serveMedia(prisma: PrismaClient, id: string, reply: Fastif
     if (!media.sourceUrl) {
       return reply.status(404).send({ error: "NOT_FOUND", message: "File not found on disk" });
     }
+    const absolutePath = resolveUploadPath(media.sourceUrl);
     try {
-      await fsPromises.access(media.sourceUrl);
+      await fsPromises.access(absolutePath);
     } catch {
       return reply.status(404).send({ error: "NOT_FOUND", message: "File not found on disk" });
     }
     reply.header("Content-Type", media.mimeType);
     reply.header("Cache-Control", "public, max-age=86400");
-    return reply.send(Readable.toWeb(fs.createReadStream(media.sourceUrl)));
+    return reply.send(Readable.toWeb(fs.createReadStream(absolutePath)));
   }
 
   // GOOGLE_DRIVE — delegate to drive service

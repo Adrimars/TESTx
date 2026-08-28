@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { FileText, FolderOpen, LayoutDashboard, LogOut, Users } from "lucide-react";
+import { FileText, FolderOpen, Gift, LayoutDashboard, LogOut, Users } from "lucide-react";
 import { Avatar, Button, cn } from "@testx/ui";
 import { useAuth } from "./auth-provider";
 
@@ -20,6 +20,7 @@ const navigation = [
     items: [
       { href: "/media", label: "Media Library", icon: FolderOpen },
       { href: "/templates", label: "Templates", icon: FileText },
+      { href: "/coupons", label: "Rewards Catalog", icon: Gift },
     ],
   },
   {
