@@ -87,6 +87,14 @@ type SwipeCardProps = {
   /** Screen width, used to scale the tilt and the default fly-away. */
   width: number;
   style?: StyleProp<ViewStyle>;
+  /**
+   * False skips the shared Card shadow/rounded-background chrome, rendering just the
+   * gesture surface and its children. For a card whose static outer wrapper already draws
+   * that chrome and only part of it (e.g. a photo beside a fixed answer column) is meant
+   * to drag - the wrapper is "the card"; this is just the part of it that moves.
+   * Defaults to true, so every other caller is unaffected.
+   */
+  surface?: boolean;
 };
 
 export function SwipeCard({
@@ -100,6 +108,7 @@ export function SwipeCard({
   maxTiltDeg = 8,
   width,
   style,
+  surface = true,
 }: SwipeCardProps) {
   const ownX = useSharedValue(0);
   const ownY = useSharedValue(0);
@@ -246,14 +255,18 @@ export function SwipeCard({
     <GestureDetector gesture={pan}>
       {/* Shadow lives on this outer, unclipped box; onLayout measures it too, since it's
           the same size as the inner surface that fills it. */}
-      <Animated.View onLayout={onLayout} style={[styles.shadow, style, animatedStyle]}>
-        <View style={styles.surface}>{children}</View>
+      <Animated.View
+        onLayout={onLayout}
+        style={[surface ? styles.shadow : styles.flexFill, style, animatedStyle]}
+      >
+        <View style={surface ? styles.surface : styles.flexFill}>{children}</View>
       </Animated.View>
     </GestureDetector>
   );
 }
 
 const styles = StyleSheet.create({
+  flexFill: { flex: 1 },
   shadow: { flex: 1, ...theme.card.shadow },
   surface: theme.card.surface,
 });

@@ -3,9 +3,10 @@ import * as Haptics from "expo-haptics";
 /**
  * Shared `react-native-reanimated` presets (prd.md §16.4), defined once so every
  * card/target component animates the same way rather than each hand-rolling its own
- * timing. `SwipeCard` (the one gesture surface every question type renders through) is
- * the only consumer of the two card-transition presets; a target column (Rating/Ranking)
- * reads `commitHaptic` directly.
+ * timing. `SwipeCard` (the one gesture surface every question type renders through)
+ * consumes the drag-release presets; `CardStack` reads `CARD_ENTRANCE_SPRING` for its
+ * own peek-to-active transition; a target column (Rating/Ranking) reads `commitHaptic`
+ * directly.
  */
 
 /** Card reject: spring back to center with a small overshoot on a release short of the
@@ -20,6 +21,12 @@ export const CARD_COMMIT_MS = 180;
  * popup). Lower damping than the card-reject spring - a popup only plays this once, so a
  * more pronounced overshoot reads as celebratory rather than jittery. */
 export const POPUP_ENTRANCE_SPRING = { damping: 14, stiffness: 180, mass: 0.9 } as const;
+
+/** Card-stack entrance: the same rising/scaling/fading shape as the popup spring above,
+ * but tuned tighter - the popup travels a whole screen's worth of scale+fade, this only
+ * closes a couple of peek steps (a few px of translate, a few % of scale), so the popup's
+ * overshoot would read as a jitter rather than a rise at this distance (prd.md §16.2). */
+export const CARD_ENTRANCE_SPRING = { damping: 22, stiffness: 260, mass: 0.7 } as const;
 
 /** Under OS Reduce Motion (prd.md §16.4/§16.7), every spring above collapses to this
  * instead - an instant/short fade, never a translate/rotate/scale/overshoot. */

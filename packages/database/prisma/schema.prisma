@@ -117,6 +117,7 @@ model EvaluatorProfile {
   aiUseCases       String[] @default([])
   aiExperience     String?
   aiFrequency      String?
+  hobbies          String[] @default([])
   balance          Int      @default(0)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt

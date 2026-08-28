@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSession } from "@/lib/session";
 import { theme } from "@/lib/theme";
@@ -10,17 +10,24 @@ import { theme } from "@/lib/theme";
  */
 export default function SplashScreen() {
   const router = useRouter();
-  const { initializing, user, hasProfile } = useSession();
+  const { initializing, user, hasProfile, needsAydinlatma } = useSession();
 
   useEffect(() => {
     if (initializing) return;
     if (!user) router.replace("/login");
-    else router.replace(hasProfile ? "/home" : "/profile-onboarding");
-  }, [initializing, user, hasProfile, router]);
+    // The disclosure comes before anything else the app shows: a Google-registered
+    // account has never seen it, and it is not something to catch up on later.
+    else if (needsAydinlatma) router.replace("/aydinlatma");
+    else router.replace(hasProfile ? "/dashboard" : "/profile-onboarding");
+  }, [initializing, user, hasProfile, needsAydinlatma, router]);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.wordmark}>TESTx</Text>
+      <Image
+        source={require("../assets/images/testx-logo.png")}
+        style={styles.wordmark}
+        resizeMode="contain"
+      />
       <ActivityIndicator color={theme.colors.accent} />
     </View>
   );
@@ -35,9 +42,7 @@ const styles = StyleSheet.create({
     gap: theme.spacing(2),
   },
   wordmark: {
-    color: theme.colors.textPrimary,
-    fontSize: 34,
-    fontWeight: "700",
-    letterSpacing: 1,
+    width: 150,
+    height: 40,
   },
 });

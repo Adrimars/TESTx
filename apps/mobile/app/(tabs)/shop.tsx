@@ -13,13 +13,15 @@ import { theme } from "@/lib/theme";
  * item's redeem action only ever shows "Coming Soon", the same pattern as the web
  * dashboard's Withdraw button, never a balance mutation.
  */
-export default function RewardsScreen() {
+export default function ShopScreen() {
   const balance = useBalance();
   const coupons = useCoupons();
 
   return (
-    <SafeAreaView style={styles.flex} edges={["bottom"]}>
+    <SafeAreaView style={styles.flex} edges={["top", "bottom"]}>
       <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.title}>Shop</Text>
+
         <View style={styles.balanceCard}>
           <Text style={styles.balanceLabel}>Your balance</Text>
           {balance.isPending ? (
@@ -99,6 +101,7 @@ function CouponCard({ coupon, balance }: { coupon: EvaluatorCoupon; balance: num
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: theme.colors.surfaceBase },
   content: { padding: theme.spacing(2.5), gap: theme.spacing(2) },
+  title: { color: theme.colors.textPrimary, fontSize: 22, fontWeight: "700" },
   balanceCard: {
     gap: theme.spacing(0.5),
     padding: theme.spacing(2),
