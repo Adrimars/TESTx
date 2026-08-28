@@ -60,6 +60,7 @@ export default function RootLayout() {
                 name="profile-onboarding"
                 options={{ title: "Your profile", headerBackVisible: false }}
               />
+              <Stack.Screen name="practice-test" options={{ headerShown: false }} />
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen name="feed" options={{ headerShown: false }} />
             </Stack>

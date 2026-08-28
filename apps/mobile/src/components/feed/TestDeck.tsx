@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { ChevronLeft, CircleAlert, Inbox, UploadCloud, X } from "lucide-react-native";
+import { ChevronLeft, CircleAlert, UploadCloud, X } from "lucide-react-native";
 import Animated, {
   interpolate,
   useAnimatedStyle,
@@ -18,6 +18,7 @@ import { Button } from "@/components/Button";
 import { CounterChip } from "@/components/CounterChip";
 import { CardStack } from "@/components/cards/CardStack";
 import { QuestionCard } from "@/components/cards/QuestionCard";
+import { RedirectToDashboard } from "@/components/RedirectToDashboard";
 import { ApiError } from "@/lib/api";
 import { useDeck } from "@/lib/deck";
 import { resolveMediaUrl } from "@/lib/env";
@@ -292,14 +293,11 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
   }
 
   if (phase === "empty") {
-    return (
-      <Shell icon={Inbox}>
-        <Text style={styles.title}>Nothing to answer right now</Text>
-        <Text style={styles.subtitle}>New tests show up here as they open.</Text>
-        <Button label="Profile" variant="secondary" onPress={() => router.push("/profile")} />
-        <Button label="Sign out" variant="quiet" onPress={handleSignOut} />
-      </Shell>
-    );
+    // Silent redirect rather than a screen of its own: Dashboard already renders its own
+    // "nothing to answer right now" card off the same eligibility check, so landing there
+    // is what tells the evaluator what happened - this phase is just the hop, not a
+    // second place that has to say the same thing.
+    return <RedirectToDashboard />;
   }
 
   if (phase === "error") {

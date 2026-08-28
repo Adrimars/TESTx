@@ -141,7 +141,7 @@ export default function RegisterScreen() {
 
         {acknowledged ? (
           <View style={styles.acknowledged}>
-            <Text style={styles.acknowledgedText}>Aydinlatma Metni okundu.</Text>
+            <Text style={styles.acknowledgedText}>Aydinlatma Metni okundu, onaylandi.</Text>
           </View>
         ) : null}
 

@@ -92,7 +92,12 @@ export default function AydinlatmaScreen() {
 
       <View style={styles.footer}>
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Button label="Okudum, anladim" onPress={handleAcknowledge} loading={busy} />
+        {/* "Okundu, onaylandı" (read, confirmed) rather than a first-person "I have read
+            and agreed" framing - a passive status statement reads as the neutral
+            acknowledgment-of-disclosure this screen legally is, not as a consent
+            statement, which the button text alone must not resemble (see the doc
+            comment above). */}
+        <Button label="Okundu, onaylandi" onPress={handleAcknowledge} loading={busy} />
         {/* Gate mode is entered with `replace`, so there is no back button. Without this
             a failed acknowledgment would strand the user on a screen with one control
             that does not work and no way off it. */}
