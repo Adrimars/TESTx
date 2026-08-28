@@ -146,7 +146,11 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
   // the way a podium reads, not stacked the way a numeric scale does. Negating the offset
   // here is only half of the flip: the render order below has to reverse too, or the
   // visual position and this hit-test geometry disagree about which slot is which.
-  const targets = useMemo<DropTarget[]>(() => {
+  // Where the slots are is fixed by the column's size; only whether one is still open
+  // depends on what has been placed. Keeping the two apart means a placement no longer
+  // recomputes coordinates that cannot have changed. The outer array is still rebuilt -
+  // `enabled` genuinely differs - but the geometry underneath it is computed once.
+  const targetGeometry = useMemo(() => {
     const step = SLOT_HEIGHT + SLOT_GAP;
     const centerX = photoWidth / 2 + COLUMN_GAP + SLOT_WIDTH / 2;
 
@@ -155,9 +159,17 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
       centerX,
       centerY: -(index - (slotCount - 1) / 2) * step,
       radius: HIT_RADIUS,
-      enabled: placements[index + 1] === undefined,
     }));
-  }, [photoWidth, slotCount, placements]);
+  }, [photoWidth, slotCount]);
+
+  const targets = useMemo<DropTarget[]>(
+    () =>
+      targetGeometry.map((target) => ({
+        ...target,
+        enabled: placements[target.value] === undefined,
+      })),
+    [targetGeometry, placements]
+  );
 
   const current = remaining[0] ? optionsById.get(remaining[0]) : undefined;
   const currentId = current?.id;

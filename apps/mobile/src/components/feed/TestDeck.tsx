@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { ChevronLeft, CircleAlert, Inbox, UploadCloud, X } from "lucide-react-native";
+import { ChevronLeft, CircleAlert, UploadCloud, X } from "lucide-react-native";
 import Animated, {
   interpolate,
   useAnimatedStyle,
@@ -18,6 +18,7 @@ import { Button } from "@/components/Button";
 import { CounterChip } from "@/components/CounterChip";
 import { CardStack } from "@/components/cards/CardStack";
 import { QuestionCard } from "@/components/cards/QuestionCard";
+import { RedirectToDashboard } from "@/components/RedirectToDashboard";
 import { ApiError } from "@/lib/api";
 import { useDeck } from "@/lib/deck";
 import { resolveMediaUrl } from "@/lib/env";
@@ -30,6 +31,7 @@ import {
   writeInProgressTest,
   writePendingSubmission,
   type InProgressTest,
+  type PendingSubmission,
 } from "@/lib/submissionQueue";
 import {
   prefetchAvailableTests,
@@ -49,7 +51,16 @@ const PREFETCH_WINDOW = 2;
  * "not this one", not "something is broken". The list is re-fetched fresh on every
  * attempt, so trying the next candidate is a real retry, not a repeat of the same answer.
  */
-const UNAVAILABLE_NEXT_CODES = new Set(["NOT_AVAILABLE", "CAPACITY_REACHED", "NOT_ELIGIBLE", "NOT_FOUND"]);
+const UNAVAILABLE_NEXT_CODES = new Set([
+  "NOT_AVAILABLE",
+  "CAPACITY_REACHED",
+  "NOT_ELIGIBLE",
+  "NOT_FOUND",
+  // The fetch endpoint now rejects a test this evaluator already answered, rather than
+  // handing back a deck they cannot submit. That is the same "not this one" answer as
+  // the rest of this set - skip the candidate and try the next.
+  "ALREADY_SUBMITTED",
+]);
 const MAX_NEXT_TEST_ATTEMPTS = 3;
 
 /**
@@ -167,6 +178,10 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
     });
   }, [userId, test.id, sessionToken, deck.index, deck.answers, deck.canGoBack, deck.isComplete]);
 
+  // The finished payload, held from the first attempt so "Try now" can re-send exactly
+  // what was queued rather than rebuilding one from a deck that is already complete.
+  const payloadRef = useRef<PendingSubmission | null>(null);
+
   useEffect(() => {
     if (!deck.isComplete || phase !== "answering") return;
     setPhase("submitting");
@@ -183,6 +198,7 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
         }
     );
     const payload = { testId: test.id, sessionToken, answers };
+    payloadRef.current = payload;
 
     void (async () => {
       // The test is finished; what needs protecting from here on is this payload, not
@@ -190,33 +206,50 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
       // loop even starts, so a kill mid-retry still has it queued for next launch.
       await clearInProgressTest(userId);
       await writePendingSubmission(userId, payload);
-      const outcome = await submitWithBackoff(queryClient, userId, payload);
-
-      switch (outcome.status) {
-        case "success":
-          setResult(outcome.result);
-          setPhase("popup");
-          break;
-        case "settled":
-          // The test is decided one way or another already (submitted, paused, closed,
-          // full) - nothing here is fixed by showing an error, so just move on.
-          setResult(null);
-          void advance();
-          break;
-        case "rejected":
-          setErrorMessage(outcome.message);
-          setPhase("error");
-          break;
-        case "pending":
-          // Backoff exhausted on network failures alone. The payload stays queued on
-          // device and gets one more attempt on next launch (`retryPendingSubmissionOnce`
-          // in _layout.tsx) - showing a fake success now would risk the flagged-zero-
-          // points outcome this whole path exists to avoid.
-          setPhase("pendingSync");
-          break;
-      }
+      await submitAndRoute(payload);
     })();
-  }, [deck.isComplete, phase]);
+    // Every value the body reads is listed, including the ones this effect used to
+    // capture silently. They were only ever stable because the test query is fetched
+    // with staleTime: Infinity - a caching detail this component has no business
+    // depending on for correctness, and one nothing stops a later change from relaxing.
+    //
+    // Re-running is harmless: the guard above bails unless the deck has just completed
+    // and nothing has started submitting yet, and setPhase("submitting") runs
+    // synchronously on the one pass that gets through.
+  }, [deck.isComplete, deck.answers, phase, test, sessionToken, userId, queryClient]);
+
+  /**
+   * Sends a finished payload and moves the deck into whatever phase the outcome calls
+   * for. Shared by the first attempt and by `retrySubmit` so the two route identically -
+   * only the one-time persistence writes above are specific to the first attempt.
+   */
+  async function submitAndRoute(payload: PendingSubmission) {
+    const outcome = await submitWithBackoff(queryClient, userId, payload);
+
+    switch (outcome.status) {
+      case "success":
+        setResult(outcome.result);
+        setPhase("popup");
+        break;
+      case "settled":
+        // The test is decided one way or another already (submitted, paused, closed,
+        // full) - nothing here is fixed by showing an error, so just move on.
+        setResult(null);
+        void advance();
+        break;
+      case "rejected":
+        setErrorMessage(outcome.message);
+        setPhase("error");
+        break;
+      case "pending":
+        // Backoff exhausted on network failures alone. The payload stays queued on
+        // device and gets one more attempt on next launch (`retryPendingSubmissionOnce`
+        // in _layout.tsx) - showing a fake success now would risk the flagged-zero-
+        // points outcome this whole path exists to avoid.
+        setPhase("pendingSync");
+        break;
+    }
+  }
 
   /** Moves the feed into whatever test comes next, or ends it. */
   async function advance() {
@@ -230,9 +263,19 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
     }
   }
 
+  /**
+   * "Try now" on the pendingSync screen. Re-sends the already-queued payload directly
+   * rather than dropping `phase` back to "answering": the deck is still complete, so
+   * that rewind immediately re-fired the submission effect - redoing `clearInProgressTest`
+   * and `writePendingSubmission` for a payload already on disk, and rendering the
+   * answering UI for a frame with no card left to show.
+   */
   function retrySubmit() {
+    const payload = payloadRef.current;
+    if (!payload) return;
     setErrorMessage(null);
-    setPhase("answering");
+    setPhase("submitting");
+    void submitAndRoute(payload);
   }
 
   async function handleSignOut() {
@@ -250,14 +293,11 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
   }
 
   if (phase === "empty") {
-    return (
-      <Shell icon={Inbox}>
-        <Text style={styles.title}>Nothing to answer right now</Text>
-        <Text style={styles.subtitle}>New tests show up here as they open.</Text>
-        <Button label="Profile" variant="secondary" onPress={() => router.push("/profile")} />
-        <Button label="Sign out" variant="quiet" onPress={handleSignOut} />
-      </Shell>
-    );
+    // Silent redirect rather than a screen of its own: Dashboard already renders its own
+    // "nothing to answer right now" card off the same eligibility check, so landing there
+    // is what tells the evaluator what happened - this phase is just the hop, not a
+    // second place that has to say the same thing.
+    return <RedirectToDashboard />;
   }
 
   if (phase === "error") {

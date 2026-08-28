@@ -14,6 +14,22 @@ export const DEFAULT_MIN_TIME_PER_QUESTION_SECONDS = 60;
  */
 export const AVATAR_COUNT = 10;
 
+/**
+ * Minimum mobile app version the API will serve, when MOBILE_MIN_APP_VERSION is unset.
+ *
+ * The question-type set grows over time (Ranking in Phase 13, more later). An older build
+ * that does not know how to render a new QuestionType must be forced to update rather than
+ * allowed to break mid-feed, so this is bumped as part of shipping any new question type.
+ * See plan.md 9.6.
+ *
+ * It lives here, beside the constants both sides share, rather than inline in the API
+ * route: it is a statement about the mobile client, and it must track apps/mobile/app.json's
+ * `version` - the two are meaningless apart. The mobile app reads the effective value from
+ * GET /mobile/min-version rather than compiling this in, so a deployed API can raise the
+ * floor without a new build.
+ */
+export const DEFAULT_MIN_APP_VERSION = "1.0.0";
+
 export const EDUCATION_LEVELS = [
   { value: "PRIMARY_MIDDLE", label: "Primary School / Middle School" },
   { value: "HIGH_SCHOOL", label: "High School" },

@@ -10,13 +10,16 @@ import { theme } from "@/lib/theme";
  */
 export default function SplashScreen() {
   const router = useRouter();
-  const { initializing, user, hasProfile } = useSession();
+  const { initializing, user, hasProfile, needsAydinlatma } = useSession();
 
   useEffect(() => {
     if (initializing) return;
     if (!user) router.replace("/login");
+    // The disclosure comes before anything else the app shows: a Google-registered
+    // account has never seen it, and it is not something to catch up on later.
+    else if (needsAydinlatma) router.replace("/aydinlatma");
     else router.replace(hasProfile ? "/dashboard" : "/profile-onboarding");
-  }, [initializing, user, hasProfile, router]);
+  }, [initializing, user, hasProfile, needsAydinlatma, router]);
 
   return (
     <View style={styles.container}>

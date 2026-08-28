@@ -24,6 +24,7 @@ export function buildCurrentUser(user: UserWithProfile): CurrentUser {
     createdAt: user.createdAt.toISOString(),
     updatedAt: user.updatedAt.toISOString(),
     avatarId: user.avatarId,
+    aydinlatmaAcknowledgedAt: user.aydinlatmaAcknowledgedAt?.toISOString() ?? null,
     evaluatorProfile: user.evaluatorProfile
       ? {
           id: user.evaluatorProfile.id,
@@ -77,6 +78,10 @@ export async function handleGoogleCallback(prisma: PrismaClient, code: string): 
   if (!data.id || !data.email) {
     throw new Error("Google account missing required fields");
   }
+  // Same normalization as registerSchema/loginSchema (packages/shared/src/validation/auth.ts)
+  // - this is the one email that reaches a User row from outside those schemas, so it has
+  // to match their invariant by hand rather than for free.
+  const email = data.email.trim().toLowerCase();
 
   let user = await prisma.user.findUnique({
     where: { googleId: data.id },
@@ -84,7 +89,7 @@ export async function handleGoogleCallback(prisma: PrismaClient, code: string): 
   });
 
   if (!user) {
-    const byEmail = await prisma.user.findUnique({ where: { email: data.email } });
+    const byEmail = await prisma.user.findUnique({ where: { email } });
     if (byEmail) {
       user = await prisma.user.update({
         where: { id: byEmail.id },
@@ -93,7 +98,7 @@ export async function handleGoogleCallback(prisma: PrismaClient, code: string): 
       });
     } else {
       user = await prisma.user.create({
-        data: { email: data.email, googleId: data.id, role: "EVALUATOR", isVerified: true },
+        data: { email, googleId: data.id, role: "EVALUATOR", isVerified: true },
         include: { evaluatorProfile: true },
       });
     }

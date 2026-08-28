@@ -8,6 +8,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { UpdateRequiredGate } from "@/components/UpdateRequiredGate";
 import { SessionProvider, useSession } from "@/lib/session";
 import { queryClient } from "@/lib/queryClient";
+import { RegistrationDraftProvider } from "@/lib/registrationDraft";
 import { retryPendingSubmissionOnce } from "@/lib/submissionQueue";
 import { theme } from "@/lib/theme";
 
@@ -43,6 +44,7 @@ export default function RootLayout() {
           <SafeAreaProvider>
             <StatusBar style="light" />
             <UpdateRequiredGate>
+            <RegistrationDraftProvider>
             <Stack
               screenOptions={{
                 headerStyle: { backgroundColor: theme.colors.surfaceBase },
@@ -58,9 +60,11 @@ export default function RootLayout() {
                 name="profile-onboarding"
                 options={{ title: "Your profile", headerBackVisible: false }}
               />
+              <Stack.Screen name="practice-test" options={{ headerShown: false }} />
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen name="feed" options={{ headerShown: false }} />
             </Stack>
+            </RegistrationDraftProvider>
             </UpdateRequiredGate>
           </SafeAreaProvider>
         </SessionProvider>

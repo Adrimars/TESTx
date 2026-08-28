@@ -18,13 +18,18 @@ const PEEK_OFFSET_STEP = 12;
 const PEEK_OPACITY_STEP = 0.2;
 /**
  * A peeking card's own prompt/caption text stays fully opaque even as the card itself
- * dims (see `slot`'s opacity below) - at one step back that is still legible enough to
- * visually mix with the active card's text. This scrim sits on top of a peeking card only,
- * covering its content rather than the whole card's opacity, so the stack still reads as
- * a stack of cards while only the active one reads as text.
+ * dims (see `slot`'s opacity below), so this scrim is what actually hides it - it sits on
+ * top of a peeking card only, covering its content rather than the whole card's opacity,
+ * so the stack still reads as a stack of cards while only the active one reads as text.
+ *
+ * Strong enough that the very next question's prompt/options are not legible while
+ * swiping the active card away and revealing it underneath - a next question's text
+ * competing with the one still being answered read as a distraction, not as useful
+ * context. `SCRIM_BASE_OPACITY` alone (before the per-depth step) already leaves almost
+ * nothing readable at depth 1, the card most exposed mid-swipe.
  */
-const SCRIM_BASE_OPACITY = 0.55;
-const SCRIM_OPACITY_STEP = 0.2;
+const SCRIM_BASE_OPACITY = 0.88;
+const SCRIM_OPACITY_STEP = 0.06;
 
 type CardStackProps<T> = {
   /** The whole queue. The stack only ever draws a short window of it. */
