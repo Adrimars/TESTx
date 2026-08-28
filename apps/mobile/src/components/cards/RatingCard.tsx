@@ -160,7 +160,7 @@ export function RatingCard({ question, isActive, onAnswer }: RatingCardProps) {
               <CardMedia
                 mediaType={question.mediaType}
                 url={question.mediaUrl ?? null}
-                label={null}
+                label={question.prompt}
                 isActive={isActive}
               />
             </SwipeCard>
