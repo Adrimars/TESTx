@@ -27,7 +27,7 @@ async function refreshAccessToken(): Promise<boolean> {
   const refreshToken = await getRefreshToken();
   if (!refreshToken) return false;
 
-  const response = await fetch(`${API_URL}/auth/refresh`, {
+  const response = await fetchWithTimeout(`${API_URL}/auth/refresh`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refreshToken }),
@@ -58,11 +58,47 @@ async function runRefresh(): Promise<boolean> {
   return refreshPromise;
 }
 
+/**
+ * Ceiling on how long any one request may take before it is treated as failed.
+ *
+ * Nothing else guarantees a request ever settles. A `fetch` against an API that is simply
+ * not there (server down, wrong LAN address, dropped wifi) can sit unresolved
+ * indefinitely, and every screen gated on `isPending` then spins forever - no error, no
+ * retry, no way for the evaluator to tell "still loading" from "never going to load".
+ * Generous enough that a slow-but-real response is never cut off; short enough that a
+ * dead one becomes a visible, retryable error instead of an eternal spinner.
+ */
+const REQUEST_TIMEOUT_MS = 15_000;
+
+/** Thrown when a request exceeds REQUEST_TIMEOUT_MS. Status 0 marks it as never having
+ * reached the server, so the retry policy treats it as retryable rather than as a 4xx. */
+export class TimeoutError extends ApiError {
+  constructor() {
+    super(0, "TIMEOUT", "The server took too long to respond. Check your connection and try again.");
+    this.name = "TimeoutError";
+  }
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    // An abort surfaces as a generic AbortError; re-raise it as the timeout it actually
+    // was, so the UI can say something truer than "Aborted".
+    if (controller.signal.aborted) throw new TimeoutError();
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit, retry = true): Promise<T> {
   const accessToken = await getAccessToken();
   const hasBody = init?.body != null;
 
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetchWithTimeout(`${API_URL}${path}`, {
     ...init,
     headers: {
       ...(hasBody ? { "Content-Type": "application/json" } : {}),

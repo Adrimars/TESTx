@@ -6,28 +6,45 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { UpdateRequiredGate } from "@/components/UpdateRequiredGate";
-import { SessionProvider } from "@/lib/session";
+import { SessionProvider, useSession } from "@/lib/session";
 import { queryClient } from "@/lib/queryClient";
+import { RegistrationDraftProvider } from "@/lib/registrationDraft";
 import { retryPendingSubmissionOnce } from "@/lib/submissionQueue";
 import { theme } from "@/lib/theme";
 
-export default function RootLayout() {
-  // A test finished last session can still have its submission queued if the app was
-  // killed or offline before it confirmed (plan.md 11.4) - one silent attempt here,
-  // not tied to any screen, is the "retry on next launch" half of that.
-  useEffect(() => {
-    void retryPendingSubmissionOnce(queryClient);
-  }, []);
+/**
+ * A test finished last session can still have its submission queued if the app was
+ * killed or offline before it confirmed (plan.md 11.4) - one silent attempt here,
+ * not tied to any screen, is the "retry on next launch" half of that.
+ *
+ * Waits for the signed-in user to be known (16.10) rather than firing at launch the
+ * way this used to: `retryPendingSubmissionOnce` reads a per-user storage key, so
+ * firing before `initializing` resolves - or with no user at all - has nothing to
+ * scope the read to.
+ */
+function PendingSubmissionRetry() {
+  const { user, initializing } = useSession();
 
+  useEffect(() => {
+    if (initializing || !user) return;
+    void retryPendingSubmissionOnce(queryClient, user.id);
+  }, [initializing, user]);
+
+  return null;
+}
+
+export default function RootLayout() {
   return (
     // Every gesture in the swipe engine is routed through this root view; without it
     // react-native-gesture-handler silently receives no touches on Android.
     <GestureHandlerRootView style={styles.root}>
       <QueryClientProvider client={queryClient}>
         <SessionProvider>
+          <PendingSubmissionRetry />
           <SafeAreaProvider>
             <StatusBar style="light" />
             <UpdateRequiredGate>
+            <RegistrationDraftProvider>
             <Stack
               screenOptions={{
                 headerStyle: { backgroundColor: theme.colors.surfaceBase },
@@ -43,10 +60,11 @@ export default function RootLayout() {
                 name="profile-onboarding"
                 options={{ title: "Your profile", headerBackVisible: false }}
               />
-              <Stack.Screen name="home" options={{ headerShown: false }} />
+              <Stack.Screen name="practice-test" options={{ headerShown: false }} />
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen name="feed" options={{ headerShown: false }} />
-              <Stack.Screen name="profile" options={{ title: "Profile" }} />
             </Stack>
+            </RegistrationDraftProvider>
             </UpdateRequiredGate>
           </SafeAreaProvider>
         </SessionProvider>

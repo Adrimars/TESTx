@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
+import type { CurrentUser } from "@testx/shared";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
 import { useSession } from "@/lib/session";
@@ -12,6 +13,16 @@ import { theme } from "@/lib/theme";
  * Entry screen. Email/password and Google are equally prominent and both live
  * on this first screen rather than behind an "other options" tap.
  */
+/**
+ * Where a just-signed-in user belongs. The KVKK disclosure comes first for anyone who has
+ * never been shown it - a Google-registered account is created by the OAuth callback,
+ * which has no way to present it, and Google's own consent screen is not a substitute.
+ */
+function destinationFor(user: CurrentUser) {
+  if (user.aydinlatmaAcknowledgedAt == null) return "/aydinlatma" as const;
+  return user.evaluatorProfile ? ("/dashboard" as const) : ("/profile-onboarding" as const);
+}
+
 export default function LoginScreen() {
   const router = useRouter();
   const { signIn, signInWithCode } = useSession();
@@ -30,7 +41,7 @@ export default function LoginScreen() {
     setBusy("email");
     try {
       const user = await signIn(email, password);
-      router.replace(user.evaluatorProfile ? "/home" : "/profile-onboarding");
+      router.replace(destinationFor(user));
     } catch (error) {
       Alert.alert("Sign in failed", error instanceof Error ? error.message : "Please try again.");
     } finally {
@@ -48,7 +59,7 @@ export default function LoginScreen() {
         return;
       }
       const user = await signInWithCode(result.code);
-      router.replace(user.evaluatorProfile ? "/home" : "/profile-onboarding");
+      router.replace(destinationFor(user));
     } catch (error) {
       Alert.alert("Sign in failed", error instanceof Error ? error.message : "Please try again.");
     } finally {
@@ -62,7 +73,11 @@ export default function LoginScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <Text style={styles.wordmark}>TESTx</Text>
+        <Image
+          source={require("../assets/images/testx-logo.png")}
+          style={styles.wordmark}
+          resizeMode="contain"
+        />
 
         <Field
           label="Email"
@@ -126,11 +141,9 @@ const styles = StyleSheet.create({
     gap: theme.spacing(2),
   },
   wordmark: {
-    color: theme.colors.textPrimary,
-    fontSize: 34,
-    fontWeight: "700",
-    letterSpacing: 1,
-    textAlign: "center",
+    width: 150,
+    height: 40,
+    alignSelf: "center",
     marginBottom: theme.spacing(2),
   },
   divider: { flexDirection: "row", alignItems: "center", gap: theme.spacing(1.5) },

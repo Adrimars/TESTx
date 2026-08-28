@@ -2,13 +2,27 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { ChevronLeft, CircleAlert, UploadCloud, X } from "lucide-react-native";
+import Animated, {
+  interpolate,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withDelay,
+  withSequence,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
+import { CounterChip } from "@/components/CounterChip";
 import { CardStack } from "@/components/cards/CardStack";
 import { QuestionCard } from "@/components/cards/QuestionCard";
+import { RedirectToDashboard } from "@/components/RedirectToDashboard";
 import { ApiError } from "@/lib/api";
 import { useDeck } from "@/lib/deck";
 import { resolveMediaUrl } from "@/lib/env";
+import { POPUP_ENTRANCE_SPRING, REDUCED_MOTION_FADE_MS } from "@/lib/motion";
 import { useSession } from "@/lib/session";
 import {
   clearInProgressTest,
@@ -17,6 +31,7 @@ import {
   writeInProgressTest,
   writePendingSubmission,
   type InProgressTest,
+  type PendingSubmission,
 } from "@/lib/submissionQueue";
 import {
   prefetchAvailableTests,
@@ -36,7 +51,16 @@ const PREFETCH_WINDOW = 2;
  * "not this one", not "something is broken". The list is re-fetched fresh on every
  * attempt, so trying the next candidate is a real retry, not a repeat of the same answer.
  */
-const UNAVAILABLE_NEXT_CODES = new Set(["NOT_AVAILABLE", "CAPACITY_REACHED", "NOT_ELIGIBLE", "NOT_FOUND"]);
+const UNAVAILABLE_NEXT_CODES = new Set([
+  "NOT_AVAILABLE",
+  "CAPACITY_REACHED",
+  "NOT_ELIGIBLE",
+  "NOT_FOUND",
+  // The fetch endpoint now rejects a test this evaluator already answered, rather than
+  // handing back a deck they cannot submit. That is the same "not this one" answer as
+  // the rest of this set - skip the candidate and try the next.
+  "ALREADY_SUBMITTED",
+]);
 const MAX_NEXT_TEST_ATTEMPTS = 3;
 
 /**
@@ -47,7 +71,11 @@ const MAX_NEXT_TEST_ATTEMPTS = 3;
  * `onContinue` becomes a same-id `setState` that React drops, and the feed hangs on a
  * spinner instead of continuing.
  */
-async function findNextTest(queryClient: QueryClient, currentTestId: string): Promise<string | null> {
+async function findNextTest(
+  queryClient: QueryClient,
+  userId: string,
+  currentTestId: string
+): Promise<string | null> {
   const exclude = new Set([currentTestId]);
 
   for (let attempt = 0; attempt < MAX_NEXT_TEST_ATTEMPTS; attempt += 1) {
@@ -61,7 +89,7 @@ async function findNextTest(queryClient: QueryClient, currentTestId: string): Pr
       // the time `onContinue` swaps `key={testId}` or the gap just moves one gate later.
       const [full] = await Promise.all([
         prefetchTest(queryClient, next.id),
-        prefetchInProgressTest(queryClient, next.id),
+        prefetchInProgressTest(queryClient, userId, next.id),
       ]);
       prefetchFirstCardMedia(full);
       return next.id;
@@ -103,7 +131,10 @@ type TestDeckProps = {
  */
 export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
   const router = useRouter();
-  const { signOut } = useSession();
+  const { user, signOut } = useSession();
+  // TestDeck only ever mounts once `feed.tsx` has an authenticated test fetch to hand
+  // it, so a signed-in user is guaranteed here despite the type's nullability.
+  const userId = user!.id;
   const queryClient = useQueryClient();
   const deck = useDeck(test.questions, resumedFrom);
 
@@ -129,8 +160,8 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
 
   useEffect(() => {
     if (prefetchRef.current || remaining > PREFETCH_WINDOW || remaining <= 0) return;
-    prefetchRef.current = findNextTest(queryClient, test.id);
-  }, [remaining, queryClient, test.id]);
+    prefetchRef.current = findNextTest(queryClient, userId, test.id);
+  }, [remaining, queryClient, userId, test.id]);
 
   // Persists the in-progress answers map as the evaluator moves through the deck (11.4),
   // so a killed app resumes an almost-finished test instead of losing it. Stops the
@@ -138,14 +169,18 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
   // the thing worth protecting, not the now-superseded in-progress record.
   useEffect(() => {
     if (deck.isComplete) return;
-    void writeInProgressTest({
+    void writeInProgressTest(userId, {
       testId: test.id,
       sessionToken,
       index: deck.index,
       answers: deck.answers,
       canGoBack: deck.canGoBack,
     });
-  }, [test.id, sessionToken, deck.index, deck.answers, deck.canGoBack, deck.isComplete]);
+  }, [userId, test.id, sessionToken, deck.index, deck.answers, deck.canGoBack, deck.isComplete]);
+
+  // The finished payload, held from the first attempt so "Try now" can re-send exactly
+  // what was queued rather than rebuilding one from a deck that is already complete.
+  const payloadRef = useRef<PendingSubmission | null>(null);
 
   useEffect(() => {
     if (!deck.isComplete || phase !== "answering") return;
@@ -163,45 +198,63 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
         }
     );
     const payload = { testId: test.id, sessionToken, answers };
+    payloadRef.current = payload;
 
     void (async () => {
       // The test is finished; what needs protecting from here on is this payload, not
       // the answers-in-progress record it has just replaced. Written before the backoff
       // loop even starts, so a kill mid-retry still has it queued for next launch.
-      await clearInProgressTest();
-      await writePendingSubmission(payload);
-      const outcome = await submitWithBackoff(queryClient, payload);
-
-      switch (outcome.status) {
-        case "success":
-          setResult(outcome.result);
-          setPhase("popup");
-          break;
-        case "settled":
-          // The test is decided one way or another already (submitted, paused, closed,
-          // full) - nothing here is fixed by showing an error, so just move on.
-          setResult(null);
-          void advance();
-          break;
-        case "rejected":
-          setErrorMessage(outcome.message);
-          setPhase("error");
-          break;
-        case "pending":
-          // Backoff exhausted on network failures alone. The payload stays queued on
-          // device and gets one more attempt on next launch (`retryPendingSubmissionOnce`
-          // in _layout.tsx) - showing a fake success now would risk the flagged-zero-
-          // points outcome this whole path exists to avoid.
-          setPhase("pendingSync");
-          break;
-      }
+      await clearInProgressTest(userId);
+      await writePendingSubmission(userId, payload);
+      await submitAndRoute(payload);
     })();
-  }, [deck.isComplete, phase]);
+    // Every value the body reads is listed, including the ones this effect used to
+    // capture silently. They were only ever stable because the test query is fetched
+    // with staleTime: Infinity - a caching detail this component has no business
+    // depending on for correctness, and one nothing stops a later change from relaxing.
+    //
+    // Re-running is harmless: the guard above bails unless the deck has just completed
+    // and nothing has started submitting yet, and setPhase("submitting") runs
+    // synchronously on the one pass that gets through.
+  }, [deck.isComplete, deck.answers, phase, test, sessionToken, userId, queryClient]);
+
+  /**
+   * Sends a finished payload and moves the deck into whatever phase the outcome calls
+   * for. Shared by the first attempt and by `retrySubmit` so the two route identically -
+   * only the one-time persistence writes above are specific to the first attempt.
+   */
+  async function submitAndRoute(payload: PendingSubmission) {
+    const outcome = await submitWithBackoff(queryClient, userId, payload);
+
+    switch (outcome.status) {
+      case "success":
+        setResult(outcome.result);
+        setPhase("popup");
+        break;
+      case "settled":
+        // The test is decided one way or another already (submitted, paused, closed,
+        // full) - nothing here is fixed by showing an error, so just move on.
+        setResult(null);
+        void advance();
+        break;
+      case "rejected":
+        setErrorMessage(outcome.message);
+        setPhase("error");
+        break;
+      case "pending":
+        // Backoff exhausted on network failures alone. The payload stays queued on
+        // device and gets one more attempt on next launch (`retryPendingSubmissionOnce`
+        // in _layout.tsx) - showing a fake success now would risk the flagged-zero-
+        // points outcome this whole path exists to avoid.
+        setPhase("pendingSync");
+        break;
+    }
+  }
 
   /** Moves the feed into whatever test comes next, or ends it. */
   async function advance() {
     setPhase("checkingNext");
-    const nextId = await (prefetchRef.current ?? findNextTest(queryClient, test.id));
+    const nextId = await (prefetchRef.current ?? findNextTest(queryClient, userId, test.id));
 
     if (nextId) {
       onContinue(nextId);
@@ -210,9 +263,19 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
     }
   }
 
+  /**
+   * "Try now" on the pendingSync screen. Re-sends the already-queued payload directly
+   * rather than dropping `phase` back to "answering": the deck is still complete, so
+   * that rewind immediately re-fired the submission effect - redoing `clearInProgressTest`
+   * and `writePendingSubmission` for a payload already on disk, and rendering the
+   * answering UI for a frame with no card left to show.
+   */
   function retrySubmit() {
+    const payload = payloadRef.current;
+    if (!payload) return;
     setErrorMessage(null);
-    setPhase("answering");
+    setPhase("submitting");
+    void submitAndRoute(payload);
   }
 
   async function handleSignOut() {
@@ -220,15 +283,21 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
     router.replace("/login");
   }
 
+  /** Exits the feed back to the Dashboard tab (16.5) - an explicit control independent of
+   * the OS back gesture, reachable from every phase that renders the header below
+   * (answering, submitting, checkingNext, popup). In-progress answers are already
+   * persisted continuously by the `writeInProgressTest` effect above, so leaving here
+   * mid-question loses nothing; resuming this test later picks the same answers back up. */
+  function handleClose() {
+    router.replace("/dashboard");
+  }
+
   if (phase === "empty") {
-    return (
-      <Shell>
-        <Text style={styles.title}>Nothing to answer right now</Text>
-        <Text style={styles.subtitle}>New tests show up here as they open.</Text>
-        <Button label="Profile" variant="secondary" onPress={() => router.push("/profile")} />
-        <Button label="Sign out" variant="quiet" onPress={handleSignOut} />
-      </Shell>
-    );
+    // Silent redirect rather than a screen of its own: Dashboard already renders its own
+    // "nothing to answer right now" card off the same eligibility check, so landing there
+    // is what tells the evaluator what happened - this phase is just the hop, not a
+    // second place that has to say the same thing.
+    return <RedirectToDashboard />;
   }
 
   if (phase === "error") {
@@ -237,10 +306,10 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
     // identical thing and fail identically, so the only real way forward is back to the
     // feed for a fresh test, not a "Try again" that can never succeed.
     return (
-      <Shell>
+      <Shell icon={CircleAlert}>
         <Text style={styles.title}>Could not submit your answers</Text>
         <Text style={styles.subtitle}>{errorMessage ?? "Something went wrong."}</Text>
-        <Button label="Back to tests" onPress={() => router.replace("/home")} />
+        <Button label="Back to tests" onPress={handleClose} />
         <Button label="Sign out" variant="quiet" onPress={handleSignOut} />
       </Shell>
     );
@@ -248,7 +317,7 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
 
   if (phase === "pendingSync") {
     return (
-      <Shell>
+      <Shell icon={UploadCloud}>
         <Text style={styles.title}>Still saving your answers</Text>
         <Text style={styles.subtitle}>
           Your answers are safe on this device. They'll be submitted automatically the
@@ -265,6 +334,14 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
       <ProgressBar total={questionCount} index={deck.index} />
 
       <View style={styles.header}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Exit to the Dashboard"
+          onPress={handleClose}
+          style={({ pressed }) => [styles.closeButton, pressed && styles.backPressed]}
+        >
+          <X size={18} color={theme.colors.textPrimary} strokeWidth={1.5} />
+        </Pressable>
         <Text style={styles.testTitle} numberOfLines={1}>
           {test.title}
         </Text>
@@ -281,9 +358,10 @@ export function TestDeck({ test, resumedFrom, onContinue }: TestDeckProps) {
               pressed && deck.canGoBack && styles.backPressed,
             ]}
           >
-            <Text style={styles.backLabel}>{"← Back"}</Text>
+            <ChevronLeft size={18} color={theme.colors.textPrimary} strokeWidth={1.5} />
+            <Text style={styles.backLabel}>Back</Text>
           </Pressable>
-          <Text style={styles.counter}>{Math.max(remaining, 0)} left</Text>
+          <CounterChip count={Math.max(remaining, 0)} label="left" />
         </View>
       </View>
 
@@ -323,9 +401,36 @@ function CompletionPopup({
     return () => clearTimeout(timer);
   }, [onDismiss]);
 
+  // Scale + fade in with a spring overshoot (prd.md §16.4), plus a small pulse on the
+  // points number once the card has mostly landed, so the two don't visually blend into
+  // one bigger overshoot. Reduced motion keeps the fade but drops both scales entirely -
+  // the pulse in particular is pure flourish with no state it's carrying.
+  const reducedMotion = useReducedMotion();
+  const entrance = useSharedValue(0);
+  const pointsPulse = useSharedValue(1);
+  useEffect(() => {
+    entrance.value = reducedMotion
+      ? withTiming(1, { duration: REDUCED_MOTION_FADE_MS })
+      : withSpring(1, POPUP_ENTRANCE_SPRING);
+    if (!result.isFlagged && !reducedMotion) {
+      pointsPulse.value = withDelay(
+        220,
+        withSequence(withSpring(1.18, POPUP_ENTRANCE_SPRING), withSpring(1, POPUP_ENTRANCE_SPRING))
+      );
+    }
+  }, [entrance, pointsPulse, result.isFlagged, reducedMotion]);
+
+  const cardStyle = useAnimatedStyle(() => ({
+    opacity: entrance.value,
+    transform: [{ scale: reducedMotion ? 1 : interpolate(entrance.value, [0, 1], [0.85, 1]) }],
+  }));
+  const pointsStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: pointsPulse.value }],
+  }));
+
   return (
     <Pressable style={styles.popupBackdrop} onPress={onDismiss}>
-      <View style={styles.popupCard}>
+      <Animated.View style={[styles.popupCard, cardStyle]}>
         {result.isFlagged ? (
           <>
             <Text style={styles.popupTitle}>Test complete</Text>
@@ -336,18 +441,31 @@ function CompletionPopup({
         ) : (
           <>
             <Text style={styles.popupTitle}>Test complete</Text>
-            <Text style={styles.popupPoints}>+{result.pointsEarned} pts</Text>
+            <Animated.Text style={[styles.popupPoints, pointsStyle]}>
+              +{result.pointsEarned} pts
+            </Animated.Text>
           </>
         )}
-      </View>
+      </Animated.View>
     </Pressable>
   );
 }
 
-function Shell({ children }: { children: React.ReactNode }) {
+/** An accent-tinted line icon for the empty/error/pending states below, per prd.md
+ * §16.6 - never a bare native Alert. */
+function Shell({
+  icon: Icon,
+  children,
+}: {
+  icon?: React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
+  children: React.ReactNode;
+}) {
   return (
     <SafeAreaView style={styles.flex}>
-      <View style={styles.centered}>{children}</View>
+      <View style={styles.centered}>
+        {Icon ? <Icon size={40} color={theme.colors.accent} strokeWidth={1.5} /> : null}
+        {children}
+      </View>
     </SafeAreaView>
   );
 }
@@ -388,10 +506,23 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing(1.5),
     paddingBottom: theme.spacing(1.5),
   },
-  testTitle: { color: theme.colors.textPrimary, fontSize: 16, fontWeight: "600", flexShrink: 1 },
+  testTitle: { color: theme.colors.textPrimary, fontSize: 16, fontWeight: "600", flex: 1 },
   headerRight: { flexDirection: "row", alignItems: "center", gap: theme.spacing(1.5) },
+  closeButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    // 44pt minimum touch target (prd.md §16.7), same as backButton's own.
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: theme.colors.surfaceRaised,
+  },
   backButton: {
-    minHeight: 36,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing(0.5),
+    // 44pt minimum touch target (prd.md §16.7).
+    minHeight: 44,
     justifyContent: "center",
     paddingHorizontal: theme.spacing(1.5),
     borderRadius: 10,
@@ -400,7 +531,6 @@ const styles = StyleSheet.create({
   backDisabled: { opacity: 0.35 },
   backPressed: { opacity: 0.7 },
   backLabel: { color: theme.colors.textPrimary, fontSize: 14, fontWeight: "600" },
-  counter: { color: theme.colors.textSecondary, fontSize: 14, fontVariant: ["tabular-nums"] },
   title: { color: theme.colors.textPrimary, fontSize: 22, fontWeight: "700", textAlign: "center" },
   subtitle: { color: theme.colors.textSecondary, fontSize: 15, textAlign: "center" },
   overlay: {
@@ -420,7 +550,7 @@ const styles = StyleSheet.create({
     left: 0,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(11, 11, 15, 0.72)",
+    backgroundColor: theme.withAlpha(theme.colors.surfaceBase, 0.72),
     padding: theme.spacing(3),
   },
   popupCard: {
@@ -430,7 +560,8 @@ const styles = StyleSheet.create({
     gap: theme.spacing(1),
     padding: theme.spacing(3.5),
     borderRadius: 24,
-    backgroundColor: theme.colors.surfaceRaised,
+    // A popup, per prd.md §16.6's component patterns - one step lighter than a card.
+    backgroundColor: theme.colors.surfaceOverlay,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.borderHairline,
   },

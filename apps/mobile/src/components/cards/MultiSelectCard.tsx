@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
+import { TapZone } from "@/components/TapZone";
 import { CardMedia } from "./CardMedia";
 import { CardStack } from "./CardStack";
 import { SwipeCard } from "./SwipeCard";
@@ -24,13 +25,13 @@ type MultiSelectCardProps = {
  * skip. Asking about one option at a time is what makes it a swipe question at all - a
  * checklist would just be the tap card again.
  *
- * The sub-deck holds the outer feed until the configured minimum and maximum are both
- * satisfied. Running out of cards with too few chosen re-offers the skipped ones rather
- * than advancing with an answer the API would reject.
+ * Each option is an independent like/dislike call - reaching the end of the queue always
+ * completes the question, whether zero, some, or all options got included. Only the
+ * configured maximum still holds the sub-deck: reaching it disables including further
+ * options, but skipping stays available to finish.
  */
 export function MultiSelectCard({ question, isActive, onAnswer }: MultiSelectCardProps) {
   const { width } = useWindowDimensions();
-  const min = question.config.minSelections ?? 0;
   const max = question.config.maxSelections ?? question.options.length;
 
   const byId = useMemo(
@@ -43,7 +44,6 @@ export function MultiSelectCard({ question, isActive, onAnswer }: MultiSelectCar
     cursor: 0,
     included: [] as string[],
   });
-  const [reconsidering, setReconsidering] = useState(false);
 
   const included = state.included;
   const atMax = included.length >= max;
@@ -51,12 +51,11 @@ export function MultiSelectCard({ question, isActive, onAnswer }: MultiSelectCar
   const cursor = state.cursor;
 
   function decide(optionId: string, include: boolean) {
-    const step = advanceSubDeck(state, optionId, include, min);
+    const step = advanceSubDeck(state, optionId, include);
     if (step.type === "complete") {
       onAnswer(step.included);
       return;
     }
-    if (step.type === "reconsider") setReconsidering(true);
     setState(step.state);
   }
 
@@ -82,13 +81,8 @@ export function MultiSelectCard({ question, isActive, onAnswer }: MultiSelectCar
         <Text style={styles.prompt}>{question.prompt}</Text>
         <Text style={styles.status}>
           {included.length} chosen · {remaining} left
-          {atMax ? ` · max ${max} reached, swipe left` : min > 0 ? ` · pick at least ${min}` : ""}
+          {atMax ? ` · max ${max} reached, swipe left` : ""}
         </Text>
-        {reconsidering ? (
-          <Text style={styles.notice}>
-            Pick at least {min}. Here are the ones you skipped.
-          </Text>
-        ) : null}
       </View>
 
       <CardStack
@@ -183,12 +177,31 @@ function OptionSwipeCard({
           <Text style={styles.stampText}>PICK</Text>
         </Animated.View>
 
-        <View style={[styles.captionBar, NO_TOUCH]}>
-          <Text style={styles.captionSide}>{"← Skip"}</Text>
+        <View style={styles.captionBar} pointerEvents="box-none">
+          {/* Tap-based fallback for the swipe gesture (prd.md §16.7): calls the same
+              onDecide the swipe commit does, directly. "box-none" above keeps the rest of
+              this bar passed through to the card's own drag surface underneath. */}
+          <TapZone
+            style={styles.captionButton}
+            disabled={!isActive}
+            onPress={() => onDecide(false)}
+            accessibilityLabel={`Skip ${option.label ?? "this option"}`}
+          >
+            <Text style={styles.captionSide}>{"← Skip"}</Text>
+          </TapZone>
           <Text style={styles.captionLabel} numberOfLines={1}>
             {option.label ?? ""}
           </Text>
-          <Text style={styles.captionSide}>{atMax ? "Max reached" : "Pick →"}</Text>
+          <TapZone
+            style={styles.captionButton}
+            disabled={!isActive || atMax}
+            onPress={() => onDecide(true)}
+            accessibilityLabel={atMax ? "Maximum reached" : `Pick ${option.label ?? "this option"}`}
+          >
+            <Text style={[styles.captionSide, atMax && styles.captionSideDisabled]}>
+              {atMax ? "Max reached" : "Pick →"}
+            </Text>
+          </TapZone>
         </View>
       </View>
     </SwipeCard>
@@ -201,7 +214,7 @@ const NO_TOUCH = { pointerEvents: "none" } as const;
 const styles = StyleSheet.create({
   wrapper: { flex: 1 },
   header: { gap: theme.spacing(0.5), paddingHorizontal: theme.spacing(2) },
-  prompt: { color: theme.colors.textPrimary, fontSize: 18, fontWeight: "600", lineHeight: 24 },
+  prompt: { color: theme.colors.textPrimary, ...theme.type.prompt },
   status: { color: theme.colors.textSecondary, fontSize: 13 },
   notice: { color: theme.colors.accent, fontSize: 13, fontWeight: "600" },
   optionBody: { flex: 1 },
@@ -214,7 +227,9 @@ const styles = StyleSheet.create({
     borderWidth: 3,
   },
   stampSkip: { left: theme.spacing(2), borderColor: theme.colors.danger },
-  stampInclude: { right: theme.spacing(2), borderColor: theme.colors.accent },
+  // Right-swipe/include gets its own hue (success), distinct from the generic accent -
+  // see prd.md §16.2's rationale for why swipe direction never leans on "accent = good".
+  stampInclude: { right: theme.spacing(2), borderColor: theme.colors.success },
   stampText: { color: theme.colors.textPrimary, fontSize: 20, fontWeight: "800", letterSpacing: 1 },
   captionBar: {
     position: "absolute",
@@ -226,8 +241,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: theme.spacing(1),
     padding: theme.spacing(1.5),
-    backgroundColor: "rgba(11, 11, 15, 0.72)",
+    backgroundColor: theme.withAlpha(theme.colors.surfaceBase, 0.72),
   },
+  // 44pt minimum touch target (prd.md §16.7), even though the visible label is small.
+  captionButton: { minHeight: 44, minWidth: 44, justifyContent: "center" },
   captionSide: { color: theme.colors.textSecondary, fontSize: 13, fontWeight: "600" },
+  captionSideDisabled: { opacity: 0.5 },
   captionLabel: { color: theme.colors.textPrimary, fontSize: 14, fontWeight: "600", flexShrink: 1 },
 });
