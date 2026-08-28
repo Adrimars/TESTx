@@ -16,8 +16,25 @@ import type { SubmitResult } from "./test";
  * needed to keep this working on the Expo web dev target.
  */
 
-const IN_PROGRESS_KEY = "testx.inProgressTest";
-const PENDING_SUBMISSION_KEY = "testx.pendingSubmission";
+/**
+ * Scoped by the signed-in user's id (16.10) - a fixed, unscoped key let evaluator A's
+ * leftover pending submission get read back and resubmitted under evaluator B's bearer
+ * token the moment B signed in on the same device, since both `retryPendingSubmissionOnce`
+ * (fired at launch) and every read/write here had no way to tell whose record it was
+ * looking at. `session.tsx`'s `signOut()` also clears the outgoing user's own keys as
+ * belt-and-suspenders hygiene, but the scoping here is what actually closes the gap: a
+ * different user's id is simply a different key, never the same storage slot.
+ */
+const IN_PROGRESS_KEY_PREFIX = "testx.inProgressTest";
+const PENDING_SUBMISSION_KEY_PREFIX = "testx.pendingSubmission";
+
+function inProgressKey(userId: string): string {
+  return `${IN_PROGRESS_KEY_PREFIX}.${userId}`;
+}
+
+function pendingSubmissionKey(userId: string): string {
+  return `${PENDING_SUBMISSION_KEY_PREFIX}.${userId}`;
+}
 
 export type InProgressTest = {
   testId: string;
@@ -56,24 +73,26 @@ async function removeJson(key: string): Promise<void> {
   }
 }
 
-export const readInProgressTest = (): Promise<InProgressTest | null> =>
-  readJson<InProgressTest>(IN_PROGRESS_KEY);
-export const writeInProgressTest = (value: InProgressTest): Promise<void> =>
-  writeJson(IN_PROGRESS_KEY, value);
-export const clearInProgressTest = (): Promise<void> => removeJson(IN_PROGRESS_KEY);
+export const readInProgressTest = (userId: string): Promise<InProgressTest | null> =>
+  readJson<InProgressTest>(inProgressKey(userId));
+export const writeInProgressTest = (userId: string, value: InProgressTest): Promise<void> =>
+  writeJson(inProgressKey(userId), value);
+export const clearInProgressTest = (userId: string): Promise<void> =>
+  removeJson(inProgressKey(userId));
 
-export const readPendingSubmission = (): Promise<PendingSubmission | null> =>
-  readJson<PendingSubmission>(PENDING_SUBMISSION_KEY);
-export const writePendingSubmission = (value: PendingSubmission): Promise<void> =>
-  writeJson(PENDING_SUBMISSION_KEY, value);
-export const clearPendingSubmission = (): Promise<void> => removeJson(PENDING_SUBMISSION_KEY);
+export const readPendingSubmission = (userId: string): Promise<PendingSubmission | null> =>
+  readJson<PendingSubmission>(pendingSubmissionKey(userId));
+export const writePendingSubmission = (userId: string, value: PendingSubmission): Promise<void> =>
+  writeJson(pendingSubmissionKey(userId), value);
+export const clearPendingSubmission = (userId: string): Promise<void> =>
+  removeJson(pendingSubmissionKey(userId));
 
 /**
  * Only ever resumes a record for the exact test being asked about - a different test id
  * means this is a leftover from an abandoned session, not a match.
  */
-async function fetchInProgressForTest(testId: string): Promise<InProgressTest | null> {
-  const stored = await readInProgressTest();
+async function fetchInProgressForTest(userId: string, testId: string): Promise<InProgressTest | null> {
+  const stored = await readInProgressTest(userId);
   return stored && stored.testId === testId ? stored : null;
 }
 
@@ -81,11 +100,23 @@ async function fetchInProgressForTest(testId: string): Promise<InProgressTest | 
  * Composed the same way `useEvaluatorTest` gates on `testId`, so it slots into
  * `feed.tsx`'s existing pending/error/empty gate.
  */
-export function useInProgressTest(testId: string | undefined) {
+export function useInProgressTest(userId: string | undefined, testId: string | undefined) {
   return useQuery({
-    queryKey: ["in-progress-test", testId],
-    enabled: Boolean(testId),
-    queryFn: () => fetchInProgressForTest(testId!),
+    queryKey: ["in-progress-test", userId, testId],
+    enabled: Boolean(userId) && Boolean(testId),
+    queryFn: () => fetchInProgressForTest(userId!, testId!),
+    // `writeInProgressTest` mutates AsyncStorage directly on every answer, entirely outside
+    // React Query's cache. `staleTime: 0` alone isn't enough: a cache hit still reports
+    // `isPending: false` synchronously on mount regardless of staleness, so `feed.tsx`'s
+    // loading gate would wave TestDeck through onto a leftover value from an earlier visit
+    // to this same test before the background revalidation lands - locking in the wrong
+    // starting index for `useDeck`'s lazy initializer, which only ever reads it once, at
+    // mount. `gcTime: 0` drops the cached entry the instant this hook's one observer
+    // unmounts (leaving the feed screen, via the 16.5 close button or otherwise), so the
+    // next mount - the exit-and-immediately-resume case 16.5 introduced - starts genuinely
+    // cold and actually waits on a fresh read instead of trusting a stale one.
+    staleTime: 0,
+    gcTime: 0,
   });
 }
 
@@ -97,10 +128,10 @@ export function useInProgressTest(testId: string | undefined) {
  * loading gap 11.1's prefetch exists to avoid. A prefetched test has never been opened,
  * so this always resolves to `null`, but the gate has no way to know that without asking.
  */
-export function prefetchInProgressTest(queryClient: QueryClient, testId: string) {
+export function prefetchInProgressTest(queryClient: QueryClient, userId: string, testId: string) {
   return queryClient.fetchQuery({
-    queryKey: ["in-progress-test", testId],
-    queryFn: () => fetchInProgressForTest(testId),
+    queryKey: ["in-progress-test", userId, testId],
+    queryFn: () => fetchInProgressForTest(userId, testId),
   });
 }
 
@@ -181,6 +212,7 @@ export type PendingResult = { status: "settled" } | { status: "rejected"; messag
  */
 export async function submitWithBackoff(
   queryClient: QueryClient,
+  userId: string,
   payload: PendingSubmission
 ): Promise<{ status: "success"; result: SubmitResult } | PendingResult | { status: "pending" }> {
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
@@ -188,7 +220,7 @@ export async function submitWithBackoff(
     const outcome = await attemptSubmitOnce(payload);
     if (outcome.status === "network") continue;
 
-    await clearPendingSubmission();
+    await clearPendingSubmission(userId);
     if (outcome.status === "success") invalidateAfterSubmit(queryClient);
     return outcome;
   }
@@ -198,20 +230,30 @@ export async function submitWithBackoff(
 }
 
 /**
- * Fired once at app launch (see `_layout.tsx`). A test finished last session and killed
- * or backgrounded before its submission confirmed still has its payload queued; this is
- * the "retry once automatically on next app launch" half of 11.4. Deliberately a single
- * attempt with no backoff loop and no UI - the evaluator isn't watching a "syncing"
- * screen for a test they may have finished hours ago, so this reconciles quietly and
- * leaves the payload queued again on a further network failure.
+ * Fired once at app launch, once the signed-in user is known (see `_layout.tsx`'s
+ * `PendingSubmissionRetry`, mounted inside `SessionProvider` and gated on
+ * `!initializing`). A test finished last session and killed or backgrounded before its
+ * submission confirmed still has its payload queued; this is the "retry once
+ * automatically on next app launch" half of 11.4. Deliberately a single attempt with no
+ * backoff loop and no UI - the evaluator isn't watching a "syncing" screen for a test
+ * they may have finished hours ago, so this reconciles quietly and leaves the payload
+ * queued again on a further network failure.
+ *
+ * `userId` scopes which record this reads (16.10): waiting for the real signed-in user,
+ * rather than firing blind at launch the way this used to, is what stops evaluator B's
+ * bearer token ever being used to resubmit a payload evaluator A queued and never signed
+ * out cleanly from - a different user id is simply a different storage key.
  */
-export async function retryPendingSubmissionOnce(queryClient: QueryClient): Promise<void> {
-  const pending = await readPendingSubmission();
+export async function retryPendingSubmissionOnce(
+  queryClient: QueryClient,
+  userId: string
+): Promise<void> {
+  const pending = await readPendingSubmission(userId);
   if (!pending) return;
 
   const outcome = await attemptSubmitOnce(pending);
   if (outcome.status === "network") return;
 
-  await clearPendingSubmission();
+  await clearPendingSubmission(userId);
   if (outcome.status === "success") invalidateAfterSubmit(queryClient);
 }

@@ -2,6 +2,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
 import Fastify from "fastify";
+import { adminCouponsRoutes } from "./routes/admin/coupons";
 import { adminDashboardRoutes } from "./routes/admin/dashboard";
 import { adminMediaRoutes } from "./routes/admin/media";
 import { adminResultsRoutes } from "./routes/admin/results";
@@ -58,6 +59,7 @@ await app.register(adminTestsRoutes, { prefix: "/admin" });
 await app.register(adminResultsRoutes, { prefix: "/admin" });
 await app.register(adminMediaRoutes, { prefix: "/admin" });
 await app.register(adminUsersRoutes, { prefix: "/admin" });
+await app.register(adminCouponsRoutes, { prefix: "/admin" });
 
 const host = process.env.API_HOST ?? "0.0.0.0";
 const port = Number(process.env.API_PORT ?? 4000);

@@ -56,18 +56,17 @@ export type SubDeckState = {
 
 export type SubDeckStep =
   | { type: "next"; state: SubDeckState }
-  /** Every option has been decided and the minimum is met. */
-  | { type: "complete"; included: string[] }
-  /** Cards ran out with too few chosen; the skipped ones come back around. */
-  | { type: "reconsider"; state: SubDeckState };
+  /** Every option has been decided, whether zero, some, or all were included. */
+  | { type: "complete"; included: string[] };
 
 /**
  * Applies one include/skip decision to a multi select sub-deck.
  *
- * Reaching the end with fewer than `min` chosen does not complete the question - the API
- * would reject it and the evaluator would lose the work - so the skipped options are
- * re-offered instead. Only the skipped ones come back, because the included ones are not
- * decisions that still need making.
+ * Each option is an independent like/dislike call - liking zero, some, or all of them is
+ * a complete answer, so reaching the end of the queue always completes the question.
+ * Nothing here re-offers a skipped option to force a minimum; the API never enforced one
+ * server-side (only `maxSelections`), so this was a mobile-only retry-loop, not a
+ * contract the answer shape depends on.
  *
  * The maximum is not enforced here: refusing to include is a gesture-level decision the
  * card makes before a commit ever happens, so a step that arrives here is already legal.
@@ -75,8 +74,7 @@ export type SubDeckStep =
 export function advanceSubDeck(
   state: SubDeckState,
   optionId: string,
-  include: boolean,
-  min: number
+  include: boolean
 ): SubDeckStep {
   const included = include ? [...state.included, optionId] : state.included;
   const cursor = state.cursor + 1;
@@ -85,12 +83,7 @@ export function advanceSubDeck(
     return { type: "next", state: { ...state, cursor, included } };
   }
 
-  if (included.length >= min) {
-    return { type: "complete", included };
-  }
-
-  const skipped = state.queue.filter((id) => !included.includes(id));
-  return { type: "reconsider", state: { queue: skipped, cursor: 0, included } };
+  return { type: "complete", included };
 }
 
 /** A drop target's centre and its half-height, in the card's coordinate space. */

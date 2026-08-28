@@ -25,13 +25,13 @@ type MultiSelectCardProps = {
  * skip. Asking about one option at a time is what makes it a swipe question at all - a
  * checklist would just be the tap card again.
  *
- * The sub-deck holds the outer feed until the configured minimum and maximum are both
- * satisfied. Running out of cards with too few chosen re-offers the skipped ones rather
- * than advancing with an answer the API would reject.
+ * Each option is an independent like/dislike call - reaching the end of the queue always
+ * completes the question, whether zero, some, or all options got included. Only the
+ * configured maximum still holds the sub-deck: reaching it disables including further
+ * options, but skipping stays available to finish.
  */
 export function MultiSelectCard({ question, isActive, onAnswer }: MultiSelectCardProps) {
   const { width } = useWindowDimensions();
-  const min = question.config.minSelections ?? 0;
   const max = question.config.maxSelections ?? question.options.length;
 
   const byId = useMemo(
@@ -44,7 +44,6 @@ export function MultiSelectCard({ question, isActive, onAnswer }: MultiSelectCar
     cursor: 0,
     included: [] as string[],
   });
-  const [reconsidering, setReconsidering] = useState(false);
 
   const included = state.included;
   const atMax = included.length >= max;
@@ -52,12 +51,11 @@ export function MultiSelectCard({ question, isActive, onAnswer }: MultiSelectCar
   const cursor = state.cursor;
 
   function decide(optionId: string, include: boolean) {
-    const step = advanceSubDeck(state, optionId, include, min);
+    const step = advanceSubDeck(state, optionId, include);
     if (step.type === "complete") {
       onAnswer(step.included);
       return;
     }
-    if (step.type === "reconsider") setReconsidering(true);
     setState(step.state);
   }
 
@@ -83,13 +81,8 @@ export function MultiSelectCard({ question, isActive, onAnswer }: MultiSelectCar
         <Text style={styles.prompt}>{question.prompt}</Text>
         <Text style={styles.status}>
           {included.length} chosen · {remaining} left
-          {atMax ? ` · max ${max} reached, swipe left` : min > 0 ? ` · pick at least ${min}` : ""}
+          {atMax ? ` · max ${max} reached, swipe left` : ""}
         </Text>
-        {reconsidering ? (
-          <Text style={styles.notice}>
-            Pick at least {min}. Here are the ones you skipped.
-          </Text>
-        ) : null}
       </View>
 
       <CardStack
