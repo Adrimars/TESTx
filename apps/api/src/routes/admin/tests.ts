@@ -185,9 +185,8 @@ function validateQuestionShape(input: QuestionInput) {
     return;
   }
 
-  // A rating question may carry exactly one option: the thing being rated. Without it a
-  // rating can only ever be about the prompt text, since a question has no media of its
-  // own - the renderers read the subject from options[0].
+  // A rating question's subject comes from the question's own `mediaId`, not an option, so
+  // it carries no options at all — this just guards against a malformed payload smuggling one in.
   if (input.options.length > 1) {
     throw Object.assign(
       new Error("Rating questions take at most one option, the item being rated"),

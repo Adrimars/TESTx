@@ -27,28 +27,8 @@ function QuestionPreview({ question }: { question: AdminQuestion }) {
   if (question.type === "RATING") {
     const min = typeof question.config.min === "number" ? question.config.min : 1;
     const max = typeof question.config.max === "number" ? question.config.max : 5;
-    const subject = question.options[0];
     return (
       <div className="space-y-4">
-        {subject && (
-          <div className="overflow-hidden rounded-lg border-2 border-border">
-            {subject.mediaId && question.mediaType === "IMAGE" && (
-              <img
-                src={`${API_URL}/media/${subject.mediaId}/file`}
-                alt={subject.label ?? "Rating subject"}
-                className="aspect-video w-full bg-muted object-cover"
-              />
-            )}
-            {subject.mediaId && (question.mediaType === "VIDEO" || question.mediaType === "AUDIO") && (
-              <div className="flex aspect-video items-center justify-center bg-muted text-sm text-muted-foreground">
-                {question.mediaType} media
-              </div>
-            )}
-            {subject.label && (
-              <div className="px-3 py-2.5 text-sm font-medium">{subject.label}</div>
-            )}
-          </div>
-        )}
         <div className="flex flex-wrap gap-2">
           {Array.from({ length: max - min + 1 }, (_, index) => min + index).map((value) => (
             <button

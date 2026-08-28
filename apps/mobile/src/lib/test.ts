@@ -28,6 +28,9 @@ export type EvaluatorQuestion = {
   type: QuestionType;
   prompt: string;
   mediaType: string | null;
+  /** The media the question is about — rated or ranked. Never selectable, unlike an option. */
+  mediaId: string | null;
+  mediaUrl: string | null;
   order: number;
   /** Only the keys PUBLIC_CONFIG_KEYS forwards for this type; everything else stays server-side. */
   config: {
