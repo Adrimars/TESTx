@@ -278,23 +278,35 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
   }
 
   /**
-   * Swaps two already-placed cards directly (15.6): a shortcut alongside reclaim-then-
-   * place, not instead of it. Holding a filled slot's thumbnail and dragging it onto
-   * another filled slot moves both cards to each other's spot in one motion, with no
-   * intermediate "current" card and no touch to `remaining` - reclaim-then-place and
-   * hold-and-swap both only ever produce a `placements` map, never a different shape.
+   * Moves an already-placed card onto another slot directly (15.6): a shortcut alongside
+   * reclaim-then-place, not instead of it. Holding a filled slot's thumbnail and dragging
+   * it onto another slot moves the card there in one motion, with no intermediate
+   * "current" card and no touch to `remaining` - reclaim-then-place and hold-and-drag both
+   * only ever produce a `placements` map, never a different shape.
    *
-   * `rawTargetValue` arrives unclamped, and possibly pointing at an empty slot, straight
-   * from the gesture's raw translation - both are legal outcomes of a real drag (overshoot
-   * past an end slot, or a slot that happens to be open), and both are simply not a swap.
+   * If the target slot is already filled, this is a true swap: both cards trade spots. If
+   * the target is open, the source card simply moves there and its old slot empties out -
+   * e.g. dragging rank 2's card onto open rank 3 should not require rank 3 to already hold
+   * a card to accept it.
+   *
+   * `rawTargetValue` arrives unclamped straight from the gesture's raw translation -
+   * overshoot past an end slot is a legal outcome of a real drag, clamped back on slot.
    */
   function swap(sourceValue: number, rawTargetValue: number) {
     const targetValue = Math.max(1, Math.min(slotCount, rawTargetValue));
     if (targetValue === sourceValue) return;
     const sourceOptionId = placements[sourceValue];
+    if (sourceOptionId === undefined) return;
     const targetOptionId = placements[targetValue];
-    if (sourceOptionId === undefined || targetOptionId === undefined) return;
-    setPlacements((prev) => ({ ...prev, [sourceValue]: targetOptionId, [targetValue]: sourceOptionId }));
+    setPlacements((prev) => {
+      const next = { ...prev, [targetValue]: sourceOptionId };
+      if (targetOptionId === undefined) {
+        delete next[sourceValue];
+      } else {
+        next[sourceValue] = targetOptionId;
+      }
+      return next;
+    });
   }
 
   if (!current) {
