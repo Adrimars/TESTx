@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { Inbox } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
-import { RedirectToDashboard } from "@/components/RedirectToDashboard";
 import { TestDeck } from "@/components/feed/TestDeck";
 import { useSession } from "@/lib/session";
 import { useInProgressTest } from "@/lib/submissionQueue";
@@ -11,6 +11,7 @@ import { useEvaluatorTest, useNextTest } from "@/lib/test";
 import { theme } from "@/lib/theme";
 
 export default function FeedScreen() {
+  const router = useRouter();
   const { user } = useSession();
   // An explicit testId opens that test instead of whatever is next in line - the seam a
   // deep link uses to open one directly.
@@ -69,10 +70,29 @@ export default function FeedScreen() {
     );
   } else if (!test.data) {
     // Genuinely nothing: nextTest and (if an id was ever in hand) test have both settled
-    // with no data and no error. Same reasoning as TestDeck's own empty phase
-    // (RedirectToDashboard's doc): Dashboard's own eligibility check renders the "nothing
-    // to answer" message, so this is only the hop back to it.
-    content = <RedirectToDashboard />;
+    // with no data and no error.
+    //
+    // Said out loud rather than redirected away from. This used to bounce silently back
+    // to Dashboard, which gave the evaluator no idea whether they had run out of tests or
+    // the Tests tab was simply broken - and it looked identical to a real failure. A
+    // named screen with its own retry is the difference between "nothing right now" and
+    // "something went wrong", which are the two things they actually need told apart.
+    content = (
+      <Shell>
+        <Inbox size={40} color={theme.colors.accent} strokeWidth={1.5} />
+        <Text style={styles.title}>No tests available</Text>
+        <Text style={styles.subtitle}>
+          There is nothing for you to answer right now. New tests appear as they open -
+          please try again later.
+        </Text>
+        <Button label="Try again" onPress={() => void nextTest.refetch()} />
+        <Button
+          label="Back to Dashboard"
+          variant="quiet"
+          onPress={() => router.replace("/dashboard")}
+        />
+      </Shell>
+    );
   } else {
     content = (
       <TestDeck

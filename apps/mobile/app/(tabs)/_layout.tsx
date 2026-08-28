@@ -1,8 +1,5 @@
-import { Alert } from "react-native";
 import { Tabs, router } from "expo-router";
-import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { LayoutGrid, Play, Settings, ShoppingBag, User } from "lucide-react-native";
-import { prefetchNextTest } from "@/lib/test";
 import { confirmLeavingUnsavedProfileChanges } from "@/lib/unsavedProfileChanges";
 import { theme } from "@/lib/theme";
 
@@ -41,40 +38,26 @@ function guardedTabListeners({
  * of its own (tests.tsx is only the restored-state fallback) - it pushes straight into
  * /feed, the same full-screen deck the old Dashboard "Start" button opened.
  *
- * Whether there is anything to open is checked *before* pushing, not left for /feed to
- * discover: prefetchNextTest reuses whatever Dashboard already warmed on mount if it's
- * still fresh (same 30s default staleTime as every other query), so this is normally free.
- * Without this check, tapping Tests with nothing available used to push into /feed and
- * immediately bounce back to Dashboard via its own empty-state redirect - which reads as
- * "the Tests tab is broken", not as "there's nothing to answer". An alert and staying put
- * says the actual thing.
+ * Deliberately does NOT wait on a network call before navigating. An earlier version
+ * checked `/evaluator/next-test` here first so it could show an alert when nothing was
+ * available - but that made the whole tab hostage to that one request: with the API
+ * unreachable the press awaited a promise that never settled, so the tab did nothing at
+ * all, forever, with no spinner and no error. A dead button is a far worse answer than a
+ * screen that loads and then explains itself.
+ *
+ * /feed owns every one of those states instead (loading, error+retry, and "no tests
+ * available"), which it has to anyway - it is reachable from a deep link and from
+ * finishing a test, not just from this tab.
  */
-function makeTestsTabListeners(queryClient: QueryClient) {
-  return () => ({
+function testsTabListeners() {
+  return {
     tabPress: (e: { preventDefault: () => void }) => {
       e.preventDefault();
-      void (async () => {
-        const canLeave = await confirmLeavingUnsavedProfileChanges();
-        if (!canLeave) return;
-
-        try {
-          const next = await prefetchNextTest(queryClient);
-          if (!next) {
-            Alert.alert(
-              "No tests available",
-              "There's nothing to answer right now. New tests appear here as they open."
-            );
-            return;
-          }
-        } catch {
-          // Fetch failed (offline, server error) - push through anyway rather than
-          // silently doing nothing; /feed has its own "Could not load a test / Try
-          // again" screen for exactly this.
-        }
-        router.push("/feed");
-      })();
+      void confirmLeavingUnsavedProfileChanges().then((canLeave) => {
+        if (canLeave) router.push("/feed");
+      });
     },
-  });
+  };
 }
 
 /**
@@ -82,11 +65,9 @@ function makeTestsTabListeners(queryClient: QueryClient) {
  * stack-of-screens-plus-footer-buttons pattern (`home.tsx`'s footer row, `profile.tsx`'s
  * own in-screen danger zone). `feed.tsx` and every auth/onboarding screen stay outside this
  * group as full-screen stack routes - a test in progress should never show tab chrome, which
- * is also why Tests is a launcher rather than a screen: see makeTestsTabListeners below.
+ * is also why Tests is a launcher rather than a screen: see testsTabListeners below.
  */
 export default function TabsLayout() {
-  const queryClient = useQueryClient();
-
   return (
     <Tabs
       screenOptions={{
@@ -121,7 +102,7 @@ export default function TabsLayout() {
           title: "Tests",
           tabBarIcon: ({ color, size }) => <Play color={color} size={size} strokeWidth={1.5} />,
         }}
-        listeners={makeTestsTabListeners(queryClient)}
+        listeners={testsTabListeners}
       />
       <Tabs.Screen
         name="profile"
