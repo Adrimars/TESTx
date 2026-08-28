@@ -5,11 +5,6 @@ export type AnswerPayload = {
   timeSpentSeconds: number;
 };
 
-export type TestSubmissionPayload = {
-  startedAt: string;
-  answers: AnswerPayload[];
-};
-
 export type TestResponse = {
   id: string;
   testId: string;
