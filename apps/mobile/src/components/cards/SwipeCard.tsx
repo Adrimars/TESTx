@@ -1,16 +1,18 @@
 import type { ReactNode } from "react";
-import { StyleSheet } from "react-native";
+import { StyleSheet, View } from "react-native";
 import type { LayoutChangeEvent, StyleProp, ViewStyle } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
   interpolate,
   runOnJS,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withSpring,
   withTiming,
 } from "react-native-reanimated";
 import type { SharedValue } from "react-native-reanimated";
+import { CARD_COMMIT_MS, CARD_REJECT_SPRING, REDUCED_MOTION_FADE_MS } from "@/lib/motion";
 import { theme } from "@/lib/theme";
 
 /** Card offset from its resting position, in pixels. Lives on the UI thread. */
@@ -46,9 +48,6 @@ export type ReleaseGesture = {
 export type ReleaseDecision =
   | { commit: false }
   | { commit: true; value: number; flyTo?: { x: number; y: number } };
-
-const RETURN_SPRING = { damping: 18, stiffness: 220, mass: 0.7 } as const;
-const FLY_AWAY_MS = 180;
 
 /** How far a committed card travels before it stops being drawn. */
 const DEFAULT_FLY_DISTANCE = 700;
@@ -88,6 +87,14 @@ type SwipeCardProps = {
   /** Screen width, used to scale the tilt and the default fly-away. */
   width: number;
   style?: StyleProp<ViewStyle>;
+  /**
+   * False skips the shared Card shadow/rounded-background chrome, rendering just the
+   * gesture surface and its children. For a card whose static outer wrapper already draws
+   * that chrome and only part of it (e.g. a photo beside a fixed answer column) is meant
+   * to drag - the wrapper is "the card"; this is just the part of it that moves.
+   * Defaults to true, so every other caller is unaffected.
+   */
+  surface?: boolean;
 };
 
 export function SwipeCard({
@@ -101,6 +108,7 @@ export function SwipeCard({
   maxTiltDeg = 8,
   width,
   style,
+  surface = true,
 }: SwipeCardProps) {
   const ownX = useSharedValue(0);
   const ownY = useSharedValue(0);
@@ -136,6 +144,13 @@ export function SwipeCard({
   // callback firing. This always runs 0 to 1.
   const settleProgress = useSharedValue(0);
 
+  // Only read once (see useReducedMotion's own doc) - fine here, since this affects how a
+  // release animates, not something that needs to react mid-gesture.
+  const reducedMotion = useReducedMotion();
+  // Only reduced motion ever touches this - the translate/rotate transform carries the
+  // card everywhere else, so a fly-off there is a fade instead of a slide.
+  const opacity = useSharedValue(1);
+
   const pan = Gesture.Pan()
     .enabled(enabled)
     .onStart((event) => {
@@ -168,27 +183,47 @@ export function SwipeCard({
       });
 
       if (!decision.commit) {
-        translateX.value = withSpring(0, RETURN_SPRING);
-        translateY.value = withSpring(0, RETURN_SPRING);
-        // The highlight has to leave with the card, or the last target stays lit after a
-        // miss and reads as a selection that was never made.
-        pointerX.value = withSpring(0, RETURN_SPRING);
-        pointerY.value = withSpring(0, RETURN_SPRING);
+        if (reducedMotion) {
+          // No overshoot, no bounce - the card and its highlight just snap back.
+          translateX.value = 0;
+          translateY.value = 0;
+          pointerX.value = 0;
+          pointerY.value = 0;
+        } else {
+          translateX.value = withSpring(0, CARD_REJECT_SPRING);
+          translateY.value = withSpring(0, CARD_REJECT_SPRING);
+          // The highlight has to leave with the card, or the last target stays lit after a
+          // miss and reads as a selection that was never made.
+          pointerX.value = withSpring(0, CARD_REJECT_SPRING);
+          pointerY.value = withSpring(0, CARD_REJECT_SPRING);
+        }
         return;
       }
 
       isSettling.value = true;
+      const committed = decision.value;
+
+      if (reducedMotion) {
+        // Collapses the directional fly-off/rotation into a plain fade, per prd.md §16.4 -
+        // the card stays put and disappears instead of sliding away.
+        opacity.value = withTiming(0, { duration: REDUCED_MOTION_FADE_MS }, (finished) => {
+          if (finished && onCommit) {
+            runOnJS(onCommit)(committed);
+          }
+        });
+        return;
+      }
+
       const target = decision.flyTo ?? {
         x: Math.sign(translateX.value || event.velocityX || 1) * DEFAULT_FLY_DISTANCE,
         y: translateY.value,
       };
-      const committed = decision.value;
 
-      translateX.value = withTiming(target.x, { duration: FLY_AWAY_MS });
-      translateY.value = withTiming(target.y, { duration: FLY_AWAY_MS });
+      translateX.value = withTiming(target.x, { duration: CARD_COMMIT_MS });
+      translateY.value = withTiming(target.y, { duration: CARD_COMMIT_MS });
 
       settleProgress.value = 0;
-      settleProgress.value = withTiming(1, { duration: FLY_AWAY_MS }, (finished) => {
+      settleProgress.value = withTiming(1, { duration: CARD_COMMIT_MS }, (finished) => {
         if (finished && onCommit) {
           runOnJS(onCommit)(committed);
         }
@@ -197,11 +232,12 @@ export function SwipeCard({
 
   const animatedStyle = useAnimatedStyle(() => {
     const tilt =
-      maxTiltDeg === 0
+      maxTiltDeg === 0 || reducedMotion
         ? 0
         : interpolate(translateX.value, [-width, 0, width], [-maxTiltDeg, 0, maxTiltDeg]);
 
     return {
+      opacity: opacity.value,
       transform: [
         { translateX: translateX.value },
         { translateY: translateY.value },
@@ -217,20 +253,20 @@ export function SwipeCard({
 
   return (
     <GestureDetector gesture={pan}>
-      <Animated.View onLayout={onLayout} style={[styles.card, style, animatedStyle]}>
-        {children}
+      {/* Shadow lives on this outer, unclipped box; onLayout measures it too, since it's
+          the same size as the inner surface that fills it. */}
+      <Animated.View
+        onLayout={onLayout}
+        style={[surface ? styles.shadow : styles.flexFill, style, animatedStyle]}
+      >
+        <View style={surface ? styles.surface : styles.flexFill}>{children}</View>
       </Animated.View>
     </GestureDetector>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    flex: 1,
-    borderRadius: 24,
-    backgroundColor: theme.colors.surfaceRaised,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.colors.borderHairline,
-    overflow: "hidden",
-  },
+  flexFill: { flex: 1 },
+  shadow: { flex: 1, ...theme.card.shadow },
+  surface: theme.card.surface,
 });

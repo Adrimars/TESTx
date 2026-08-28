@@ -1,5 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./api";
+import type { DeckAnswer } from "./deckState";
 
 /** Mirrors `serializeQuestion` in apps/api/src/routes/evaluator.ts. */
 export type EvaluatorOption = {
@@ -88,6 +89,27 @@ export function useNextTest() {
   });
 }
 
+/**
+ * Warms the `next-test` cache ahead of the Tests tab actually being opened.
+ *
+ * The tab is a launcher (see (tabs)/tests.tsx / _layout.tsx): tapping it pushes straight
+ * into the feed with no screen of its own, so whatever `useNextTest` would otherwise fetch
+ * there needs to already be in cache or the evaluator lands on a spinner for the one screen
+ * that is supposed to feel instant. Dashboard calls this on mount, since it's the landing
+ * tab on every cold start and after every sign-in - by the time anyone reaches Tests, this
+ * has almost always already resolved.
+ */
+export function prefetchNextTest(queryClient: QueryClient) {
+  return queryClient.fetchQuery({
+    queryKey: ["next-test"],
+    queryFn: () => apiFetch<NextTestSummary>("/evaluator/next-test"),
+  });
+}
+
+function fetchTest(testId: string) {
+  return apiFetch<EvaluatorTest>(`/evaluator/tests/${testId}`);
+}
+
 export function useEvaluatorTest(testId: string | undefined) {
   return useQuery({
     queryKey: ["test", testId],
@@ -99,6 +121,106 @@ export function useEvaluatorTest(testId: string | undefined) {
     refetchOnMount: false,
     refetchOnReconnect: false,
     enabled: Boolean(testId),
-    queryFn: () => apiFetch<EvaluatorTest>(`/evaluator/tests/${testId}`),
+    queryFn: () => fetchTest(testId!),
+  });
+}
+
+/**
+ * Primes the query cache for a test the feed hasn't opened yet.
+ *
+ * Used by the continuous-feed prefetch (11.1): fetched under the same query key
+ * `useEvaluatorTest` reads, so opening the prefetched test is a cache hit, not a fetch -
+ * that's what makes the test-to-test transition gapless.
+ */
+export function prefetchTest(queryClient: QueryClient, testId: string) {
+  return queryClient.fetchQuery({
+    queryKey: ["test", testId],
+    staleTime: Infinity,
+    gcTime: Infinity,
+    queryFn: () => fetchTest(testId),
+  });
+}
+
+/**
+ * The full eligible list, forced fresh every call (`staleTime: 0`).
+ *
+ * The continuous-feed prefetch (11.1) needs this rather than `/next-test`: `/next-test`
+ * excludes a test only once a `TestResponse` row for it exists, which doesn't happen
+ * until submit - so calling it while the *current* test is still in flight (which is
+ * exactly when the prefetch fires, at 1-2 questions left) hands back the current test
+ * itself as "next". `/available-tests` shares the same eligibility filter and ordering,
+ * so filtering out the current test id here finds a genuine next candidate instead.
+ */
+export function prefetchAvailableTests(queryClient: QueryClient) {
+  return queryClient.fetchQuery({
+    queryKey: ["available-tests"],
+    staleTime: 0,
+    queryFn: () => apiFetch<AvailableTest[]>("/evaluator/available-tests"),
+  });
+}
+
+export type SubmitResult = {
+  pointsEarned: number;
+  isFlagged: boolean;
+  flagReasons: string[];
+};
+
+/** Fires the one-shot, per-test reward submission. */
+export function useSubmitTest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      testId,
+      sessionToken,
+      answers,
+    }: {
+      testId: string;
+      sessionToken: string;
+      answers: DeckAnswer[];
+    }) =>
+      apiFetch<SubmitResult>(`/evaluator/tests/${testId}/submit`, {
+        method: "POST",
+        body: JSON.stringify({ sessionToken, answers }),
+      }),
+    onSuccess: () => {
+      // The reward, the home screen's list, and what "next" means have all just changed.
+      void queryClient.invalidateQueries({ queryKey: ["balance"] });
+      void queryClient.invalidateQueries({ queryKey: ["available-tests"] });
+      void queryClient.invalidateQueries({ queryKey: ["next-test"] });
+      void queryClient.invalidateQueries({ queryKey: ["stats"] });
+    },
+  });
+}
+
+export function useBalance() {
+  return useQuery({
+    queryKey: ["balance"],
+    queryFn: () => apiFetch<{ balance: number }>("/evaluator/balance"),
+  });
+}
+
+export type EvaluatorStats = {
+  totalCompleted: number;
+  completedThisWeek: number;
+  currentStreakDays: number;
+  /** Oldest first, one entry per day, zero-filled for a day with nothing answered. */
+  pointsByDay: { date: string; points: number }[];
+  /** Newest first. */
+  recentActivity: {
+    testId: string;
+    title: string;
+    pointsEarned: number;
+    isFlagged: boolean;
+    completedAt: string;
+  }[];
+};
+
+/** Dashboard's activity summary - counts, streak, a short points history, and the most
+ * recent tests answered. Server-aggregated (see GET /evaluator/stats) rather than
+ * recomputed here from a full response history the client has no other reason to fetch. */
+export function useEvaluatorStats() {
+  return useQuery({
+    queryKey: ["stats"],
+    queryFn: () => apiFetch<EvaluatorStats>("/evaluator/stats"),
   });
 }

@@ -859,31 +859,40 @@ Phase 0 (Scaffolding) ──→ Phase 1 (Auth) ──→ Phase 2 (Media) ──�
 
 > Full spec: prd.md §16 (Mobile Design System). This phase turns that spec into actual tokens/components — it is not a cosmetic pass at the end, it underpins every screen built in Phases 8–10, so token setup (11.1) should land early and get retrofitted, not bolted on last.
 
-### 12.1 Design Tokens
+### 12.1 Card Interaction Fixes (from Phase 10 field testing)
+- **Two-option comparison card only shows half the photo** — `TwoOptionCard` splits the card into two side-by-side halves, each rendering its option's photo through `CardMedia`'s cover crop; at half width most of the image is cropped out and never seen. Selecting/tapping a side should let the evaluator see that option's full, uncropped photo before committing to it.
+- **Peeking cards' text clutters the view** — `CardStack` keeps 1–2 upcoming cards visible behind the active one (10.7/prd.md §15.3) at only slightly reduced opacity, and their prompt/caption text stays legible enough to visually mix with the active card's own text. Peeking cards' text should be hidden or dimmed further so only the active card reads clearly.
+- **Ranking card gets stuck after the first placement** — `RankingCard` swaps `current` (the option being shown) in place on one persistent `SwipeCard` instance rather than remounting a fresh one per option, unlike `CardStack`, which unmounts a card specifically to reset its drag offset and committed latch (see `CardStack.tsx`'s own comment on this). After the first photo is dragged onto a slot, the next option's card doesn't reliably reset, leaving the rest of the ranking unreachable.
+- **Filled ranking slots show only a number, not the photo** — once a card is placed, its slot (`RankSlot`) shows just the rank number. A small thumbnail of the placed photo inside the slot would let the evaluator see their whole ranking at a glance.
+- **No way to revise one ranking placement** — the only undo is the outer deck's Back (10.7), which discards the *entire* question's placements, not one card. Tapping a filled slot should pull that card back out for re-placing without losing the other placements.
+
+### 12.2 Design Tokens
 - `apps/mobile` theme module encoding prd.md §16.2's color tokens (`surface-base`, `surface-raised`, `surface-overlay`, `border-hairline`, `text-primary`, `text-secondary`, `accent`, `accent-contrast`, `success`, `danger`) and §16.3's type scale, as plain constants or via `nativewind` if adopted in Phase 9.2.
 - Dark-only (no light theme in v1, prd.md §16.7) — no theme-switch logic needed yet.
 
-### 12.2 Motion Primitives
+### 12.3 Motion Primitives
 - Shared `react-native-reanimated` spring presets matching prd.md §16.4: card-commit fly-off, card-reject snap-back, target-proximity scale curve, popup overshoot — implemented once and reused by every card/target component from Phase 10, not redefined per screen.
 - `expo-haptics` tick wired to the Rating/Ranking commit-threshold crossing.
+- **Tap-selection feedback for `OptionListCard` (10.3) and the option tiles inside `MultiSelectCard`'s summary state** — picking a tile currently just flips border/background color instantly, with no scale, checkmark, or fade transition. The swipe and drag cards already have motion (highlight opacity, fly-away, proximity scale); the tap-to-select path is the one interaction in the deck with none, and it should use the same spring presets defined above rather than a one-off `Animated.timing` bolted onto that component alone.
 
-### 12.3 Component Library
+### 12.4 Component Library
 - Card, target pill, progress-segment bar, counter chip, and empty/error state components per prd.md §16.6 — built as the shared primitives Phases 9–10 consume, so those phases don't each invent their own card/pill styling.
 
-### 12.4 Iconography & Media Treatment
+### 12.5 Iconography & Media Treatment
 - `lucide-react-native` wired in with 1.5px stroke icons (prd.md §16.5); full-bleed crop (never letterbox) confirmed for image and video cards.
 
-### 12.5 Accessibility & Reduced Motion
+### 12.6 Accessibility & Reduced Motion
 - Every gesture-driven interaction (swipe, drag-to-rate, drag-to-rank) gets a tap-based fallback path.
-- OS-level Reduce Motion setting collapses every spring from 11.2 to an instant/short fade, verified on both iOS and Android.
+- OS-level Reduce Motion setting collapses every spring from 12.3 to an instant/short fade, verified on both iOS and Android.
 - 44×44pt minimum touch target audit across all interactive elements, including target pills at rest size.
 - Safe-area audit: the Rating/Ranking target column (9.5/9.6) and any other edge-anchored chrome sit inside `react-native-safe-area-context` insets on every screen, checked against a notched iPhone and a gesture-nav Android device, not just default-inset simulators.
 
 ### Phase 12 Exit Criteria
+- [ ] The two-option card's full-photo view, the peeking-card text clutter, and the Ranking card's stuck-after-first-placement bug (12.1) are all fixed and re-verified on-device
 - [ ] A design/style review confirms no default/unstyled native components remain on any mobile screen (auth, profile, feed, card, rewards, completion)
 - [ ] Color and type tokens are defined in one place and consumed everywhere — no ad-hoc hex values or font sizes scattered in screen code
 - [ ] Reduced-motion setting produces a usable tap-based fallback for every question type, verified on-device
-- [ ] Core interactions (swipe, drag-to-rate, drag-to-rank, undo, completion) use the shared spring presets from §11.2, not one-off animation code
+- [ ] Core interactions (swipe, drag-to-rate, drag-to-rank, undo, completion) use the shared spring presets from §12.3, not one-off animation code
 
 ---
 
@@ -933,6 +942,132 @@ Phase 0 (Scaffolding) ──→ Phase 1 (Auth) ──→ Phase 2 (Media) ──�
 - [ ] Mobile Rewards screen lists active items in `displayOrder` with correct images, titles, and point costs
 - [ ] Tapping redeem shows "Coming Soon" and does not change the evaluator's balance
 - [ ] Evaluator's balance shown on the Rewards screen matches `GET /evaluator/balance`
+
+---
+
+## Phase 15: Mobile App — Rating/Ranking Redesign, Free-Form Multi-Select & First-Test Onboarding
+
+> Field feedback after Phase 12 shipped its design system and gesture fallbacks: Rating and Ranking read as the same component wearing two labels, the answer column sits on top of the photo instead of beside it, Ranking's revise flow needs a shortcut, Multi-Select's min forces a retry-loop nobody asked for, and a first-time evaluator gets no walkthrough at all before their first real test.
+
+### 15.1 Multi-Select: Independent Like/Dislike, No Forced Minimum
+- Each option in a Multi-Select sub-deck should be a fully independent "did you like this one or not" decision — swiping through and liking zero, some, or all of them is a complete, valid answer. Nothing about the flow should nudge the evaluator toward a middle-ground count.
+- `apps/mobile/src/lib/swipe.ts`'s `advanceSubDeck`: drop the `"reconsider"` step entirely — reaching the end of the queue always completes the question with whatever got included, never re-offers the skipped options to force a minimum. Confirmed safe: `apps/api/src/routes/evaluator.ts`'s `validateAnswers()` never enforced `minSelections` server-side in the first place (only `maxSelections` is checked) — this was a mobile-only UX choice, not a contract the API depends on, so removing it has no server-side follow-up.
+- `maxSelections` stays respected where an admin has actually set one (the API does enforce that upper bound, so mobile still has to pre-empt it exactly as `MultiSelectCard.tsx`'s `atMax` guard does today) — the difference is there's no floor, only an optional ceiling.
+- Out of scope for this phase: whether `minSelections` should be removed from the admin authoring UI (`apps/admin`) and web evaluator (`apps/evaluator`) entirely, or just stop being treated as a mobile retry-trigger. Decide at implementation time; don't silently change what other apps store/expect from the same config key.
+
+### 15.2 Rating vs. Ranking: Distinct Shapes, Not the Same Component Twice
+- Right now `RatingCard`'s pill (`borderRadius: PILL_HEIGHT / 2`, a capsule) and `RankingCard`'s slot (`borderRadius: 12`, a rounded square) already differ slightly, but share the same size, background, border, and column layout closely enough to read as one component reused with different numbers inside.
+- Make the shape difference deliberate and legible at a glance: Rating's targets read as **score pills** (the existing capsule shape, kept circular/pill-like — a scale, not a ranking); Ranking's targets read as **rank tags** — a distinct shape (e.g. a flagged/notched tag, or a numbered badge with a corner cut) that visually says "this is a strict order," not "this is a score."
+- Keep both still built on the same underlying target-column mechanics (`DropTarget`, `resolveDropTarget`, `targetProximity` in `lib/swipe.ts`) — the shape change is presentational (each component's own pill/slot render), not a rewrite of the drag-to-target math.
+
+### 15.3 Ranking's Column Flips; Rating's Stays, But Reads Unambiguously
+- **Ranking only**: reverse the column so slot 1 (best) sits at the **bottom** of the target column and the last slot (worst) sits at the **top** — the opposite of today's top-to-bottom 1→N. `RankingCard`'s `centerY` derivation and the `bestLabel`/`worstLabel` end-label placement both need to flip together, so the labels stay next to the slots they describe.
+- **Rating stays top-to-bottom, low-to-high, unchanged** — it is a scale, not a best/worst ordering, and must not start looking like Ranking's new convention just because they sit in similar columns. What does need to improve: right now direction only reads clearly if the admin bothers to set `minLabel`/`maxLabel` (prd.md's own coffee-study seed does, but nothing requires it). Make the "which end is better" direction unambiguous by default — e.g., a persistent low→high visual cue (arrow, gradient, or always-on end labels with sensible defaults like "Low"/"High" when the admin didn't set any) rather than relying entirely on optional admin-authored text.
+
+### 15.4 Drag Scoped to the Photo, Not the Whole Card (Rating & Ranking)
+- Currently `SwipeCard` wraps the entire card — prompt text included — in one draggable surface for every question type. For Rating and Ranking specifically, the prompt should be static chrome that never moves; only the photo/media area should be the grabbable, draggable surface.
+- Restructure `RatingCard`/`RankingCard` so the prompt (and Ranking's "N of M" status line) render **outside** the `SwipeCard`, with only `CardMedia` and its immediate frame inside the gesture-detecting surface. TwoOptionCard is unaffected — its whole-card swipe is the intended Tinder-style gesture there and wasn't part of this complaint.
+
+### 15.5 A Real Answer Gutter, Not an Overlay on the Photo (Rating & Ranking)
+- The target pill/slot column is currently an absolutely-positioned overlay drawn on top of part of the photo (`COLUMN_RIGHT_MARGIN`/`PILL_WIDTH` eating into the card's right edge). Give it dedicated, reserved space instead: the photo should be narrower and the column should sit beside it in real layout space, never covering any part of the image.
+- This pairs naturally with 15.4 — once the column has its own space and the drag surface is scoped to just the photo, the two changes together produce the intended layout: fixed prompt on top, draggable photo and static answer column side by side below it.
+
+### 15.6 Ranking: Hold One Placed Card, Swap It With Another Directly
+- Today, revising a ranking requires two steps: tap a filled slot to reclaim its card back to "current," then drag or tap it into a (possibly different) slot — see 12.1/12.6. Add a direct shortcut alongside that flow, not instead of it: press and hold an already-placed card's thumbnail and drag it onto a different filled slot to swap the two cards' positions in one motion (e.g. moving "Coffee 1" from slot 2 straight to where "Coffee 4" sits, and "Coffee 4" takes slot 2 in the same gesture) — no need to reclaim first.
+- Both paths must produce the same result: reclaim-then-place and hold-and-swap are two ways to reach the same `placements` map, not two different answer shapes.
+
+### 15.7 First-Test Onboarding Tutorial (Instagram-Style, Every Question Type)
+- New evaluators currently get no orientation at all before their first real test — the only teaching that exists is `lib/tutorial.ts`'s `useGestureTutorial`, and that's scoped narrowly to the Rating/Ranking drag gesture (10.8/12.1), shown mid-test on first encounter with each of those two types specifically.
+- Build a proper first-run walkthrough, shown once before a brand-new evaluator's very first test (tracked on-device, same durable-flag pattern as the existing gesture hints): a short, guided sequence — in the spirit of Instagram's own first-run/story-style tutorials — that demonstrates how to resolve *every* question type the evaluator is about to encounter (swipe-select, tap-list, multi-select swipe, drag-to-rate, drag-to-rank), not just the two gesture-novel ones.
+- Decide at implementation time whether this supersedes or wraps the existing per-type `useGestureTutorial` hints, since the two now cover overlapping ground.
+
+### Phase 15 Exit Criteria
+- [ ] A Multi-Select question can be completed having liked zero, some, or all options, with no forced re-offering of skipped ones
+- [ ] Rating's pills and Ranking's slots are visually distinct shapes at a glance, not the same component with different labels
+- [ ] Ranking's column shows slot 1 (best) at the bottom and the last slot (worst) at the top; Rating's column is unchanged and unambiguous about which end is better
+- [ ] Dragging a Rating or Ranking card only responds to touches on the photo — the prompt text never moves
+- [ ] The answer column sits beside the photo in its own space on Rating and Ranking cards, never overlapping the image
+- [ ] Holding a placed Ranking card and dragging it onto another filled slot swaps the two, without first tapping to reclaim
+- [ ] A brand-new evaluator sees a first-test walkthrough covering every question type exactly once, before their first real test begins
+
+---
+
+## Phase 16: Mobile App — Field-Test Feedback Round 2 (Navigation, Onboarding & Polish)
+
+> Feedback from a second on-device QA pass, this time against the Phase 15 build and the `phase16-qa` fixture tests (`packages/database/prisma/create-phase16-qa-tests.ts`). Covers a real navigation restructure (tab bar, dropping test-selection in favor of one Start button), two new profile-onboarding pieces (hobbies, an 18+ checkbox replacing a redundant age field), several motion/polish items, and a genuine bug found while testing: a stale cross-account session token.
+
+### 16.1 Ranking Swap: Both Cards Scale Up During the Hold-and-Swap Drag
+- `RankingCard.tsx`'s `SwappableThumbnail` (the hold-and-drag-to-swap gesture added in 15.6) currently only moves the held thumbnail (`translateY`) with no scale feedback, and the target slot it passes over has no reaction at all during a swap drag (the existing proximity-scale in `RankSlot`'s `animated` style only reacts to `pointerX`/`pointerY`, which the swap gesture never touches — it reads raw `translationY` instead).
+- Add a matching scale-up to both sides while a swap drag is in progress: the held thumbnail grows slightly as it's dragged (driven by `translateY`'s magnitude, same spring curve as `MAX_SLOT_SCALE`'s proximity effect), and the slot currently being crossed over highlights/grows the same way `RankSlot` already does for the drag-to-place gesture. Both settle back to resting scale once the swap commits (or the drag ends over empty space with no swap).
+- Reuse `MAX_SLOT_SCALE`/`PROXIMITY_FALLOFF` and the existing spring presets in `lib/motion.ts` rather than inventing new constants — this is the same "grow near a target" language already used elsewhere in this card, just extended to a gesture that didn't have it yet.
+
+### 16.2 Question-to-Question Entrance Transition (Rise + Fade + Scale-In)
+- `CardStack.tsx` currently computes each card's peek transform (`scale`, `translateY`, `opacity`) as a plain style object recalculated on every render — when `activeIndex` advances, the next card's depth goes from 1 to 0 and its style snaps instantly to the active position with no animation in between.
+- Animate that transition: as a card's `depth` crosses from peeking to active, ease its `scale`/`translateY`/`opacity` from the peek values up to the resting active values (scale 1, translateY 0, opacity 1) instead of snapping — reading as the card rising, fading in, and scaling up into place, building on the position it already peeks from rather than sliding in from off-screen.
+- Implementation: convert `CardStack`'s per-slot transform to a `useAnimatedStyle` driven by a shared value that's animated (not just set) on `activeIndex` change, using a new `CARD_ENTRANCE_SPRING` preset in `lib/motion.ts` (same family as the existing `POPUP_ENTRANCE_SPRING`, tuned for a much smaller distance). Respect Reduced Motion the same way every other spring in this file already does (collapse to `REDUCED_MOTION_FADE_MS`).
+- Scope: only the question-to-question entrance inside one test. The transition from one test's last card into the next test's first card (Phase 11.3's completion popup → seamless continuation) is unchanged — this item is specifically about consecutive cards within a test's queue.
+
+### 16.3 QA Fixture Fix: "Quick Picks" Multi-Select Had a Cap Its Own Prompt Denied
+- `create-phase16-qa-tests.ts`'s "Quick Picks" test, Q3 (`MULTI_SELECT`, "Select any of these that feel calming to you - zero, some, or all is a completely fine answer") sets `config: { maxSelections: 3 }` against 4 options — the prompt promises "all" is a valid answer but the config caps the evaluator at 3, contradicting itself. Root cause of feedback item #3.
+- Fix: drop `maxSelections` from that question's config (`config: {}`), so all 4 options can be liked, matching what the prompt already tells the evaluator.
+- Not a platform change — `maxSelections` enforcement itself (15.1: "stays respected where an admin has actually set one") is correct and unchanged; this is a one-fixture data correction, not new engineering.
+
+### 16.4 Bottom Tab Navigation: Dashboard / Shop / Profile / Settings
+- Replaces the current stack-of-screens-plus-footer-buttons pattern (`home.tsx`'s `styles.footer` row of "Rewards"/"Profile"/"Sign out" buttons, `profile.tsx`'s own in-screen "Sign out"/"Delete account" danger zone) with a persistent bottom tab bar, four tabs:
+  - **Dashboard** — today's `home.tsx` content minus the test list (see 16.5): balance card, greeting/status. The single Start button (16.5) lives here.
+  - **Shop** — today's `rewards.tsx` content (balance + coupon catalog, prd.md §15.10) moved under this tab, unchanged otherwise.
+  - **Profile** — today's `profile.tsx` demographic fields + avatar picker + Save, *minus* the danger zone. Gets the new hobbies field (16.7) and the optional-field labels (16.6).
+  - **Settings** — the danger zone split out of `profile.tsx`: Sign out, Delete account (with its existing confirmation flow), and a natural home for anything else account-level added later (app version, legal doc links).
+- `apps/mobile`: introduce an `expo-router` `(tabs)` group (`app/(tabs)/_layout.tsx` + `app/(tabs)/dashboard.tsx`, `shop.tsx` (renamed from `rewards.tsx`), `profile.tsx`, `settings.tsx`) for these four; `login.tsx`, `register.tsx`, `profile-onboarding.tsx`, `aydinlatma.tsx`, and `feed.tsx` stay outside the tab group as full-screen stack routes (feed in particular should not show tab chrome while a test is in progress).
+- `index.tsx`'s post-auth redirect target becomes `/(tabs)/dashboard` instead of `/home`.
+
+### 16.5 Single "Start" Button Replaces Test Selection
+- `home.tsx`'s per-test list (`useAvailableTests`, `TestCard`, individual "Start test" buttons) is removed from the Dashboard tab entirely — matches what prd.md §15.4 already specifies ("the evaluator does not pick a test from a list") but the current implementation contradicts.
+- Replace with one prominent **Start** button on the Dashboard tab. Tapping it enters the feed screen (`feed.tsx`), which resolves the next eligible test the same way it already does today (`useNextTest`/`useAvailableTests` + prefetch machinery from Phase 11 is unchanged) and begins the continuous cross-test feed described in Phase 11/prd.md §15.4 — the evaluator no longer sees or picks individual tests, they only ever see "Start."
+- If no test is currently eligible, tapping Start shows the existing "nothing available right now" empty state inline (reuse `home.tsx`'s current empty-state copy) rather than entering the feed screen.
+- **Explicit exit control inside the feed**: `feed.tsx`/`TestDeck.tsx` gets a visible close/back control (top corner, always reachable) that returns to the Dashboard tab at any point — mid-question or between tests — independent of the OS back gesture. An in-progress test's answers are preserved via the existing `writeInProgressTest`/resume machinery (`submissionQueue.ts`) so exiting mid-test and starting again later resumes rather than restarting, consistent with how resume already works today.
+
+### 16.6 Profile Fields: Label the Actually-Optional Ones
+- `evaluatorProfileSchema` (`packages/shared/src/validation/auth.ts`) treats `city`, `nativeLanguage`, and `occupation` as optional (`.optional()`), while `age`, `gender`, `country`, `educationLevel`, `aiExperience`, and `aiFrequency` are required. Today's `profile.tsx`/`profile-onboarding.tsx` only hint at this via a generic `placeholder="Optional"` inside the empty field, easy to miss.
+- Update the visible field labels themselves for the three optional fields: `"City"` → `"City (Optional)"`, `"Native language"` → `"Native language (Optional)"`, `"Occupation"` → `"Occupation (Optional)"`, in both `profile.tsx` and `profile-onboarding.tsx`. Required fields' labels are unchanged.
+
+### 16.7 Hobbies: Optional Predecided Multi-Select (Max 5)
+- New `EvaluatorProfile.hobbies String[] @default([])` field (`packages/database/prisma/schema.prisma`, same pattern as the existing `foreignLanguages`/`aiUseCases` array fields) + migration.
+- `evaluatorProfileSchema`: add `hobbies: z.array(z.string()).max(5).optional().default([])`, validated server-side against a fixed predecided list (new export, e.g. `packages/shared/src/constants.ts`'s `HOBBIES`) so arbitrary free text can't be submitted.
+- Proposed predecided list (18 items, open to adjustment): Reading, Cooking & Baking, Gaming, Sports & Fitness, Travel, Photography, Music, Movies & TV, Art & Painting, Gardening, Hiking & Outdoors, Writing, Yoga & Meditation, Board Games & Puzzles, Pets & Animals, DIY & Crafts, Fashion & Style, Technology & Gadgets.
+- UI: a tappable chip/tile grid (reuse the multi-select chip styling already used elsewhere in mobile forms where applicable) capped at 5 selections — the 6th tap on a new chip is a no-op until one is deselected, mirroring `MultiSelectCard`'s existing `atMax` guard pattern from Phase 15.1.
+- **Optional, not mandatory**: shown as a skippable step in `profile-onboarding.tsx` (a "Skip" affordance, doesn't block reaching the feed) and editable anytime afterward from the Profile tab (16.4).
+
+### 16.8 Registration: 18+ Checkbox Instead of Age Field; Password Confirmation + Show/Hide
+- **Age → legal checkbox.** `register.tsx`'s numeric `age` field only ever exists to gate under-18 signups (`mobileRegisterSchema.age.min(MOBILE_MIN_AGE)`, `packages/shared/src/validation/auth.ts:46-50`) — the number itself is never persisted (`apps/api/src/routes/auth.ts`'s `/register/mobile` handler never writes `input.age` to any column). The real demographic age is collected separately and *is* persisted, on `profile-onboarding.tsx` (`EvaluatorProfile.age`). Replace the registration screen's numeric age input with a single checkbox: **"I confirm I am 18 or older."** Unchecked blocks the Continue button, exactly like today's numeric validation does.
+  - `mobileRegisterSchema`: replace `age: z.number()...` with `ageConfirmed: z.literal(true, { errorMap: () => ({ message: "You must confirm you are 18 or older to create an account" }) })`. Nothing downstream changes — the field was never persisted, so this is purely a validation-shape change.
+  - `profile-onboarding.tsx`'s numeric age field and its own `MOBILE_MIN_AGE` floor check are **unchanged** — that's still where the real `EvaluatorProfile.age` gets collected once.
+- **Password confirmation.** `register.tsx` gets a second field, "Confirm password," validated client-side to match `password` before Continue is enabled (mismatch shows an inline error, same pattern as the existing `errors` state object).
+- **Show/hide password (eye icon).** A small eye-icon toggle on the right edge of every password field — both fields on `register.tsx`, and the existing single password field on `login.tsx` — flips `secureTextEntry` on the underlying `Field`/`TextInput`. Build as a small reusable addition to the shared `Field` component (`apps/mobile/src/components/Field.tsx`) rather than three separate one-off implementations, since all three password fields need identical behavior.
+
+### 16.9 Ranking Reclaim/Place Transition: Scale + Fade
+- `RankingCard.tsx`'s `reclaim()` (tap a filled slot → its card pops back to being the full-size `current` card) and `place()` (drag/tap the current card into a slot → it becomes a small filled-slot thumbnail) both happen with an instant snap today — no transition in either direction.
+- Add a simple scale + fade transition on both: on reclaim, the reappearing full card animates in from a slightly smaller/more-transparent state up to full size/opacity; on place, the slot's new thumbnail animates in from slightly larger/more-transparent down to its resting size/opacity. Not a position-matched morph (the thumbnail does not need to visually travel from the exact slot coordinates to the exact card coordinates, or vice versa) — a straightforward scale+fade using the existing `lib/motion.ts` spring presets is sufficient, consistent with 16.2's approach of reusing this file's shared presets rather than one-off animation code.
+
+### 16.10 Fix: Stale Cross-Account Session Token on Submission Retry
+- **Root cause of feedback item #10** ("This session token does not belong to this test"). `apps/mobile/src/lib/submissionQueue.ts` stores at most one pending test submission and one in-progress test **globally** — `PENDING_SUBMISSION_KEY`/`IN_PROGRESS_KEY` are fixed AsyncStorage keys, not scoped by user. `session.tsx`'s `signOut()` (line 107-110) only calls `clearTokens()` and resets in-memory user state; it never touches these AsyncStorage records.
+- Failure sequence: evaluator A finishes a test, the background submit doesn't confirm before they sign out and evaluator B logs in on the same device; at next app launch, `retryPendingSubmissionOnce()` (fired from `_layout.tsx`) reads evaluator A's leftover pending payload and resubmits it using evaluator B's now-active bearer token. `apps/api/src/routes/evaluator.ts`'s submit handler correctly rejects this — the session token's embedded `userId` (evaluator A) doesn't match the authenticated request's `userId` (evaluator B) — producing exactly this error, harmlessly from the backend's perspective but confusingly from the evaluator's.
+- Fix: scope `IN_PROGRESS_KEY`/`PENDING_SUBMISSION_KEY` by the signed-in user's id (e.g. suffix the AsyncStorage key, or namespace the stored JSON by `userId`) **and** have `signOut()` clear any pending/in-progress records that don't belong to the account being signed into next — belt-and-suspenders, since either alone closes the gap, but clearing on sign-out is also just correct hygiene (an abandoned session shouldn't leave silent background work queued). `retryPendingSubmissionOnce()` and `fetchInProgressForTest()` should only ever act on the currently authenticated user's own records.
+
+### Phase 16 Exit Criteria
+- [ ] Holding and dragging a placed Ranking card onto another filled slot scales both the held thumbnail and the slot it's crossing, settling back once the swap commits or is abandoned
+- [ ] Advancing from one question to the next inside a test animates the incoming card rising, fading in, and scaling up rather than snapping into place; Reduced Motion collapses this to a short fade
+- [ ] The "Quick Picks" QA fixture's calming-photos question accepts all 4 options selected, matching its own prompt
+- [ ] The app shows a persistent bottom tab bar with Dashboard, Shop, Profile, and Settings; Sign out and Delete account live under Settings, not Profile
+- [ ] The Dashboard tab shows balance/status and a single Start button — no list of individual tests to choose from
+- [ ] Tapping Start enters the continuous feed at the next eligible test; an explicit in-feed control exits back to the Dashboard tab at any point, mid-test or between tests, without losing progress
+- [ ] Profile screen labels read "City (Optional)", "Native language (Optional)", and "Occupation (Optional)"; required fields' labels are unchanged
+- [ ] A new evaluator can select up to 5 hobbies from the predecided list during onboarding, can skip the step entirely, and can add/change hobbies later from the Profile tab
+- [ ] Registration shows an "I confirm I am 18 or older" checkbox instead of a numeric age field; profile-onboarding's numeric age field is unaffected
+- [ ] Registration requires a matching "Confirm password" before proceeding; a mismatch shows an inline error
+- [ ] Every password field (register's two, login's one) has a working show/hide eye-icon toggle
+- [ ] Reclaiming a placed Ranking card and placing a card into a slot both animate with a scale+fade transition instead of snapping
+- [ ] Signing out on a device clears any pending/in-progress test records for that account; a different account signing in afterward never has a prior account's stale submission retried under its session
 
 ---
 

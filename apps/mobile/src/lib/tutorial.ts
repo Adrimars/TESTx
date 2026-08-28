@@ -85,3 +85,13 @@ export function useGestureTutorial(gesture: TutorialGesture, enabled: boolean): 
 
   return { shouldShow, dismiss };
 }
+
+/**
+ * Retires the mid-test drag hints for both Rating and Ranking at once. Called when the
+ * mandatory hands-on practice test (see app/practice-test.tsx) completes: it already
+ * demonstrated both gestures for real, so the narrower in-card hint on a real Rating or
+ * Ranking question later would only repeat what was just practiced.
+ */
+export async function markGestureHintsSeen(): Promise<void> {
+  await Promise.all([writeFlag(KEYS.rating), writeFlag(KEYS.ranking)]);
+}
