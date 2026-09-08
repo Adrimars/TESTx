@@ -379,7 +379,8 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
    *
    * `/next-test` answers "what should I do next", which is all a one-at-a-time feed needs.
    * A home screen has to show what is on offer before anyone commits to answering, so it
-   * needs the list - same eligibility rules, no cap on how many come back.
+   * needs the list - same eligibility rules, same ACTIVE_TEST_SCAN_LIMIT-bounded scan as
+   * `/next-test`, just returning every eligible test from that scan instead of only the first.
    */
   app.get("/available-tests", authEval, async (request, reply) => {
     const profile = await app.prisma.evaluatorProfile.findUnique({

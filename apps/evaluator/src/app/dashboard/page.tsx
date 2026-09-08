@@ -137,13 +137,19 @@ export default function DashboardPage() {
 
   const {
     data: nextTest,
-    isFetching: loading,
+    isPending,
+    isFetching,
     error: queryError,
     refetch: fetchNextTest,
   } = useQuery({
     queryKey: ["evaluator", "next-test"],
     queryFn: () => apiFetch<NextTest | null>("/evaluator/next-test"),
   });
+  // Not just isFetching: refetchOnWindowFocus (react-query default) would otherwise flip
+  // this back to the loading state every time the tab regains focus, even though nextTest
+  // is already known. Still tracks isFetching while nextTest is null so the retry button's
+  // spinner/disabled state works.
+  const loading = isPending || (isFetching && nextTest === null);
   const error = queryError ? (queryError instanceof Error ? queryError.message : "Something went wrong") : null;
 
   return (
