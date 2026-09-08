@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import type { PrismaClient } from "@testx/database";
 import {
   DEFAULT_RATING_MAX,
   DEFAULT_RATING_MIN,
@@ -272,6 +273,70 @@ function matchesDemographics(
   return true;
 }
 
+/**
+ * Most evaluators won't need hundreds of active tests scanned to find one eligible
+ * match; FIFO order (oldest-first, same as before) means this only changes behavior for
+ * an evaluator ineligible for every one of the oldest 200 active tests, which is an
+ * acceptable trade for turning an unbounded scan into a bounded one.
+ */
+const ACTIVE_TEST_SCAN_LIMIT = 200;
+
+type EligibleTest = {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  advisoryTimeMin: number | null;
+  rewardPoints: number;
+  minTimePerQuestion: number;
+  questionCount: number;
+};
+
+/**
+ * Shared by `/next-test` and `/available-tests` — both previously duplicated this exact
+ * fetch-and-filter (Finding 5's reuse note). Bounds the active-test scan with a `take`
+ * limit, and — instead of loading the evaluator's entire lifetime response history —
+ * only fetches responses for the tests already in that bounded candidate set. That keeps
+ * the "already responded" check exactly correct (it only ever needs to know about tests
+ * that could actually be returned) while making it bounded too.
+ */
+async function findEligibleActiveTests(
+  prisma: PrismaClient,
+  userId: string,
+  profile: { age: number; gender: string; country: string; city: string | null }
+): Promise<EligibleTest[]> {
+  const activeTests = await prisma.test.findMany({
+    where: { status: "ACTIVE" },
+    orderBy: { createdAt: "asc" },
+    take: ACTIVE_TEST_SCAN_LIMIT,
+    include: { _count: { select: { responses: true, questions: true } } },
+  });
+  if (activeTests.length === 0) return [];
+
+  const alreadyResponded = await prisma.testResponse.findMany({
+    where: { userId, testId: { in: activeTests.map((test) => test.id) } },
+    select: { testId: true },
+  });
+  const respondedIds = new Set(alreadyResponded.map((r) => r.testId));
+
+  return activeTests
+    .filter((test) => {
+      if (respondedIds.has(test.id)) return false;
+      if (test.responseCap !== null && test._count.responses >= test.responseCap) return false;
+      return matchesDemographics(profile, test.demographicFilters);
+    })
+    .map((test) => ({
+      id: test.id,
+      title: test.title,
+      description: test.description,
+      status: test.status,
+      advisoryTimeMin: test.advisoryTimeMin,
+      rewardPoints: test.rewardPoints,
+      minTimePerQuestion: test.minTimePerQuestion,
+      questionCount: test._count.questions,
+    }));
+}
+
 export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
   app.put("/profile", authEval, async (request, reply) => {
     const body = evaluatorProfileSchema.parse(request.body);
@@ -305,39 +370,8 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
     });
     if (!profile) return reply.status(400).send({ error: "PROFILE_REQUIRED", message: "Complete your profile first" });
 
-    const activeTests = await app.prisma.test.findMany({
-      where: { status: "ACTIVE" },
-      orderBy: { createdAt: "asc" },
-      // `questions` is counted here rather than per-test inside the loop below - same
-      // shape /available-tests already uses, and it keeps this endpoint at a fixed
-      // number of queries no matter how many candidates get skipped.
-      include: { _count: { select: { responses: true, questions: true } } },
-    });
-
-    const alreadyResponded = await app.prisma.testResponse.findMany({
-      where: { userId: request.user!.id },
-      select: { testId: true },
-    });
-    const respondedIds = new Set(alreadyResponded.map((r) => r.testId));
-
-    for (const test of activeTests) {
-      if (respondedIds.has(test.id)) continue;
-      if (test.responseCap !== null && test._count.responses >= test.responseCap) continue;
-      if (!matchesDemographics(profile, test.demographicFilters)) continue;
-
-      return reply.send({
-        id: test.id,
-        title: test.title,
-        description: test.description,
-        status: test.status,
-        advisoryTimeMin: test.advisoryTimeMin,
-        rewardPoints: test.rewardPoints,
-        minTimePerQuestion: test.minTimePerQuestion,
-        questionCount: test._count.questions,
-      });
-    }
-
-    return reply.send(null);
+    const eligible = await findEligibleActiveTests(app.prisma, request.user!.id, profile);
+    return reply.send(eligible[0] ?? null);
   });
 
   /**
@@ -353,37 +387,7 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
     });
     if (!profile) return reply.status(400).send({ error: "PROFILE_REQUIRED", message: "Complete your profile first" });
 
-    const activeTests = await app.prisma.test.findMany({
-      where: { status: "ACTIVE" },
-      orderBy: { createdAt: "asc" },
-      include: {
-        _count: { select: { responses: true, questions: true } },
-      },
-    });
-
-    const alreadyResponded = await app.prisma.testResponse.findMany({
-      where: { userId: request.user!.id },
-      select: { testId: true },
-    });
-    const respondedIds = new Set(alreadyResponded.map((r) => r.testId));
-
-    const available = activeTests
-      .filter((test) => {
-        if (respondedIds.has(test.id)) return false;
-        if (test.responseCap !== null && test._count.responses >= test.responseCap) return false;
-        return matchesDemographics(profile, test.demographicFilters);
-      })
-      .map((test) => ({
-        id: test.id,
-        title: test.title,
-        description: test.description,
-        status: test.status,
-        advisoryTimeMin: test.advisoryTimeMin,
-        rewardPoints: test.rewardPoints,
-        minTimePerQuestion: test.minTimePerQuestion,
-        questionCount: test._count.questions,
-      }));
-
+    const available = await findEligibleActiveTests(app.prisma, request.user!.id, profile);
     return reply.send(available);
   });
 
