@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BarChart3, Eye, Pencil, Play, Plus, Square, PauseCircle } from "lucide-react";
+import { BarChart3, ChevronLeft, ChevronRight, Eye, Pencil, Play, Plus, Square, PauseCircle } from "lucide-react";
 import {
   Alert,
   Badge,
   Button,
   Card,
   CardContent,
+  CardFooter,
   ConfirmDialog,
   PageHeader,
   Table,
@@ -24,12 +25,15 @@ import { formatDate, statusVariant } from "@/lib/status";
 import type { AdminTestListItem, Paginated } from "@/lib/admin-types";
 
 const STATUSES: Array<"ALL" | TestStatus> = ["ALL", "DRAFT", "ACTIVE", "PAUSED", "CLOSED"];
+const PAGE_SIZE = 50;
 
 export default function TestsPage() {
   const closeTestDialogRef = useRef<HTMLDialogElement>(null);
   const [pendingCloseId, setPendingCloseId] = useState<string | null>(null);
   const [tests, setTests] = useState<AdminTestListItem[]>([]);
+  const [total, setTotal] = useState(0);
   const [status, setStatus] = useState<"ALL" | TestStatus>("ALL");
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -37,21 +41,30 @@ export default function TestsPage() {
     setLoading(true);
     setError("");
     try {
-      const params = new URLSearchParams({ page: "1", limit: "50" });
+      const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
       if (status !== "ALL") params.set("status", status);
       const data = await apiFetch<Paginated<AdminTestListItem>>(`/admin/tests?${params}`);
       setTests(data.items);
+      setTotal(data.total);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load tests");
       setTests([]);
     } finally {
       setLoading(false);
     }
-  }, [status]);
+  }, [status, page]);
 
   useEffect(() => {
     void fetchTests();
   }, [fetchTests]);
+
+  // A status change can leave `page` pointing past the new filter's last page — reset
+  // to page 1 rather than showing an empty table until the user notices and goes back.
+  useEffect(() => {
+    setPage(1);
+  }, [status]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   async function changeStatus(testId: string, newStatus: TestStatus) {
     try {
@@ -205,6 +218,32 @@ export default function TestsPage() {
             </TableBody>
           </Table>
         </CardContent>
+
+        <CardFooter className="justify-between">
+          <p className="text-sm tabular-nums text-muted-foreground">
+            Page {page} of {totalPages}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={page <= 1 || loading}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+            >
+              <ChevronLeft className="size-4" aria-hidden />
+              Previous
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={page >= totalPages || loading}
+              onClick={() => setPage((current) => current + 1)}
+            >
+              Next
+              <ChevronRight className="size-4" aria-hidden />
+            </Button>
+          </div>
+        </CardFooter>
       </Card>
 
       <ConfirmDialog
