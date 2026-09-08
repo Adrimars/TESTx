@@ -5,9 +5,14 @@ export default [
   ...base,
   {
     // Metro resolves static assets through require() - an import gives back a module
-    // record rather than the numeric asset reference the bundler hands to <Image>. The
-    // avatar preset table is the one place that matters, and there is no alternative.
-    files: ["apps/mobile/src/lib/avatars.ts"],
+    // record rather than the numeric asset reference the bundler hands to <Image>. These
+    // are the places that matter, and there is no alternative.
+    files: [
+      "apps/mobile/src/lib/avatars.ts",
+      "apps/mobile/app/(tabs)/dashboard.tsx",
+      "apps/mobile/app/index.tsx",
+      "apps/mobile/app/login.tsx",
+    ],
     rules: { "@typescript-eslint/no-require-imports": "off" },
   },
   {
