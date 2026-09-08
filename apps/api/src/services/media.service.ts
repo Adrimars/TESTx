@@ -44,6 +44,54 @@ export function getCacheDir(): string {
   return path.resolve(process.env.CACHE_DIR ?? "./cache/media");
 }
 
+export function getCacheMaxBytes(): number {
+  const configuredMb = Number(process.env.CACHE_MAX_SIZE_MB);
+  const mb = Number.isFinite(configuredMb) && configuredMb > 0 ? configuredMb : 2048;
+  return mb * 1024 * 1024;
+}
+
+/**
+ * Caps `dir`'s total size by deleting least-recently-accessed files first. Nothing in
+ * `cache/media` is authoritative data — Drive originals are re-fetchable, thumbnails are
+ * regeneratable — so eviction here is always safe, unlike `uploads/`.
+ *
+ * In-progress downloads (`*.tmp`, see `drive.service.ts`) are left alone; they're not
+ * yet part of the served cache and will rename into place or be cleaned up on failure.
+ */
+export async function enforceCacheSizeLimit(dir: string, maxBytes: number): Promise<void> {
+  let entries: string[];
+  try {
+    entries = await fsPromises.readdir(dir);
+  } catch {
+    return;
+  }
+
+  const stats = await Promise.all(
+    entries
+      .filter((name) => !name.endsWith(".tmp"))
+      .map(async (name) => {
+        const filePath = path.join(dir, name);
+        try {
+          const stat = await fsPromises.stat(filePath);
+          return { filePath, size: stat.size, atimeMs: stat.atimeMs };
+        } catch {
+          return null;
+        }
+      })
+  );
+  const files = stats.filter((f): f is { filePath: string; size: number; atimeMs: number } => f !== null);
+
+  let remaining = files.reduce((sum, f) => sum + f.size, 0);
+  if (remaining <= maxBytes) return;
+
+  files.sort((a, b) => a.atimeMs - b.atimeMs);
+  for (const file of files) {
+    if (remaining <= maxBytes) break;
+    await fsPromises.unlink(file.filePath).catch(() => {});
+    remaining -= file.size;
+  }
+}
+
 function mimeToFileType(mimeType: string): FileMediaType | null {
   if (mimeType.startsWith("image/")) return "IMAGE";
   if (mimeType.startsWith("video/")) return "VIDEO";

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import fsPromises from "node:fs/promises";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { PassThrough, Readable } from "node:stream";
 import { google } from "googleapis";
 import type { FastifyReply } from "fastify";
@@ -44,6 +45,55 @@ function getDrive() {
     throw Object.assign(new Error("GOOGLE_DRIVE_API_KEY is not configured"), { statusCode: 502 });
   }
   return google.drive({ version: "v3", auth: apiKey });
+}
+
+/**
+ * Keyed by `media.id`. On a cold cache, every concurrent requester for the same file
+ * would otherwise independently call the Drive API and write to the same temp path,
+ * racing each other and risking a corrupted cache file for everyone who reads it after.
+ * The first ("leader") request registers its fetch-and-cache task here; later
+ * ("follower") requests for the same id await the same task instead of starting their
+ * own. Deliberately per-process — the same race is possible across processes once the
+ * API scales horizontally, which needs a distributed lock and is out of scope here.
+ */
+const inFlightCacheWrites = new Map<string, Promise<void>>();
+
+/** Starts the Drive download. Throws synchronously (before any bytes are sent) on failure. */
+async function getDriveReadStream(media: Media): Promise<NodeJS.ReadableStream> {
+  const drive = getDrive();
+  try {
+    const driveResponse = await drive.files.get(
+      { fileId: media.sourceUrl!, alt: "media" },
+      { responseType: "stream" }
+    );
+    return driveResponse.data as NodeJS.ReadableStream;
+  } catch (err) {
+    throw Object.assign(new Error("Failed to fetch file from Google Drive"), { statusCode: 502, cause: err });
+  }
+}
+
+/**
+ * Drains `driveStream` into `cachePath`, writing to a per-attempt unique temp path so a
+ * failed or overlapping attempt can never clobber a previously-good cache file, and only
+ * renaming into place once the download completes successfully.
+ */
+async function cacheDriveStream(driveStream: NodeJS.ReadableStream, cachePath: string): Promise<void> {
+  const tempPath = `${cachePath}.${randomUUID()}.tmp`;
+  const cacheWriteStream = fs.createWriteStream(tempPath);
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      driveStream.on("error", reject);
+      cacheWriteStream.on("error", reject);
+      cacheWriteStream.on("finish", resolve);
+      driveStream.pipe(cacheWriteStream);
+    });
+    await fsPromises.rename(tempPath, cachePath);
+  } catch (err) {
+    if (!cacheWriteStream.destroyed) cacheWriteStream.destroy();
+    await fsPromises.unlink(tempPath).catch(() => {});
+    throw err;
+  }
 }
 
 export const driveService = {
@@ -134,40 +184,60 @@ export const driveService = {
       // cache miss — fetch from Drive
     }
 
-    const drive = getDrive();
-    let driveResponse;
+    // Follower: another request for this same file is already downloading it. Wait for
+    // that shared task instead of starting a second Drive fetch, then serve the file it
+    // produced — no live stream of our own to offer, but no duplicate work either.
+    const existing = inFlightCacheWrites.get(media.id);
+    if (existing) {
+      try {
+        await existing;
+      } catch {
+        return reply.status(502).send({ error: "DRIVE_ERROR", message: "Failed to fetch file from Google Drive" });
+      }
+      return reply.send(Readable.toWeb(fs.createReadStream(cachePath)));
+    }
+
+    // Leader: claim the in-flight slot with a placeholder promise *before* any `await`,
+    // in the same synchronous stretch as the `existing` check above — otherwise two
+    // requests arriving back-to-back could both see no in-flight task and both become
+    // leaders, recreating the exact race this map exists to prevent.
+    let resolveTask!: () => void;
+    let rejectTask!: (err: unknown) => void;
+    const task = new Promise<void>((resolve, reject) => {
+      resolveTask = resolve;
+      rejectTask = reject;
+    });
+    inFlightCacheWrites.set(media.id, task);
+    void task.then(
+      () => inFlightCacheWrites.delete(media.id),
+      () => inFlightCacheWrites.delete(media.id)
+    );
+
+    // Now do the actual async work. A failure here — before any bytes are sent — still
+    // gets a clean 502 instead of a half-open stream.
+    let driveStream: NodeJS.ReadableStream;
     try {
-      driveResponse = await drive.files.get(
-        { fileId: media.sourceUrl!, alt: "media" },
-        { responseType: "stream" }
-      );
-    } catch {
+      driveStream = await getDriveReadStream(media);
+    } catch (err) {
+      rejectTask(err);
       return reply.status(502).send({ error: "DRIVE_ERROR", message: "Failed to fetch file from Google Drive" });
     }
 
-    const tempPath = `${cachePath}.tmp`;
-    const cacheWriteStream = fs.createWriteStream(tempPath);
     const passThrough = new PassThrough();
-    const driveStream = driveResponse.data as NodeJS.ReadableStream;
+    driveStream.pipe(passThrough);
 
-    const cleanup = () => {
-      driveStream.removeAllListeners();
-      if (!cacheWriteStream.destroyed) cacheWriteStream.destroy();
-      if (!passThrough.destroyed) passThrough.destroy();
-      fs.unlink(tempPath, () => {});
-    };
-
-    driveStream.pipe(cacheWriteStream, { end: true });
-    driveStream.pipe(passThrough, { end: true });
-
-    cacheWriteStream.on("finish", () => {
-      fs.rename(tempPath, cachePath, () => {});
+    cacheDriveStream(driveStream, cachePath).then(resolveTask, (err) => {
+      rejectTask(err);
+      // The cache write failed (e.g. disk full) or the Drive stream itself dropped
+      // mid-transfer — either way this reply's live stream can't continue either.
+      if (!passThrough.destroyed) passThrough.destroy(err instanceof Error ? err : new Error(String(err)));
     });
-    driveStream.on("error", cleanup);
-    cacheWriteStream.on("error", cleanup);
-    passThrough.on("error", cleanup);
+
+    // Scoped to this reply only: if this client disconnects, stop feeding its own
+    // passThrough. The shared `task` above is untouched, so followers already waiting
+    // on it still get a complete, correctly-cached file.
     reply.raw.on("close", () => {
-      if (!reply.raw.writableEnded) cleanup();
+      if (!reply.raw.writableEnded && !passThrough.destroyed) passThrough.destroy();
     });
 
     return reply.send(Readable.toWeb(passThrough));
