@@ -5,6 +5,6 @@
     "rootDir": ".",
     "types": ["node"]
   },
-  "include": ["src", "prisma/seed.ts"],
+  "include": ["src", "prisma/seed.ts", "prisma/create-phase16-qa-tests.ts"],
   "exclude": ["node_modules", "dist"]
 }

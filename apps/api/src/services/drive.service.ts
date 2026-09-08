@@ -7,7 +7,7 @@ import { google } from "googleapis";
 import type { FastifyReply } from "fastify";
 import type { PrismaClient, Prisma } from "@testx/database";
 import type { FileMediaType } from "@testx/shared";
-import { getCacheDir } from "./media.service";
+import { getCacheDir } from "../lib/media-paths";
 
 type Media = Prisma.MediaGetPayload<Record<string, never>>;
 
@@ -57,6 +57,41 @@ function getDrive() {
  * API scales horizontally, which needs a distributed lock and is out of scope here.
  */
 const inFlightCacheWrites = new Map<string, Promise<void>>();
+
+type Claim =
+  | { role: "leader"; task: Promise<void>; resolveTask: () => void; rejectTask: (err: unknown) => void }
+  | { role: "follower"; task: Promise<void> };
+
+/**
+ * Checks for and, if none exists, registers an in-flight cache-write task for `mediaId`
+ * — all in one synchronous stretch with no `await` in between, so two requests arriving
+ * back-to-back can't both see no in-flight task and both become leaders. Shared by
+ * `streamFile` (the leader also gets a live pipe of its own) and `ensureCachedFile` (no
+ * live reply to feed, just the cache write) so both entry points serialize on the same
+ * map instead of racing each other.
+ */
+function claimCacheWrite(mediaId: string): Claim {
+  const existing = inFlightCacheWrites.get(mediaId);
+  if (existing) return { role: "follower", task: existing };
+
+  let resolveTask!: () => void;
+  let rejectTask!: (err: unknown) => void;
+  const task = new Promise<void>((resolve, reject) => {
+    resolveTask = resolve;
+    rejectTask = reject;
+  });
+  inFlightCacheWrites.set(mediaId, task);
+  void task.then(
+    () => inFlightCacheWrites.delete(mediaId),
+    () => inFlightCacheWrites.delete(mediaId)
+  );
+  return { role: "leader", task, resolveTask, rejectTask };
+}
+
+function originalCachePath(media: Media): string {
+  const ext = MIME_TO_EXT[media.mimeType] ?? "bin";
+  return path.join(getCacheDir(), `${media.id}.${ext}`);
+}
 
 /** Starts the Drive download. Throws synchronously (before any bytes are sent) on failure. */
 async function getDriveReadStream(media: Media): Promise<NodeJS.ReadableStream> {
@@ -147,15 +182,17 @@ export const driveService = {
       const existing = await prisma.media.findFirst({ where: { sourceUrl: file.id } });
       if (existing) continue;
 
+      const id = randomUUID();
       const media = await prisma.media.create({
         data: {
+          id,
           fileName: file.name,
           fileType,
           mimeType: file.mimeType,
           fileSize: file.size,
           sourceType: "GOOGLE_DRIVE",
           sourceUrl: file.id,
-          thumbnailUrl: null,
+          thumbnailUrl: fileType === "IMAGE" ? `/media/${id}/thumbnail` : null,
           tags: [],
         },
       });
@@ -166,12 +203,46 @@ export const driveService = {
     return { count: created.length, items: created };
   },
 
+  /**
+   * Guarantees `media`'s original Drive file is on disk at its cache path and returns
+   * that path — without streaming anything to a reply. Used by the thumbnail pipeline
+   * (17.6), which needs real bytes to resize, not a live response to feed. Shares
+   * `claimCacheWrite`'s map with `streamFile`, so a thumbnail request and a direct file
+   * request for the same cold `media.id` still only trigger one Drive fetch between them.
+   */
+  async ensureCachedFile(media: Media): Promise<string> {
+    const cacheDir = getCacheDir();
+    await fsPromises.mkdir(cacheDir, { recursive: true });
+    const cachePath = originalCachePath(media);
+
+    try {
+      await fsPromises.access(cachePath);
+      return cachePath;
+    } catch {
+      // cache miss — fetch from Drive
+    }
+
+    const claim = claimCacheWrite(media.id);
+    if (claim.role === "follower") {
+      await claim.task;
+      return cachePath;
+    }
+
+    try {
+      const driveStream = await getDriveReadStream(media);
+      await cacheDriveStream(driveStream, cachePath);
+      claim.resolveTask();
+    } catch (err) {
+      claim.rejectTask(err);
+      throw err;
+    }
+    return cachePath;
+  },
+
   async streamFile(media: Media, reply: FastifyReply) {
     const cacheDir = getCacheDir();
     await fsPromises.mkdir(cacheDir, { recursive: true });
-
-    const ext = MIME_TO_EXT[media.mimeType] ?? "bin";
-    const cachePath = path.join(cacheDir, `${media.id}.${ext}`);
+    const cachePath = originalCachePath(media);
 
     reply.header("Content-Type", media.mimeType);
     reply.header("Cache-Control", "public, max-age=86400");
@@ -184,58 +255,44 @@ export const driveService = {
       // cache miss — fetch from Drive
     }
 
+    const claim = claimCacheWrite(media.id);
+
     // Follower: another request for this same file is already downloading it. Wait for
     // that shared task instead of starting a second Drive fetch, then serve the file it
     // produced — no live stream of our own to offer, but no duplicate work either.
-    const existing = inFlightCacheWrites.get(media.id);
-    if (existing) {
+    if (claim.role === "follower") {
       try {
-        await existing;
+        await claim.task;
       } catch {
         return reply.status(502).send({ error: "DRIVE_ERROR", message: "Failed to fetch file from Google Drive" });
       }
       return reply.send(Readable.toWeb(fs.createReadStream(cachePath)));
     }
 
-    // Leader: claim the in-flight slot with a placeholder promise *before* any `await`,
-    // in the same synchronous stretch as the `existing` check above — otherwise two
-    // requests arriving back-to-back could both see no in-flight task and both become
-    // leaders, recreating the exact race this map exists to prevent.
-    let resolveTask!: () => void;
-    let rejectTask!: (err: unknown) => void;
-    const task = new Promise<void>((resolve, reject) => {
-      resolveTask = resolve;
-      rejectTask = reject;
-    });
-    inFlightCacheWrites.set(media.id, task);
-    void task.then(
-      () => inFlightCacheWrites.delete(media.id),
-      () => inFlightCacheWrites.delete(media.id)
-    );
-
-    // Now do the actual async work. A failure here — before any bytes are sent — still
-    // gets a clean 502 instead of a half-open stream.
+    // Leader: do the actual async work. A failure here — before any bytes are sent —
+    // still gets a clean 502 instead of a half-open stream.
     let driveStream: NodeJS.ReadableStream;
     try {
       driveStream = await getDriveReadStream(media);
     } catch (err) {
-      rejectTask(err);
+      claim.rejectTask(err);
       return reply.status(502).send({ error: "DRIVE_ERROR", message: "Failed to fetch file from Google Drive" });
     }
 
     const passThrough = new PassThrough();
     driveStream.pipe(passThrough);
 
-    cacheDriveStream(driveStream, cachePath).then(resolveTask, (err) => {
-      rejectTask(err);
+    cacheDriveStream(driveStream, cachePath).then(claim.resolveTask, (err) => {
+      claim.rejectTask(err);
       // The cache write failed (e.g. disk full) or the Drive stream itself dropped
       // mid-transfer — either way this reply's live stream can't continue either.
       if (!passThrough.destroyed) passThrough.destroy(err instanceof Error ? err : new Error(String(err)));
     });
 
     // Scoped to this reply only: if this client disconnects, stop feeding its own
-    // passThrough. The shared `task` above is untouched, so followers already waiting
-    // on it still get a complete, correctly-cached file.
+    // passThrough. The shared task above is untouched, so followers (and
+    // `ensureCachedFile` callers) already waiting on it still get a complete,
+    // correctly-cached file.
     reply.raw.on("close", () => {
       if (!reply.raw.writableEnded && !passThrough.destroyed) passThrough.destroy();
     });

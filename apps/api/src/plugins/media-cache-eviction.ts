@@ -1,5 +1,6 @@
 import fp from "fastify-plugin";
-import { enforceCacheSizeLimit, getCacheDir, getCacheMaxBytes } from "../services/media.service";
+import { enforceCacheSizeLimit } from "../services/media.service";
+import { getCacheDir, getCacheMaxBytes } from "../lib/media-paths";
 
 const SWEEP_INTERVAL_MS = 30 * 60 * 1000;
 

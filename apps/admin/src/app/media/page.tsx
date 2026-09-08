@@ -49,7 +49,7 @@ function MediaThumbnail({ media }: { media: Media }) {
   if (media.fileType === "IMAGE") {
     return (
       <img
-        src={`${API_URL}/media/${media.id}/file`}
+        src={`${API_URL}/media/${media.id}/thumbnail`}
         alt={media.fileName}
         className="h-full w-full object-cover"
         loading="lazy"
