@@ -279,6 +279,9 @@ async function seed(): Promise<Seeded> {
   const rankingQuestionId = randomUUID();
   const attentionCheckQuestionId = randomUUID();
   const trapDuplicateQuestionId = randomUUID();
+  // Answered by nobody, on purpose — exercises the `base === undefined` path (a question
+  // with zero rows in every aggregate query, not just zero for one option/rating value).
+  const unansweredRatingQuestionId = randomUUID();
 
   await prisma.question.createMany({
     data: [
@@ -289,8 +292,10 @@ async function seed(): Promise<Seeded> {
         testId,
         type: "RATING",
         prompt: "Rate?",
+        // max: 7 while answers only ever use 1-5 (see below) so the distribution's
+        // zero-fill for untouched scale values is actually exercised.
         order: 3,
-        config: { min: 1, max: 5 },
+        config: { min: 1, max: 7 },
       },
       { id: rankingQuestionId, testId, type: "RANKING", prompt: "Rank?", order: 4 },
       {
@@ -310,12 +315,30 @@ async function seed(): Promise<Seeded> {
         isTrapDuplicate: true,
         trapSourceId: singleSelectQuestionId,
       },
+      {
+        id: unansweredRatingQuestionId,
+        testId,
+        type: "RATING",
+        prompt: "Rate? (unanswered)",
+        order: 7,
+        config: { min: 1, max: 5 },
+      },
     ],
   });
 
-  const singleSelectOptionIds = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
-  const multiSelectOptionIds = [randomUUID(), randomUUID(), randomUUID(), randomUUID(), randomUUID()];
-  const rankingOptionIds = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+  // One extra option in each of these that no answer ever selects/ranks, so the
+  // zero-count-option fold-back onto `question.options` is exercised too (a naive
+  // GROUP BY would otherwise silently omit options nobody picked).
+  const singleSelectOptionIds = [randomUUID(), randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+  const multiSelectOptionIds = [
+    randomUUID(),
+    randomUUID(),
+    randomUUID(),
+    randomUUID(),
+    randomUUID(),
+    randomUUID(),
+  ];
+  const rankingOptionIds = [randomUUID(), randomUUID(), randomUUID(), randomUUID(), randomUUID()];
   const attentionCheckOptionIds = [randomUUID(), randomUUID()];
   const trapDuplicateOptionIds = singleSelectOptionIds.map(() => randomUUID());
 
@@ -396,8 +419,18 @@ async function seed(): Promise<Seeded> {
     await prisma.testResponse.createMany({ data: responses.slice(i, i + BATCH_SIZE) });
   }
 
-  // Answers for all six questions per response, including the attention-check/trap ones
-  // (they must be seeded — and then proven excluded — not just omitted).
+  // Answers for six of the seven questions per response (the unanswered RATING question
+  // gets none, on purpose), including the attention-check/trap ones (they must be seeded
+  // — and then proven excluded — not just omitted).
+  //
+  // Each of these deliberately leaves the LAST option/scale-value untouched by any answer,
+  // so the zero-count fold-back onto `question.options` (and the rating distribution's
+  // zero-fill, and the ranking "never picked" path) is actually exercised — a naive GROUP
+  // BY would otherwise silently omit anything nobody picked.
+  const coveredSingleSelectOptionIds = singleSelectOptionIds.slice(0, -1);
+  const coveredMultiSelectOptionIds = multiSelectOptionIds.slice(0, -1);
+  const coveredRankingOptionIds = rankingOptionIds.slice(0, -1);
+
   const answers: Prisma.AnswerCreateManyInput[] = [];
   userIds.forEach((userId, i) => {
     const responseId = responseIdByUser.get(userId)!;
@@ -406,22 +439,23 @@ async function seed(): Promise<Seeded> {
       id: randomUUID(),
       responseId,
       questionId: singleSelectQuestionId,
-      selectedOptions: [singleSelectOptionIds[i % singleSelectOptionIds.length]!],
+      selectedOptions: [coveredSingleSelectOptionIds[i % coveredSingleSelectOptionIds.length]!],
       timeSpentSeconds: 5,
     });
 
-    const multiCount = 1 + (i % multiSelectOptionIds.length);
+    const multiCount = 1 + (i % coveredMultiSelectOptionIds.length);
     answers.push({
       id: randomUUID(),
       responseId,
       questionId: multiSelectQuestionId,
-      selectedOptions: multiSelectOptionIds.slice(0, multiCount),
+      selectedOptions: coveredMultiSelectOptionIds.slice(0, multiCount),
       timeSpentSeconds: 6,
     });
 
     // ~10% of RATING answers have a null ratingValue on purpose — this is the case
     // where answeredCount (Answer row count) and the rating average's own denominator
-    // (non-null ratingValue count) genuinely diverge.
+    // (non-null ratingValue count) genuinely diverge. Values only ever reach 5 even
+    // though the question's config now goes up to 7 (see question creation above).
     const hasRating = i % 10 !== 0;
     answers.push({
       id: randomUUID(),
@@ -432,7 +466,10 @@ async function seed(): Promise<Seeded> {
       timeSpentSeconds: 4,
     });
 
-    const rotated = [...rankingOptionIds.slice(i % rankingOptionIds.length), ...rankingOptionIds.slice(0, i % rankingOptionIds.length)];
+    const rotated = [
+      ...coveredRankingOptionIds.slice(i % coveredRankingOptionIds.length),
+      ...coveredRankingOptionIds.slice(0, i % coveredRankingOptionIds.length),
+    ];
     answers.push({
       id: randomUUID(),
       responseId,
