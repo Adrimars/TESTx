@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, CloudUpload, FileAudio, FileVideo, FolderUp, Trash2, Upload } from "lucide-react";
 import {
   Alert,
@@ -65,10 +66,8 @@ function MediaThumbnail({ media }: { media: Media }) {
 }
 
 export default function MediaPage() {
-  const [items, setItems] = useState<Media[]>([]);
-  const [total, setTotal] = useState(0);
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string>("");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -101,25 +100,22 @@ export default function MediaPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const fetchMedia = useCallback(async () => {
-    setLoading(true);
-    try {
+  const { data, isPending: loading } = useQuery({
+    queryKey: ["admin", "media", activeTab, debouncedSearch, page],
+    queryFn: () => {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
       if (activeTab) params.set("fileType", activeTab);
       if (debouncedSearch) params.set("search", debouncedSearch);
-      const data = await apiFetch<MediaListResponse>(`/admin/media?${params}`);
-      setItems(data.items);
-      setTotal(data.total);
-    } catch {
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [activeTab, debouncedSearch, page]);
+      return apiFetch<MediaListResponse>(`/admin/media?${params}`);
+    },
+    placeholderData: keepPreviousData,
+  });
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
 
-  useEffect(() => {
-    void fetchMedia();
-  }, [fetchMedia]);
+  function invalidateMedia() {
+    return queryClient.invalidateQueries({ queryKey: ["admin", "media"] });
+  }
 
   // A tab or search change can leave `page` pointing past the new filter's last page —
   // reset to page 1 rather than showing an empty grid until the user notices.
@@ -193,7 +189,7 @@ export default function MediaPage() {
             return { ...item, status: "done" };
           })
         );
-        await fetchMedia();
+        await invalidateMedia();
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Upload failed";
@@ -224,7 +220,7 @@ export default function MediaPage() {
         body: JSON.stringify({ folderUrl: driveUrl.trim() }),
       });
       setDriveResult({ count: result.count });
-      await fetchMedia();
+      await invalidateMedia();
     } catch (err: unknown) {
       setDriveError(err instanceof Error ? err.message : "Import failed");
     } finally {
@@ -246,7 +242,7 @@ export default function MediaPage() {
       await apiFetch(`/admin/media/${deleteTarget.id}`, { method: "DELETE" });
       deleteDialogRef.current?.close();
       setDeleteTarget(null);
-      await fetchMedia();
+      await invalidateMedia();
     } catch (err: unknown) {
       setDeleteError(err instanceof Error ? err.message : "Delete failed");
     } finally {

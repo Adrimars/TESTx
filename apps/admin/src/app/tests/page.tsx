@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BarChart3, ChevronLeft, ChevronRight, Eye, Pencil, Play, Plus, Square, PauseCircle } from "lucide-react";
 import {
   Alert,
@@ -30,33 +31,25 @@ const PAGE_SIZE = 50;
 export default function TestsPage() {
   const closeTestDialogRef = useRef<HTMLDialogElement>(null);
   const [pendingCloseId, setPendingCloseId] = useState<string | null>(null);
-  const [tests, setTests] = useState<AdminTestListItem[]>([]);
-  const [total, setTotal] = useState(0);
   const [status, setStatus] = useState<"ALL" | TestStatus>("ALL");
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const queryClient = useQueryClient();
 
-  const fetchTests = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
+  const {
+    data,
+    isPending: loading,
+    error,
+  } = useQuery({
+    queryKey: ["admin", "tests", status, page],
+    queryFn: () => {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
       if (status !== "ALL") params.set("status", status);
-      const data = await apiFetch<Paginated<AdminTestListItem>>(`/admin/tests?${params}`);
-      setTests(data.items);
-      setTotal(data.total);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load tests");
-      setTests([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [status, page]);
-
-  useEffect(() => {
-    void fetchTests();
-  }, [fetchTests]);
+      return apiFetch<Paginated<AdminTestListItem>>(`/admin/tests?${params}`);
+    },
+    placeholderData: keepPreviousData,
+  });
+  const tests = data?.items ?? [];
+  const total = data?.total ?? 0;
 
   // A status change can leave `page` pointing past the new filter's last page — reset
   // to page 1 rather than showing an empty table until the user notices and goes back.
@@ -66,17 +59,22 @@ export default function TestsPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  async function changeStatus(testId: string, newStatus: TestStatus) {
-    try {
-      await apiFetch(`/admin/tests/${testId}/status`, {
+  const changeStatusMutation = useMutation({
+    mutationFn: ({ testId, newStatus }: { testId: string; newStatus: TestStatus }) =>
+      apiFetch(`/admin/tests/${testId}/status`, {
         method: "PUT",
         body: JSON.stringify({ status: newStatus }),
-      });
-      void fetchTests();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to update test status");
-    }
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "tests"] });
+    },
+  });
+
+  function changeStatus(testId: string, newStatus: TestStatus) {
+    changeStatusMutation.mutate({ testId, newStatus });
   }
+
+  const displayError = error ?? changeStatusMutation.error;
 
   return (
     <div className="space-y-6">
@@ -111,7 +109,9 @@ export default function TestsPage() {
         ))}
       </div>
 
-      {error && <Alert>{error}</Alert>}
+      {displayError && (
+        <Alert>{displayError instanceof Error ? displayError.message : "Failed to load tests"}</Alert>
+      )}
 
       <Card>
         <CardContent className="overflow-x-auto p-0">

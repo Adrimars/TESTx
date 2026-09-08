@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { Award, Clock, ListChecks, RefreshCw, SearchX } from "lucide-react";
 import {
   Alert,
@@ -48,8 +49,6 @@ function DialogSection({ title, children }: { title: string; children: React.Rea
 export default function DashboardPage() {
   const { user, refreshUser } = useAuth();
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const editDialogRef = useRef<HTMLDialogElement>(null);
   const [editAge, setEditAge] = useState("");
@@ -134,24 +133,18 @@ export default function DashboardPage() {
     }
   }
 
-  const [nextTest, setNextTest] = useState<NextTest | null | undefined>(undefined);
-
   const balance = user?.evaluatorProfile?.balance ?? 0;
 
-  async function fetchNextTest() {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await apiFetch<NextTest | null>("/evaluator/next-test");
-      setNextTest(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => { void fetchNextTest(); }, []);
+  const {
+    data: nextTest,
+    isFetching: loading,
+    error: queryError,
+    refetch: fetchNextTest,
+  } = useQuery({
+    queryKey: ["evaluator", "next-test"],
+    queryFn: () => apiFetch<NextTest | null>("/evaluator/next-test"),
+  });
+  const error = queryError ? (queryError instanceof Error ? queryError.message : "Something went wrong") : null;
 
   return (
     <div className="space-y-6">
@@ -225,7 +218,7 @@ export default function DashboardPage() {
                 <Button
                   variant="secondary"
                   className="w-full sm:w-auto"
-                  onClick={fetchNextTest}
+                  onClick={() => fetchNextTest()}
                   disabled={loading}
                 >
                   <RefreshCw className="size-4" aria-hidden />

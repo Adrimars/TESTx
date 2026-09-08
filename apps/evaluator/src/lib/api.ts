@@ -6,6 +6,18 @@ export function resolveMediaUrl(relativeUrl: string | null | undefined): string 
   return `${API_URL}${relativeUrl}`;
 }
 
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string | undefined;
+
+  constructor(status: number, code: string | undefined, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = code;
+  }
+}
+
 let refreshPromise: Promise<void> | null = null;
 
 async function tryRefresh(): Promise<void> {
@@ -35,8 +47,8 @@ export async function apiFetch<T>(path: string, init?: RequestInit, _retry = tru
   }
 
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(body?.message ?? `API request failed with ${response.status}`);
+    const body = (await response.json().catch(() => null)) as { error?: string; message?: string } | null;
+    throw new ApiError(response.status, body?.error, body?.message ?? `API request failed with ${response.status}`);
   }
 
   if (response.status === 204) {

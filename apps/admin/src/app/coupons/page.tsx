@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Gift, ImageOff, Pencil, Plus, Upload } from "lucide-react";
 import {
   Alert,
@@ -48,10 +49,7 @@ function resolveImageUrl(imageUrl: string | null): string | null {
 }
 
 export default function CouponsPage() {
-  const [items, setItems] = useState<Coupon[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [listError, setListError] = useState("");
+  const queryClient = useQueryClient();
 
   const dialogRef = useRef<HTMLDialogElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -66,24 +64,20 @@ export default function CouponsPage() {
   const [deactivating, setDeactivating] = useState(false);
   const [deactivateError, setDeactivateError] = useState("");
 
-  const fetchCoupons = useCallback(async () => {
-    setLoading(true);
-    setListError("");
-    try {
-      const data = await apiFetch<Paginated<Coupon>>("/admin/coupons?page=1&limit=100");
-      setItems(data.items);
-      setTotal(data.total);
-    } catch (err: unknown) {
-      setListError(err instanceof Error ? err.message : "Failed to load coupons");
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const {
+    data,
+    isPending: loading,
+    error: listError,
+  } = useQuery({
+    queryKey: ["admin", "coupons"],
+    queryFn: () => apiFetch<Paginated<Coupon>>("/admin/coupons?page=1&limit=100"),
+  });
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
 
-  useEffect(() => {
-    void fetchCoupons();
-  }, [fetchCoupons]);
+  function invalidateCoupons() {
+    return queryClient.invalidateQueries({ queryKey: ["admin", "coupons"] });
+  }
 
   function openCreateDialog() {
     setEditingId(null);
@@ -167,7 +161,7 @@ export default function CouponsPage() {
         await apiFetch("/admin/coupons", { method: "POST", body: JSON.stringify(payload) });
       }
       dialogRef.current?.close();
-      await fetchCoupons();
+      await invalidateCoupons();
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : "Failed to save coupon");
     } finally {
@@ -188,7 +182,7 @@ export default function CouponsPage() {
       await apiFetch(`/admin/coupons/${deactivateTarget.id}/deactivate`, { method: "PUT" });
       deactivateDialogRef.current?.close();
       setDeactivateTarget(null);
-      await fetchCoupons();
+      await invalidateCoupons();
     } catch (err: unknown) {
       setDeactivateError(err instanceof Error ? err.message : "Failed to deactivate coupon");
     } finally {
@@ -209,7 +203,7 @@ export default function CouponsPage() {
         }
       />
 
-      {listError && <Alert>{listError}</Alert>}
+      {listError && <Alert>{listError instanceof Error ? listError.message : "Failed to load coupons"}</Alert>}
 
       {loading ? (
         <div className="flex h-48 items-center justify-center text-sm text-muted-foreground">Loading…</div>
