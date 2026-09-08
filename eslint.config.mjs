@@ -1,3 +1,4 @@
+import path from "node:path";
 import base from "./packages/config/eslint/base.mjs";
 
 export default [
@@ -16,5 +17,21 @@ export default [
       globals: { require: "readonly", module: "writable", __dirname: "readonly" },
     },
     rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
+  {
+    // Standalone verification/QA scripts (plan.md 17.3) live outside apps/api's
+    // `src`-rooted build (`tsconfig.json`'s `rootDir` excludes them), so the default
+    // project service can't find a tsconfig that covers them — point it at the sibling
+    // tsconfig that does. Resolved from this config file's own location (not
+    // `process.cwd()`) so it works the same whether lint runs from the repo root or from
+    // inside `apps/api`.
+    files: ["apps/api/scripts/**/*.ts"],
+    languageOptions: {
+      parserOptions: {
+        projectService: false,
+        project: [path.join(import.meta.dirname, "apps/api/tsconfig.scripts.json")],
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
   },
 ];
