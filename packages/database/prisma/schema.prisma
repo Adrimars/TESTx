@@ -100,6 +100,7 @@ model MobileAuthCode {
   createdAt DateTime  @default(now())
 
   @@index([expiresAt])
+  @@index([userId])
 }
 
 model EvaluatorProfile {
@@ -138,7 +139,10 @@ model Test {
   questions          Question[]
   responses          TestResponse[]
 
-  @@index([status])
+  // Replaces the old standalone [status] index — [status, createdAt] is a strict
+  // superset (leftmost-prefix), matching /next-test's `WHERE status = 'ACTIVE' ORDER BY
+  // createdAt ASC` exactly.
+  @@index([status, createdAt])
 }
 
 model Question {
@@ -166,6 +170,7 @@ model Question {
   @@unique([testId, order])
   @@index([testId, order])
   @@index([mediaId])
+  @@index([trapSourceId])
 }
 
 model QuestionOption {
@@ -179,6 +184,7 @@ model QuestionOption {
 
   @@unique([questionId, order])
   @@index([questionId])
+  @@index([mediaId])
 }
 
 model Media {
@@ -196,6 +202,9 @@ model Media {
   questions   Question[]
 
   @@index([fileType])
+  // drive.service.ts's importFolder() does a per-file de-dupe lookup on this column for
+  // every file in a Drive folder import — unindexed, that's a full scan per file.
+  @@index([sourceUrl])
 }
 
 model TestResponse {
