@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import type { CurrentUser } from "@testx/shared";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
+import { alert } from "@/lib/alert";
 import { useSession } from "@/lib/session";
 import { startGoogleSignIn } from "@/lib/googleAuth";
 import { checkField, loginSchema } from "@/lib/validation";
@@ -43,7 +44,7 @@ export default function LoginScreen() {
       const user = await signIn(email, password);
       router.replace(destinationFor(user));
     } catch (error) {
-      Alert.alert("Sign in failed", error instanceof Error ? error.message : "Please try again.");
+      alert("Sign in failed", error instanceof Error ? error.message : "Please try again.");
     } finally {
       setBusy(null);
     }
@@ -55,13 +56,13 @@ export default function LoginScreen() {
       const result = await startGoogleSignIn();
       if (result.type === "cancelled") return;
       if (result.type === "error") {
-        Alert.alert("Google sign-in failed", result.message);
+        alert("Google sign-in failed", result.message);
         return;
       }
       const user = await signInWithCode(result.code);
       router.replace(destinationFor(user));
     } catch (error) {
-      Alert.alert("Sign in failed", error instanceof Error ? error.message : "Please try again.");
+      alert("Sign in failed", error instanceof Error ? error.message : "Please try again.");
     } finally {
       setBusy(null);
     }

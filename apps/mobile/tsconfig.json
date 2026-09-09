@@ -2,6 +2,12 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    // tsc has no notion of Metro's platform-extension resolution on its own (18.2 added
+    // the first .native.ts/.web.ts pair) - this makes bare imports like "./tokens" resolve
+    // the same way native runs, matching the primary shipping target. The .web.ts sibling
+    // is still typechecked on its own (every file under "include" below is a root file),
+    // just not through this cross-file resolution.
+    "moduleSuffixes": [".native", ""],
     "paths": {
       "@/*": ["./src/*"]
     }

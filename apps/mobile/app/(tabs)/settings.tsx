@@ -1,8 +1,10 @@
-import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
+import { alert } from "@/lib/alert";
 import { apiFetch } from "@/lib/api";
+import { EVALUATOR_APP_URL } from "@/lib/env";
 import { useSession } from "@/lib/session";
 import { theme } from "@/lib/theme";
 
@@ -21,7 +23,7 @@ export default function SettingsScreen() {
   }
 
   function handleDeleteAccount() {
-    Alert.alert(
+    alert(
       "Delete account?",
       "This permanently deletes your account, your profile and your answer history. This cannot be undone.",
       [
@@ -36,7 +38,7 @@ export default function SettingsScreen() {
                 await signOut();
                 router.replace("/login");
               } catch (error) {
-                Alert.alert(
+                alert(
                   "Could not delete account",
                   error instanceof Error ? error.message : "Please try again."
                 );
@@ -52,6 +54,18 @@ export default function SettingsScreen() {
     <SafeAreaView style={styles.flex} edges={["top", "bottom"]}>
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.title}>Settings</Text>
+
+        {Platform.OS === "web" ? (
+          // 18.4 - the counterpart to apps/evaluator's "Switch to mobile version" link;
+          // only meaningful on web, since native has no desktop experience to switch to.
+          <Button
+            label="Switch to desktop version"
+            variant="quiet"
+            onPress={() => {
+              window.location.href = `${EVALUATOR_APP_URL}/api/switch-device?to=desktop`;
+            }}
+          />
+        ) : null}
 
         <View style={styles.dangerZone}>
           <Button label="Sign out" variant="secondary" onPress={handleSignOut} />

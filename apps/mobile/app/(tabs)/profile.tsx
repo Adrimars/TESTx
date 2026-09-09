@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
   BackHandler,
   KeyboardAvoidingView,
   Platform,
@@ -25,6 +24,7 @@ import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
 import { HobbiesPicker } from "@/components/HobbiesPicker";
 import { Select } from "@/components/Select";
+import { alert } from "@/lib/alert";
 import { apiFetch } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import {
@@ -158,7 +158,7 @@ export default function ProfileScreen() {
       await refreshUser();
     } catch (error) {
       setAvatarId(previous);
-      Alert.alert(
+      alert(
         "Could not change avatar",
         error instanceof Error ? error.message : "Please try again."
       );
@@ -202,7 +202,7 @@ export default function ProfileScreen() {
       // "Saved" alert needed on top of that.
       return true;
     } catch (error) {
-      Alert.alert("Could not save", error instanceof Error ? error.message : "Please try again.");
+      alert("Could not save", error instanceof Error ? error.message : "Please try again.");
       return false;
     } finally {
       setSaving(false);
