@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 import { Alert, Badge, Button } from "@testx/ui";
 import { apiFetch } from "@/lib/api";
@@ -15,69 +16,44 @@ const REFRESH_INTERVAL_MS = 30_000;
 export default function ReportPage() {
   const params = useParams<{ id: string }>();
   const testId = params.id;
-
-  const [results, setResults] = useState<TestResults | null>(null);
-  const [demographic, setDemographic] = useState<DemographicResults | null>(null);
   const [segmentBy, setSegmentBy] = useState<"none" | SegmentBy>("none");
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
-  const [error, setError] = useState("");
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // `refetchInterval` only fires while `status` is ACTIVE, and — react-query's own
+  // default, not something opted into here — pauses automatically while the tab isn't
+  // focused (`refetchIntervalInBackground` defaults to false). N admins with this page
+  // open no longer multiplies identical report queries by N every 30s while unfocused.
+  const resultsQuery = useQuery({
+    queryKey: ["admin", "tests", testId, "report"],
+    queryFn: () => apiFetch<TestResults>(`/admin/tests/${testId}/report`),
+    refetchInterval: (query) => (query.state.data?.status === "ACTIVE" ? REFRESH_INTERVAL_MS : false),
+  });
+
+  const demographicQuery = useQuery({
+    queryKey: ["admin", "tests", testId, "report", "demographics", segmentBy],
+    queryFn: () =>
+      apiFetch<DemographicResults>(`/admin/tests/${testId}/report?segmentBy=${segmentBy}`),
+    enabled: segmentBy !== "none",
+    refetchInterval: () => (resultsQuery.data?.status === "ACTIVE" ? REFRESH_INTERVAL_MS : false),
+  });
+
+  const results = resultsQuery.data;
   const isActive = results?.status === "ACTIVE";
+  const refreshing = resultsQuery.isFetching || demographicQuery.isFetching;
 
-  const fetchAll = useCallback(
-    async (opts?: { silent?: boolean }) => {
-      if (!opts?.silent) setLoading(true);
-      else setRefreshing(true);
-      setError("");
-      try {
-        const [base, demo] = await Promise.all([
-          apiFetch<TestResults>(`/admin/tests/${testId}/report`),
-          segmentBy !== "none"
-            ? apiFetch<DemographicResults>(`/admin/tests/${testId}/report?segmentBy=${segmentBy}`)
-            : Promise.resolve(null),
-        ]);
-        setResults(base);
-        setDemographic(demo);
-        setLastRefreshed(new Date());
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : "Failed to load report");
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    },
-    [testId, segmentBy]
-  );
+  function refresh() {
+    void resultsQuery.refetch();
+    if (segmentBy !== "none") void demographicQuery.refetch();
+  }
 
-  useEffect(() => {
-    void fetchAll();
-  }, [fetchAll]);
-
-  useEffect(() => {
-    if (!isActive) {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      return;
-    }
-    intervalRef.current = setInterval(() => {
-      void fetchAll({ silent: true });
-    }, REFRESH_INTERVAL_MS);
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [isActive, fetchAll]);
-
-  if (loading) return <p className="text-muted-foreground">Loading report…</p>;
-  if (error) return <Alert>{error}</Alert>;
+  if (resultsQuery.isPending) return <p className="text-muted-foreground">Loading report…</p>;
+  if (resultsQuery.isError) {
+    return (
+      <Alert>{resultsQuery.error instanceof Error ? resultsQuery.error.message : "Failed to load report"}</Alert>
+    );
+  }
   if (!results) return <p className="text-muted-foreground">No data found.</p>;
+
+  const demographic = segmentBy !== "none" ? (demographicQuery.data ?? null) : null;
 
   return (
     <div className="space-y-6">
@@ -99,22 +75,28 @@ export default function ReportPage() {
               </span>
             )}
           </div>
-          {lastRefreshed && (
+          {resultsQuery.dataUpdatedAt > 0 && (
             <p className="text-xs text-muted-foreground">
-              Last updated {lastRefreshed.toLocaleTimeString()}
+              Last updated {new Date(resultsQuery.dataUpdatedAt).toLocaleTimeString()}
               {isActive && " · auto-refreshes every 30s"}
             </p>
           )}
         </div>
 
         <div className="flex items-end gap-3">
-          <Button variant="secondary" onClick={() => fetchAll({ silent: true })} disabled={refreshing}>
+          <Button variant="secondary" onClick={refresh} disabled={refreshing}>
             <RefreshCw className={`size-4 ${refreshing ? "animate-spin" : ""}`} aria-hidden />
             {refreshing ? "Refreshing…" : "Refresh"}
           </Button>
           <SegmentSelect value={segmentBy} onChange={setSegmentBy} className="w-44" />
         </div>
       </div>
+
+      {demographicQuery.isError && (
+        <Alert>
+          {demographicQuery.error instanceof Error ? demographicQuery.error.message : "Failed to segment report"}
+        </Alert>
+      )}
 
       <ResultsSummary results={results} />
 

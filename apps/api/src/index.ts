@@ -14,6 +14,7 @@ import { userRoutes } from "./routes/users";
 import { mobileRoutes } from "./routes/mobile";
 import { publicMediaRoutes } from "./routes/media";
 import { errorHandlerPlugin } from "./plugins/error-handler";
+import { mediaCacheEvictionPlugin } from "./plugins/media-cache-eviction";
 import { prismaPlugin } from "./plugins/prisma";
 import { rateLimitPlugin } from "./plugins/rate-limit";
 
@@ -47,6 +48,7 @@ await app.register(multipart, {
 await app.register(rateLimitPlugin);
 await app.register(errorHandlerPlugin);
 await app.register(prismaPlugin);
+await app.register(mediaCacheEvictionPlugin);
 
 app.get("/health", async () => ({ status: "ok" }));
 await app.register(authRoutes, { prefix: "/auth" });

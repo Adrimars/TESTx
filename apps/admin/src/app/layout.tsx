@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AdminShell } from "@/components/admin-shell";
 import { AuthProvider } from "@/components/auth-provider";
+import { QueryProvider } from "@/components/query-provider";
 
 export const metadata: Metadata = {
   title: "TESTx Admin",
@@ -12,9 +13,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <body>
-        <AuthProvider>
-          <AdminShell>{children}</AdminShell>
-        </AuthProvider>
+        <QueryProvider>
+          <AuthProvider>
+            <AdminShell>{children}</AdminShell>
+          </AuthProvider>
+        </QueryProvider>
       </body>
     </html>
   );

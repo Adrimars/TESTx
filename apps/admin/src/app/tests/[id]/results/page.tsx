@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Alert, Badge } from "@testx/ui";
 import { apiFetch } from "@/lib/api";
 import { statusVariant } from "@/lib/status";
@@ -16,52 +17,31 @@ import type { DemographicResults, SegmentBy, TestResults } from "@/lib/admin-typ
 export default function ResultsPage() {
   const params = useParams<{ id: string }>();
   const testId = params.id;
-  const [results, setResults] = useState<TestResults | null>(null);
-  const [demographic, setDemographic] = useState<DemographicResults | null>(null);
   const [segmentBy, setSegmentBy] = useState<"none" | SegmentBy>("none");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
-  const fetchResults = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      setResults(await apiFetch<TestResults>(`/admin/tests/${testId}/results`));
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load results");
-    } finally {
-      setLoading(false);
-    }
-  }, [testId]);
+  const resultsQuery = useQuery({
+    queryKey: ["admin", "tests", testId, "results"],
+    queryFn: () => apiFetch<TestResults>(`/admin/tests/${testId}/results`),
+  });
 
-  useEffect(() => {
-    void fetchResults();
-  }, [fetchResults]);
+  const demographicQuery = useQuery({
+    queryKey: ["admin", "tests", testId, "results", "demographics", segmentBy],
+    queryFn: () =>
+      apiFetch<DemographicResults>(`/admin/tests/${testId}/results/demographics?segmentBy=${segmentBy}`),
+    enabled: segmentBy !== "none",
+  });
 
-  useEffect(() => {
-    if (segmentBy === "none") {
-      setDemographic(null);
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      try {
-        const data = await apiFetch<DemographicResults>(
-          `/admin/tests/${testId}/results/demographics?segmentBy=${segmentBy}`
-        );
-        if (!cancelled) setDemographic(data);
-      } catch (err: unknown) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to segment results");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [segmentBy, testId]);
+  if (resultsQuery.isPending) return <p className="text-muted-foreground">Loading results…</p>;
+  if (resultsQuery.isError) {
+    return (
+      <Alert>{resultsQuery.error instanceof Error ? resultsQuery.error.message : "Failed to load results"}</Alert>
+    );
+  }
 
-  if (loading) return <p className="text-muted-foreground">Loading results…</p>;
-  if (error) return <Alert>{error}</Alert>;
+  const results = resultsQuery.data;
   if (!results) return <p className="text-muted-foreground">No results found.</p>;
+
+  const demographic = segmentBy !== "none" ? (demographicQuery.data ?? null) : null;
 
   return (
     <div className="space-y-6">
@@ -77,6 +57,12 @@ export default function ResultsPage() {
         </div>
         <SegmentSelect value={segmentBy} onChange={setSegmentBy} className="w-48" />
       </div>
+
+      {demographicQuery.isError && (
+        <Alert>
+          {demographicQuery.error instanceof Error ? demographicQuery.error.message : "Failed to segment results"}
+        </Alert>
+      )}
 
       <ResultsSummary results={results} />
 
