@@ -21,8 +21,8 @@ export default function Root({ children }: PropsWithChildren) {
         <link rel="manifest" href="/manifest.webmanifest" />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
         <link rel="icon" href="/icons/icon-192.png" />
-        {/* Bare `<style>` tags render fine on native, so this can live directly in
-            the head instead of a stylesheet - see expo-router's own docs for this. */}
+        {/* Gives a root ScrollView the full-height behaviour it has on native, which
+            react-native-web does not set up on its own. */}
         <ScrollViewStyleReset />
         <script
           // Registered from the shell itself rather than app code, so a page that never

@@ -123,9 +123,12 @@ export function SwipeCard({
   }
 
   function handlePointerDown(event: {
-    nativeEvent: { pointerId: number; clientX: number; clientY: number };
+    nativeEvent: { pointerId: number; clientX: number; clientY: number; button: number };
   }) {
     if (!enabled || isSettling.value) return;
+    // Primary button only, matching RNGH's own `isButtonInConfig` check - a right- or
+    // middle-click must not drag a card. Touch and pen contacts both report 0 here.
+    if (event.nativeEvent.button !== 0) return;
     const node = nodeRef.current as unknown as HTMLElement | null;
     if (!node) return;
 
@@ -144,9 +147,13 @@ export function SwipeCard({
     lastVelocityX.current = 0;
     lastVelocityY.current = 0;
 
+    // The rect moves with the card, so a grab landing while a previous rejected drag is
+    // still springing back would be measured against where the card currently sits.
+    // `pointerX`/`pointerY` are defined relative to the card's *resting* centre - that is
+    // the space the drag-to-target hit-testing works in - so undo the live translate here.
     const rect = node.getBoundingClientRect();
-    const localX = clientX - rect.left;
-    const localY = clientY - rect.top;
+    const localX = clientX - rect.left + translateX.value;
+    const localY = clientY - rect.top + translateY.value;
     grabX.value = boxWidth.value > 0 ? localX - boxWidth.value / 2 : 0;
     grabY.value = boxHeight.value > 0 ? localY - boxHeight.value / 2 : 0;
     pointerX.value = grabX.value;

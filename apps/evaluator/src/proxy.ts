@@ -18,7 +18,15 @@ const OPEN_PATHS = ["/delete-account"];
  * straight back by its own user agent.
  */
 const DEVICE_OVERRIDE_COOKIE = "testx_device";
-const MOBILE_WEB_URL = process.env.MOBILE_WEB_URL ?? "http://localhost:8081";
+
+/**
+ * Where the mobile-web build is actually served from, for this app to fetch and pass
+ * through. Deliberately not the same variable as apps/api's `MOBILE_WEB_URL`: that one is
+ * the origin a *browser* sees mobile-web on (it feeds CORS and the OAuth return), which
+ * on a same-domain deployment is this app's own public domain. This one is the upstream
+ * behind it. They only coincide in dev, where both default to the Expo dev server.
+ */
+const MOBILE_WEB_PROXY_TARGET = process.env.MOBILE_WEB_PROXY_TARGET ?? "http://localhost:8081";
 
 /** This app's own API routes (including /api/switch-device itself) must always reach
  * this app's backend, never the mobile-web proxy target. */
@@ -42,7 +50,7 @@ export default function proxy(request: NextRequest) {
   }
 
   if (wantsMobileWeb(request)) {
-    return NextResponse.rewrite(new URL(`${pathname}${search}`, MOBILE_WEB_URL));
+    return NextResponse.rewrite(new URL(`${pathname}${search}`, MOBILE_WEB_PROXY_TARGET));
   }
 
   const token = request.cookies.get("access_token");
