@@ -58,6 +58,15 @@ export type RankingAggregation = {
   }>;
 };
 
+export type TimingAggregation = {
+  /** Answers this aggregate is drawn from — same population as answeredCount. */
+  sampleCount: number;
+  averageSeconds: number | null;
+  medianSeconds: number | null;
+  minSeconds: number | null;
+  maxSeconds: number | null;
+};
+
 export type QuestionResult = {
   questionId: string;
   prompt: string;
@@ -67,6 +76,7 @@ export type QuestionResult = {
   mediaId: string | null;
   mediaUrl: string | null;
   answeredCount: number;
+  timing: TimingAggregation;
   options?: OptionAggregation[];
   rating?: RatingAggregation;
   ranking?: RankingAggregation;
@@ -78,6 +88,29 @@ function round(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
+/**
+ * Per-question time-on-question, the raw material for the future advisory-time/anti-cheat
+ * algorithm (plan.md's "smarter quality-control algorithm"). Drawn from the same `answers`
+ * as every other aggregate here, so it inherits the same flagged-response exclusion.
+ */
+function aggregateTiming(answers: ResultAnswer[]): TimingAggregation {
+  const seconds = answers.map((answer) => answer.timeSpentSeconds).sort((a, b) => a - b);
+  if (seconds.length === 0) {
+    return { sampleCount: 0, averageSeconds: null, medianSeconds: null, minSeconds: null, maxSeconds: null };
+  }
+  const sum = seconds.reduce((total, value) => total + value, 0);
+  const mid = Math.floor(seconds.length / 2);
+  const median =
+    seconds.length % 2 === 0 ? (seconds[mid - 1]! + seconds[mid]!) / 2 : seconds[mid]!;
+  return {
+    sampleCount: seconds.length,
+    averageSeconds: round(sum / seconds.length),
+    medianSeconds: round(median),
+    minSeconds: seconds[0]!,
+    maxSeconds: seconds[seconds.length - 1]!,
+  };
+}
+
 function aggregateQuestion(question: ResultQuestion, answers: ResultAnswer[]): QuestionResult {
   const base: QuestionResult = {
     questionId: question.id,
@@ -87,6 +120,7 @@ function aggregateQuestion(question: ResultQuestion, answers: ResultAnswer[]): Q
     mediaId: question.mediaId,
     mediaUrl: question.mediaId ? `/media/${question.mediaId}/file` : null,
     answeredCount: answers.length,
+    timing: aggregateTiming(answers),
   };
 
   if (question.type === "SINGLE_SELECT" || question.type === "MULTI_SELECT") {

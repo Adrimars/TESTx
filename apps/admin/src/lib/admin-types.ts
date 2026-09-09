@@ -129,6 +129,15 @@ export type RankingAggregation = {
   }>;
 };
 
+export type TimingAggregation = {
+  /** Answers this aggregate is drawn from — same population as answeredCount. */
+  sampleCount: number;
+  averageSeconds: number | null;
+  medianSeconds: number | null;
+  minSeconds: number | null;
+  maxSeconds: number | null;
+};
+
 export type QuestionResult = {
   questionId: string;
   prompt: string;
@@ -138,6 +147,7 @@ export type QuestionResult = {
   mediaId: string | null;
   mediaUrl: string | null;
   answeredCount: number;
+  timing: TimingAggregation;
   options?: OptionAggregation[];
   rating?: RatingAggregation;
   ranking?: RankingAggregation;

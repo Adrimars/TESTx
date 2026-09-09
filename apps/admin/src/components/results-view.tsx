@@ -20,8 +20,11 @@ export const SEGMENT_OPTIONS: Array<{ value: "none" | SegmentBy; label: string }
 
 export function formatDuration(seconds: number | null) {
   if (seconds === null) return "—";
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
+  // Timing aggregates carry one decimal (e.g. 65.3s from an average); round to a whole
+  // second here so `%` doesn't surface float remainder noise like "1m 5.300000000000004s".
+  const rounded = Math.round(seconds);
+  const mins = Math.floor(rounded / 60);
+  const secs = rounded % 60;
   return mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
 }
 
@@ -226,6 +229,13 @@ export function QuestionResults({
             <p className="text-meta uppercase text-muted-foreground">
               Question {index + 1} · {question.type.replace("_", " ").toLowerCase()}
               {showAnsweredCount && ` · ${question.answeredCount} responses`}
+              {showAnsweredCount && question.timing.sampleCount > 0 && (
+                <>
+                  {" "}
+                  · avg {formatDuration(question.timing.averageSeconds)} (median{" "}
+                  {formatDuration(question.timing.medianSeconds)})
+                </>
+              )}
             </p>
             <CardTitle>{question.prompt}</CardTitle>
             {/* Rating results are unreadable without the thing that was rated. */}
