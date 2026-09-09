@@ -1,7 +1,8 @@
-import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
+import { alert } from "@/lib/alert";
 import { apiFetch } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { theme } from "@/lib/theme";
@@ -21,7 +22,7 @@ export default function SettingsScreen() {
   }
 
   function handleDeleteAccount() {
-    Alert.alert(
+    alert(
       "Delete account?",
       "This permanently deletes your account, your profile and your answer history. This cannot be undone.",
       [
@@ -36,7 +37,7 @@ export default function SettingsScreen() {
                 await signOut();
                 router.replace("/login");
               } catch (error) {
-                Alert.alert(
+                alert(
                   "Could not delete account",
                   error instanceof Error ? error.message : "Please try again."
                 );
