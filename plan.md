@@ -284,11 +284,11 @@ Before moving to Phase 20, all of the following must be true:
 
 > Phase 20 ships `apps/evaluator` dark-only, matching mobile's design system exactly (decided during Phase 20 implementation, deferring the light-theme question here rather than doing it half-considered alongside the redesign). This phase adds an actual light palette back and a way to switch between them, thought through properly rather than reusing evaluator's pre-Phase-20 light theme as-is.
 
-### 20/22.1 Light Palette Design
+### 22.1 Light Palette Design
 - Design a light `hsl(var(--token))` set for every token Phase 20 touches in `apps/evaluator/src/app/globals.css` (background/foreground/card/surface/primary/muted/accent/destructive/success/warning/border/input/ring), keeping mobile's accent hue as the throughline between both modes rather than reverting to the pre-Phase-20 light palette wholesale.
 - Contrast-check both palettes (WCAG AA at minimum) — this is also where the "Smaller Follow-Ups" backlog's desktop a11y pass (contrast + focus states) belongs, not as a separate effort.
 
-### 20/22.2 Toggle & Persistence
+### 22.2 Toggle & Persistence
 - A visible light/dark toggle in the desktop shell (header or Settings-equivalent); persists the choice (e.g. `localStorage` + a cookie so SSR/first paint matches, avoiding a flash of the wrong theme) and defaults to the OS `prefers-color-scheme` when no explicit choice has been made yet.
 - Decide whether `apps/admin` gets the same toggle or stays on its own theme — `@testx/ui` components already read the same CSS-variable tokens, so extending it there is mechanical once the palette exists, not a re-design.
 

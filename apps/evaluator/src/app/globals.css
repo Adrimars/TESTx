@@ -43,8 +43,17 @@
   --input: 240 8% 18%;
   --ring: 11 100% 61%;
 
-  /* Mobile's card corners are 20px (theme.ts's `card.shadow`/`card.surface`). */
-  --radius: 1.25rem;
+  /*
+   * NOT mobile's 20px card radius - `--radius` is shared by every rounded-lg/md/sm
+   * usage in the preset (Button, Input, Select, Field, badge chips, not just Card), and
+   * mobile's own Button.tsx uses 12px, matching this exactly. Bumping this to 20px earlier
+   * made small controls (e.g. a 36px-tall size="sm" Button) render as near-pills - measured
+   * live via getComputedStyle, confirmed regression. Cards render at 12px instead of
+   * mobile's exact 20px as a result; an unforked @testx/ui has no separate card-only radius
+   * token to carry that value without affecting controls too, so this is the same kind of
+   * "echo, not pixel-match" tradeoff already accepted for the type scale.
+   */
+  --radius: 0.75rem;
 }
 
 @layer base {
