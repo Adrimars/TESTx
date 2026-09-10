@@ -1,16 +1,19 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Image, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { X } from "lucide-react-native";
+import type { GestureType } from "react-native-gesture-handler";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
 import { TapZone } from "@/components/TapZone";
 import { CardMedia } from "./CardMedia";
+import { DragHint } from "./DragHint";
 import { SwipeCard } from "./SwipeCard";
 import type { ReleaseGesture } from "./SwipeCard";
 import { resolveMediaUrl } from "@/lib/env";
 import { resolveHorizontalRelease } from "@/lib/swipe";
 import type { EvaluatorOption, EvaluatorQuestion } from "@/lib/test";
+import { useGestureTutorial } from "@/lib/tutorial";
 import { theme } from "@/lib/theme";
 
 /** Fraction of the screen width a card must travel before a release counts as a choice. */
@@ -46,6 +49,13 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
   // half isn't the bug being fixed here.
   const [previewOption, setPreviewOption] = useState<EvaluatorOption | null>(null);
   const canPreview = question.mediaType === "IMAGE";
+
+  const tutorial = useGestureTutorial("twoOption", isActive);
+
+  // Each half's TapZone is nested inside this SwipeCard's own drag surface - the Pan must
+  // wait for both to fail before claiming the touch, or a tap never reaches handleHalfPress.
+  const leftTapRef = useRef<GestureType>(undefined);
+  const rightTapRef = useRef<GestureType>(undefined);
 
   const onRelease = (gesture: ReleaseGesture) => {
     "worklet";
@@ -99,6 +109,8 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
       position={isActive ? { x, y } : undefined}
       onRelease={onRelease}
       onCommit={handleCommit}
+      onDragStart={tutorial.shouldShow ? tutorial.dismiss : undefined}
+      waitFor={[leftTapRef, rightTapRef]}
     >
       <View style={styles.body}>
         <Text style={styles.prompt}>{question.prompt}</Text>
@@ -109,6 +121,7 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
             disabled={!isActive || !leftOption}
             onPress={() => handleHalfPress(leftOption)}
             accessibilityLabel={leftOption?.label ?? "Choose this side"}
+            gestureRef={leftTapRef}
           >
             <CardMedia
               mediaType={question.mediaType}
@@ -132,6 +145,7 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
             disabled={!isActive || !rightOption}
             onPress={() => handleHalfPress(rightOption)}
             accessibilityLabel={rightOption?.label ?? "Choose this side"}
+            gestureRef={rightTapRef}
           >
             <CardMedia
               mediaType={question.mediaType}
@@ -148,6 +162,14 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
             </View>
           </TapZone>
         </View>
+
+        {tutorial.shouldShow ? (
+          <DragHint
+            toX={width * 0.4}
+            toY={0}
+            message="Swipe right or left to choose. Tap a side to look closer first."
+          />
+        ) : null}
       </View>
 
       <Modal

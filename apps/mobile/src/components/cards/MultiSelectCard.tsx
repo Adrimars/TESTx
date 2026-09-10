@@ -1,13 +1,16 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import type { GestureType } from "react-native-gesture-handler";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { TapZone } from "@/components/TapZone";
 import { CardMedia } from "./CardMedia";
 import { CardStack } from "./CardStack";
+import { DragHint } from "./DragHint";
 import { SwipeCard } from "./SwipeCard";
 import type { ReleaseGesture } from "./SwipeCard";
 import { advanceSubDeck, resolveHorizontalRelease } from "@/lib/swipe";
 import type { EvaluatorOption, EvaluatorQuestion } from "@/lib/test";
+import { useGestureTutorial } from "@/lib/tutorial";
 import { theme } from "@/lib/theme";
 
 const DISTANCE_THRESHOLD_RATIO = 0.28;
@@ -127,6 +130,13 @@ function OptionSwipeCard({
   const y = useSharedValue(0);
   const distanceThreshold = width * DISTANCE_THRESHOLD_RATIO;
 
+  const tutorial = useGestureTutorial("multiSelect", isActive);
+
+  // Both caption TapZones sit nested inside this SwipeCard's own drag surface - the Pan
+  // must wait for both to fail before claiming the touch, or a tap on Skip/Pick never fires.
+  const skipTapRef = useRef<GestureType>(undefined);
+  const pickTapRef = useRef<GestureType>(undefined);
+
   const onRelease = (gesture: ReleaseGesture) => {
     "worklet";
     const decision = resolveHorizontalRelease(gesture, {
@@ -161,6 +171,8 @@ function OptionSwipeCard({
       position={isActive ? { x, y } : undefined}
       onRelease={onRelease}
       onCommit={(value) => onDecide(value === 1)}
+      onDragStart={tutorial.shouldShow ? tutorial.dismiss : undefined}
+      waitFor={[skipTapRef, pickTapRef]}
     >
       <View style={styles.optionBody}>
         <CardMedia
@@ -186,6 +198,7 @@ function OptionSwipeCard({
             disabled={!isActive}
             onPress={() => onDecide(false)}
             accessibilityLabel={`Skip ${option.label ?? "this option"}`}
+            gestureRef={skipTapRef}
           >
             <Text style={styles.captionSide}>{"← Skip"}</Text>
           </TapZone>
@@ -197,12 +210,21 @@ function OptionSwipeCard({
             disabled={!isActive || atMax}
             onPress={() => onDecide(true)}
             accessibilityLabel={atMax ? "Maximum reached" : `Pick ${option.label ?? "this option"}`}
+            gestureRef={pickTapRef}
           >
             <Text style={[styles.captionSide, atMax && styles.captionSideDisabled]}>
               {atMax ? "Max reached" : "Pick →"}
             </Text>
           </TapZone>
         </View>
+
+        {tutorial.shouldShow ? (
+          <DragHint
+            toX={width * 0.4}
+            toY={0}
+            message="Swipe right to include it, left to skip it. Liking zero, some, or all is fine."
+          />
+        ) : null}
       </View>
     </SwipeCard>
   );

@@ -10,9 +10,11 @@ import Animated, {
   withSpring,
   withTiming,
 } from "react-native-reanimated";
+import { TapHint } from "./TapHint";
 import { resolveMediaUrl } from "@/lib/env";
 import { CARD_REJECT_SPRING, REDUCED_MOTION_FADE_MS } from "@/lib/motion";
 import type { EvaluatorOption, EvaluatorQuestion } from "@/lib/test";
+import { useGestureTutorial } from "@/lib/tutorial";
 import { theme } from "@/lib/theme";
 
 type OptionListCardProps = {
@@ -42,6 +44,12 @@ export function OptionListCard({
   footer,
 }: OptionListCardProps) {
   const isMedia = question.mediaType != null && question.mediaType !== "TEXT";
+  const tutorial = useGestureTutorial("optionList", isActive);
+
+  function handlePress(optionId: string) {
+    if (tutorial.shouldShow) tutorial.dismiss();
+    onToggle(optionId);
+  }
 
   return (
     <View style={styles.shadow}>
@@ -60,12 +68,14 @@ export function OptionListCard({
               isMedia={isMedia}
               selected={selectedIds.includes(option.id)}
               disabled={!isActive}
-              onPress={() => onToggle(option.id)}
+              onPress={() => handlePress(option.id)}
             />
           ))}
         </ScrollView>
 
         {footer ? <View style={styles.footer}>{footer}</View> : null}
+
+        {tutorial.shouldShow ? <TapHint message="Tap an option to select it." /> : null}
       </View>
     </View>
   );

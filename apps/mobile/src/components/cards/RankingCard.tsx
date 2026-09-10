@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Image, StyleSheet, Text, View, useWindowDimensions } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import Animated, {
   runOnJS,
   useAnimatedReaction,
@@ -15,15 +14,11 @@ import { DEFAULT_RANKING_BEST_LABEL, DEFAULT_RANKING_WORST_LABEL } from "@testx/
 import { TapZone } from "@/components/TapZone";
 import { CardMedia } from "./CardMedia";
 import { DragHint } from "./DragHint";
+import { SwappableThumbnail } from "./SwappableThumbnail";
+import { ENTRANCE_START_OPACITY, MAX_SLOT_SCALE, PROXIMITY_FALLOFF, sharedStyles } from "./SwappableThumbnail.shared";
 import { SwipeCard } from "./SwipeCard";
 import type { ReleaseGesture } from "./SwipeCard";
-import { resolveMediaUrl } from "@/lib/env";
-import {
-  CARD_ENTRANCE_SPRING,
-  CARD_REJECT_SPRING,
-  REDUCED_MOTION_FADE_MS,
-  triggerTargetHaptic,
-} from "@/lib/motion";
+import { CARD_ENTRANCE_SPRING, REDUCED_MOTION_FADE_MS, triggerTargetHaptic } from "@/lib/motion";
 import {
   activeTargetValue,
   orderPlacements,
@@ -46,22 +41,14 @@ const CARD_SLOT_INSET = 16;
  * while the hit-test math keeps assuming the uncompressed width. */
 const ROW_PADDING = theme.spacing(2);
 const HIT_RADIUS = 52;
-const PROXIMITY_FALLOFF = 170;
-const MAX_SLOT_SCALE = 1.45;
 /** Fixed so the label row's presence never shifts the slots' own centre. */
 const END_LABEL_HEIGHT = 28;
 /** Side length of the notch diamond that cuts a rank slot into a tag shape (15.2). */
 const NOTCH_SIZE = 14;
-/** How long a placed card's thumbnail must be held before it starts dragging for a swap
- * (15.6), rather than being read as the start of a tap-to-reclaim. */
-const SWAP_LONG_PRESS_MS = 350;
-/** Reclaim/place entrance starting points (16.9): both ease to resting scale (1) and
- * opacity (1) rather than snapping there, growing up from a smaller state on reclaim and
- * shrinking down from a larger one on place - opposite directions, since one is a card
- * becoming "the" card and the other is a card shrinking into a slot. */
+/** Reclaim entrance starting point (16.9): eases to resting scale (1) and opacity (1)
+ * rather than snapping there, growing up from a smaller state - the place entrance's own
+ * starting point lives with the thumbnail that animates it (SwappableThumbnail.shared). */
 const RECLAIM_ENTRANCE_START_SCALE = 0.92;
-const PLACE_ENTRANCE_START_SCALE = 1.15;
-const ENTRANCE_START_OPACITY = 0.4;
 
 type RankingCardProps = {
   question: EvaluatorQuestion;
@@ -204,6 +191,14 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
 
   const tutorial = useGestureTutorial("ranking", isActive);
   const hintTarget = targets.find((target) => target.enabled);
+
+  // Swap (15.6) only makes sense once there is a second placed card to swap with - showing
+  // this before then would demonstrate a gesture with nothing yet on screen for it to act
+  // on. Keyed separately from `tutorial` above: placement and swap are different gestures
+  // (drag-to-open-slot vs. hold-and-drag-onto-a-filled-one), so seeing one taught does not
+  // retire the other.
+  const placedCount = Object.keys(placements).length;
+  const swapTutorial = useGestureTutorial("rankingSwap", isActive && placedCount >= 2);
 
   // Same tick as RatingCard's, at the same moment: when the drag crosses into an open
   // slot's commit radius, not just at release.
@@ -396,6 +391,7 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
                 onSwap={swap}
                 swapTargetValue={swapTargetValue}
                 swapNearness={swapNearness}
+                onSwapDragStart={swapTutorial.shouldShow ? swapTutorial.dismiss : undefined}
               />
             ))}
 
@@ -404,6 +400,19 @@ export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) 
                 {bestLabel}
               </Text>
             </View>
+
+            {swapTutorial.shouldShow ? (
+              <DragHint
+                toX={0}
+                toY={-(SLOT_HEIGHT + SLOT_GAP)}
+                message="Hold and drag a placed card to swap it with another rank."
+                // The column this overlay actually sits in is only SLOT_WIDTH wide - too
+                // narrow for this sentence to wrap horizontally at all (see DragHint's own
+                // doc). Widening the message box out to the left, back to the row's full
+                // content width, is what keeps the text reading as a normal sentence.
+                messageWrapStyle={{ left: -(photoWidth + COLUMN_GAP), right: 0 }}
+              />
+            ) : null}
           </View>
         </View>
       </View>
@@ -425,6 +434,7 @@ function RankSlot({
   onSwap,
   swapTargetValue,
   swapNearness,
+  onSwapDragStart,
 }: {
   target: DropTarget;
   targets: DropTarget[];
@@ -444,6 +454,7 @@ function RankSlot({
    * grow the same way the placement drag's `isUnderFinger` branch below already does. */
   swapTargetValue: SharedValue<number>;
   swapNearness: SharedValue<number>;
+  onSwapDragStart?: () => void;
 }) {
   const filled = !target.enabled;
 
@@ -494,12 +505,13 @@ function RankSlot({
             onSwap={onSwap}
             swapTargetValue={swapTargetValue}
             swapNearness={swapNearness}
+            onSwapDragStart={onSwapDragStart}
           />
         ) : (
           // Tap-based fallback for the drag-to-slot gesture (prd.md §16.7): places the
           // current card here directly, same as dragging it onto this slot would.
           <TapZone
-            style={styles.slotThumbnailPressable}
+            style={sharedStyles.slotThumbnailPressable}
             disabled={disabled}
             onPress={() => onPlace(target.value)}
             accessibilityLabel={`Place the current card at rank ${target.value}`}
@@ -510,166 +522,6 @@ function RankSlot({
       </Animated.View>
     </View>
   );
-}
-
-/**
- * Where a swap drag's `translateY` currently sits relative to the slot it would land on
- * (16.1): which slot value that is (0 if still over the source slot, or past either end
- * with nowhere valid to land), and how close - 0 (mid-transition) to 1 (dead on that
- * slot's centre). Same "grow near a target" shape as `targetProximity`, just measured
- * along this gesture's 1D `translateY` instead of 2D pointer coordinates, since a swap
- * drag never tracks the raw finger position (see `SwappableThumbnail`'s doc below).
- */
-function computeSwapCrossing(
-  translateY: number,
-  slotHeight: number,
-  slotValue: number,
-  slotCount: number
-): { targetValue: number; nearness: number } {
-  "worklet";
-  // Downward drag moves toward the bottom of the column, where rank 1 sits after 15.3's
-  // flip - value decreases as the finger moves down, hence the negation.
-  const delta = Math.round(-translateY / slotHeight);
-  if (delta === 0) return { targetValue: 0, nearness: 0 };
-  const targetValue = Math.max(1, Math.min(slotCount, slotValue + delta));
-  if (targetValue === slotValue) return { targetValue: 0, nearness: 0 };
-  const targetTranslateY = -delta * slotHeight;
-  const distance = Math.abs(translateY - targetTranslateY);
-  const nearness = distance >= PROXIMITY_FALLOFF ? 0 : 1 - distance / PROXIMITY_FALLOFF;
-  return { targetValue, nearness };
-}
-
-/**
- * A filled slot's own thumbnail: a tap reclaims it (existing 12.1/12.6 flow, unchanged),
- * and a press-and-hold followed by a drag swaps it directly with whatever slot the finger
- * ends up over (15.6) - a shortcut alongside reclaim-then-place, not instead of it.
- *
- * `Gesture.Race` picks whichever of the two actually activates: a quick tap wins before
- * the hold threshold ever fires; holding still past it activates the pan instead, and the
- * tap is cancelled by Race the moment that happens. Reading the swap target off
- * `translationY` alone - rather than re-deriving pointer coordinates in this thumbnail's
- * own space - works because every slot sits exactly `slotHeight` from its neighbour, so
- * "how many slots did the finger cross" is just that division, independent of which slot
- * this drag started on.
- */
-function SwappableThumbnail({
-  slotValue,
-  slotCount,
-  slotHeight,
-  option,
-  mediaType,
-  disabled,
-  onReclaim,
-  onSwap,
-  swapTargetValue,
-  swapNearness,
-}: {
-  slotValue: number;
-  slotCount: number;
-  slotHeight: number;
-  option: EvaluatorOption;
-  mediaType: string | null;
-  disabled: boolean;
-  onReclaim: (slotNumber: number) => void;
-  onSwap: (sourceValue: number, targetValue: number) => void;
-  swapTargetValue: SharedValue<number>;
-  swapNearness: SharedValue<number>;
-}) {
-  const translateY = useSharedValue(0);
-
-  // Place entrance (16.9): this component only ever mounts fresh the moment a slot goes
-  // from empty to filled - a swap (15.6) reuses the same instance, just changing `option`
-  // - so a plain mount effect is exactly "a card was just placed here", no extra state to
-  // track. Shrinks down from larger/more-transparent to resting size/opacity.
-  const reducedMotion = useReducedMotion();
-  const placeEntranceScale = useSharedValue(reducedMotion ? 1 : PLACE_ENTRANCE_START_SCALE);
-  const placeEntranceOpacity = useSharedValue(reducedMotion ? 1 : ENTRANCE_START_OPACITY);
-
-  useEffect(() => {
-    if (reducedMotion) {
-      placeEntranceOpacity.value = withTiming(1, { duration: REDUCED_MOTION_FADE_MS });
-      return;
-    }
-    placeEntranceScale.value = withSpring(1, CARD_ENTRANCE_SPRING);
-    placeEntranceOpacity.value = withSpring(1, CARD_ENTRANCE_SPRING);
-  }, [reducedMotion, placeEntranceScale, placeEntranceOpacity]);
-
-  const tap = Gesture.Tap()
-    .enabled(!disabled)
-    .maxDistance(10)
-    .onEnd((_event, success) => {
-      if (success) runOnJS(onReclaim)(slotValue);
-    });
-
-  const pan = Gesture.Pan()
-    .enabled(!disabled)
-    .activateAfterLongPress(SWAP_LONG_PRESS_MS)
-    .onUpdate((event) => {
-      translateY.value = event.translationY;
-    })
-    .onEnd((event) => {
-      const { targetValue } = computeSwapCrossing(event.translationY, slotHeight, slotValue, slotCount);
-      // Springing back to 0 here also carries the shared crossing state below back to
-      // resting (its reaction keeps firing for every frame of this animation), so both
-      // this thumbnail and whichever slot it was over settle together off one spring.
-      translateY.value = withSpring(0, CARD_REJECT_SPRING);
-      if (targetValue !== 0) runOnJS(onSwap)(slotValue, targetValue);
-    });
-
-  // Broadcasts the currently-crossed slot (if any) so that slot's own RankSlot can grow
-  // in step with this thumbnail - fires on every frame translateY changes, including
-  // during the release spring above, which is what lets the highlight fade back out
-  // smoothly instead of snapping off the instant the gesture ends.
-  useAnimatedReaction(
-    () => translateY.value,
-    (ty) => {
-      const { targetValue, nearness } = computeSwapCrossing(ty, slotHeight, slotValue, slotCount);
-      swapTargetValue.value = targetValue;
-      swapNearness.value = nearness;
-    },
-    [slotHeight, slotValue, slotCount]
-  );
-
-  const followFinger = useAnimatedStyle(() => {
-    const { nearness } = computeSwapCrossing(translateY.value, slotHeight, slotValue, slotCount);
-    return {
-      opacity: placeEntranceOpacity.value,
-      transform: [
-        { translateY: translateY.value },
-        { scale: placeEntranceScale.value * (1 + nearness * (MAX_SLOT_SCALE - 1)) },
-      ],
-      zIndex: translateY.value === 0 ? 0 : 1,
-    };
-  });
-
-  return (
-    <GestureDetector gesture={Gesture.Race(pan, tap)}>
-      <Animated.View
-        style={[styles.slotThumbnailPressable, followFinger]}
-        accessible
-        accessibilityRole="button"
-        accessibilityLabel={`Rank ${slotValue}: ${option.label ?? "this card"}. Tap to remove it, or hold and drag to swap with another rank.`}
-        accessibilityState={{ disabled }}
-      >
-        <SlotThumbnail option={option} mediaType={mediaType} />
-      </Animated.View>
-    </GestureDetector>
-  );
-}
-
-/** A placed option's photo, small enough to fit in a slot - lets the evaluator see the
- * whole ranking at a glance instead of just slot numbers. Falls back to an initial for
- * non-image media, same as CardMedia's own TEXT fallback but sized for the slot. */
-function SlotThumbnail({ option, mediaType }: { option: EvaluatorOption; mediaType: string | null }) {
-  const resolved = mediaType === "IMAGE" ? resolveMediaUrl(option.mediaUrl) : null;
-  if (!resolved) {
-    return (
-      <Text style={styles.slotTextFilled} numberOfLines={1}>
-        {(option.label ?? "?").charAt(0).toUpperCase()}
-      </Text>
-    );
-  }
-  return <Image source={{ uri: resolved }} style={styles.slotThumbnail} resizeMode="cover" />;
 }
 
 const styles = StyleSheet.create({
@@ -750,12 +602,4 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.accent,
   },
   slotText: { color: theme.colors.textPrimary, fontSize: 18, fontWeight: "700" },
-  slotTextFilled: { color: theme.colors.accentContrast, fontSize: 18, fontWeight: "700" },
-  slotThumbnailPressable: {
-    width: "100%",
-    height: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  slotThumbnail: { width: "100%", height: "100%" },
 });
