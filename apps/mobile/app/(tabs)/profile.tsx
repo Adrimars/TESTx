@@ -248,8 +248,10 @@ export default function ProfileScreen() {
 
   // Android's hardware back button doesn't go through the tab bar's own tabPress guard
   // (see (tabs)/_layout.tsx) - this is the same confirm, wired to the one other way off
-  // this screen. Only armed while Profile is the focused screen.
+  // this screen. Only armed while Profile is the focused screen. Web has no such button,
+  // and react-native-web's BackHandler is a warn-only stub, so skip it there.
   useFocusEffect(() => {
+    if (Platform.OS === "web") return;
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
       if (!isDirtyRef.current) return false;
       void confirmLeavingUnsavedProfileChanges();
