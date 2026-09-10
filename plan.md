@@ -218,8 +218,8 @@ Before moving to Phase 20, all of the following must be true:
 > This phase is fully independent of mobile-web (Phase 18–19): `apps/evaluator`'s existing page-by-page test-taking flow is kept (NO swipe/drag), only the design language (color, typography, motion/transitions) is reapplied from the mobile design system (Phase 12).
 
 ### 20.1 Design Token Migration
-- Adapt the color palette and type scale from mobile's `theme.ts`/`tokens.ts` for desktop (the dark-only constraint may be relaxed on desktop if needed — decided during implementation).
-- Update `apps/evaluator`'s `@testx/ui` with these new tokens; re-skin components like Button/Card/Input/Dialog.
+- Adapt the color palette and type scale from mobile's `theme.ts`/`tokens.ts` for desktop. Decided during implementation: ships dark-only, matching mobile's tokens exactly (`#0B0B0E` surface, `#FF5A36` accent, etc.) via `apps/evaluator/src/app/globals.css`'s `hsl(var(--token))` variables — a light mode is deliberately deferred to Phase 22 rather than designed alongside this redesign.
+- Re-skin `@testx/ui`'s components (Button/Card/Input/Dialog/etc.) only insofar as evaluator's own token values drive them — `apps/admin` reads the same component code but keeps its own separate CSS variables, so it is unaffected by this token migration.
 
 ### 20.2 Motion & Transitions
 - Add page transitions and button/card hover-focus states in the spirit of mobile's `lib/motion.ts` (using Framer Motion, for the DOM).
@@ -280,6 +280,27 @@ Before moving to Phase 20, all of the following must be true:
 
 ---
 
+## Phase 22: Desktop — Light/Dark Theme Toggle
+
+> Phase 20 ships `apps/evaluator` dark-only, matching mobile's design system exactly (decided during Phase 20 implementation, deferring the light-theme question here rather than doing it half-considered alongside the redesign). This phase adds an actual light palette back and a way to switch between them, thought through properly rather than reusing evaluator's pre-Phase-20 light theme as-is.
+
+### 20/22.1 Light Palette Design
+- Design a light `hsl(var(--token))` set for every token Phase 20 touches in `apps/evaluator/src/app/globals.css` (background/foreground/card/surface/primary/muted/accent/destructive/success/warning/border/input/ring), keeping mobile's accent hue as the throughline between both modes rather than reverting to the pre-Phase-20 light palette wholesale.
+- Contrast-check both palettes (WCAG AA at minimum) — this is also where the "Smaller Follow-Ups" backlog's desktop a11y pass (contrast + focus states) belongs, not as a separate effort.
+
+### 20/22.2 Toggle & Persistence
+- A visible light/dark toggle in the desktop shell (header or Settings-equivalent); persists the choice (e.g. `localStorage` + a cookie so SSR/first paint matches, avoiding a flash of the wrong theme) and defaults to the OS `prefers-color-scheme` when no explicit choice has been made yet.
+- Decide whether `apps/admin` gets the same toggle or stays on its own theme — `@testx/ui` components already read the same CSS-variable tokens, so extending it there is mechanical once the palette exists, not a re-design.
+
+### Phase 22 Exit Criteria
+
+- [ ] Every evaluator page/component (Phase 20's redesign) looks correct and passes contrast checks in both light and dark
+- [ ] The toggle switches instantly with no flash-of-wrong-theme on reload
+- [ ] The choice persists across sessions; unset defaults to the OS preference
+- [ ] A decision is recorded on whether `apps/admin` adopts the same toggle
+
+---
+
 ## Future / Backlog (Post-Mobile-MVP)
 
 Not scheduled into a phase yet — tracked here so they aren't lost:
@@ -303,7 +324,7 @@ Not scheduled into a phase yet — tracked here so they aren't lost:
 
 ### Smaller Follow-Ups
 
-- **Desktop accessibility (a11y) pass for Phase 20** — mobile got a dedicated accessibility phase (12.6: reduced motion, touch targets, safe area); the desktop redesign has no equivalent keyboard-navigation/screen-reader/contrast checklist yet.
+- **Desktop keyboard-navigation/screen-reader pass** — mobile got a dedicated accessibility phase (12.6: reduced motion, touch targets, safe area); the desktop redesign has no equivalent yet. Contrast is now covered by Phase 22.1, but keyboard nav and screen-reader behavior remain unscheduled.
 - **Admin audit log** — no record of who paused/closed a test, deleted media, etc.; worth adding once more than one admin account is in regular use.
 - **Public marketing/landing page** — there's currently no logged-out page explaining the product before login; worth deciding whether one is needed for the web launch.
 
