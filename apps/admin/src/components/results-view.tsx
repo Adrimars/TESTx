@@ -1,6 +1,7 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle, Field, Select, StatCard } from "@testx/ui";
+import { API_URL } from "@/lib/api";
 import type {
   DemographicResults,
   OptionAggregation,
@@ -8,8 +9,6 @@ import type {
   SegmentBy,
   TestResults,
 } from "@/lib/admin-types";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 export const SEGMENT_OPTIONS: Array<{ value: "none" | SegmentBy; label: string }> = [
   { value: "none", label: "None" },

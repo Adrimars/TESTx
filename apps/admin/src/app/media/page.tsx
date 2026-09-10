@@ -21,11 +21,9 @@ import {
   PageHeader,
 } from "@testx/ui";
 import type { Media } from "@testx/shared";
-import { apiFetch } from "@/lib/api";
+import { API_URL, apiFetch } from "@/lib/api";
 import { formatDate } from "@/lib/status";
 import type { UploadResult } from "@/lib/admin-types";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 type MediaListResponse = { items: Media[]; total: number; page: number; limit: number };
 

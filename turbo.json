@@ -1,5 +1,11 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  // Turbo's default strict env mode only passes framework-inferred vars (NEXT_PUBLIC_*,
+  // EXPO_PUBLIC_*) through to a task's process - everything else is silently stripped
+  // unless listed here. These app-URL overrides (see start-all.ps1) need to reach
+  // apps/api's CORS config and apps/evaluator's proxy, so `turbo dev` was dropping them
+  // even though `pnpm --filter ... dev` on its own passes any env through untouched.
+  "globalPassThroughEnv": ["EVALUATOR_APP_URL", "ADMIN_APP_URL", "MOBILE_WEB_URL", "MOBILE_WEB_PROXY_TARGET"],
   "tasks": {
     "build": {
       "dependsOn": ["^build", "db:generate", "^db:generate"],
