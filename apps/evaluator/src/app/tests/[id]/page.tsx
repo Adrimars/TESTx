@@ -4,8 +4,16 @@ import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Award, Clock, ListChecks } from "lucide-react";
-import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@testx/ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@testx/ui";
 import { apiFetch } from "@/lib/api";
+import { MotionLift, MotionPress } from "@/components/motion-surface";
 import { useTestSession } from "@/components/test-session-provider";
 import type { TestDetail } from "@/lib/test-types";
 
@@ -26,7 +34,9 @@ function StatTile({
         className={`mx-auto mb-2 size-5 ${highlight ? "text-primary" : "text-muted-foreground"}`}
         aria-hidden
       />
-      <p className={`text-lg font-bold tabular-nums ${highlight ? "text-primary" : "text-foreground"}`}>
+      <p
+        className={`text-lg font-bold tabular-nums ${highlight ? "text-primary" : "text-foreground"}`}
+      >
         {value}
       </p>
       <p className="text-xs text-muted-foreground">{label}</p>
@@ -53,7 +63,11 @@ export default function TestIntroPage() {
     queryFn: () => apiFetch<TestDetail>(`/evaluator/tests/${params.id}`),
     staleTime: 0,
   });
-  const error = queryError ? (queryError instanceof Error ? queryError.message : "Failed to load test") : null;
+  const error = queryError
+    ? queryError instanceof Error
+      ? queryError.message
+      : "Failed to load test"
+    : null;
 
   useEffect(() => {
     function handleUnload(e: BeforeUnloadEvent) {
@@ -83,10 +97,14 @@ export default function TestIntroPage() {
       <Card className="mx-auto max-w-lg">
         <CardHeader>
           <CardTitle>Test unavailable</CardTitle>
-          <CardDescription>{error ?? "This test could not be loaded."}</CardDescription>
+          <CardDescription>
+            {error ?? "This test could not be loaded."}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <Button onClick={() => router.push("/dashboard")}>Back to Dashboard</Button>
+          <Button onClick={() => router.push("/dashboard")}>
+            Back to Dashboard
+          </Button>
         </CardContent>
       </Card>
     );
@@ -95,38 +113,66 @@ export default function TestIntroPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div className="space-y-2">
-        <p className="text-meta uppercase text-muted-foreground">You are about to start</p>
-        <h1 className="text-2xl font-bold leading-tight tracking-tight text-foreground">{test.title}</h1>
-        {test.description && <p className="text-muted-foreground">{test.description}</p>}
+        <p className="text-meta uppercase text-muted-foreground">
+          You are about to start
+        </p>
+        <h1 className="text-2xl font-bold leading-tight tracking-tight text-foreground">
+          {test.title}
+        </h1>
+        {test.description && (
+          <p className="text-muted-foreground">{test.description}</p>
+        )}
       </div>
 
-      <Card>
-        <CardContent className="space-y-6 p-5 sm:p-6">
-          <div className="grid grid-cols-3 gap-3">
-            <StatTile icon={ListChecks} value={String(test.questionCount)} label="Questions" />
-            <StatTile
-              icon={Clock}
-              value={test.advisoryTimeMin ? `~${test.advisoryTimeMin} min` : "Self-paced"}
-              label="Est. time"
-            />
-            <StatTile icon={Award} value={`${test.rewardPoints} pts`} label="Reward" highlight />
-          </div>
+      <MotionLift>
+        <Card>
+          <CardContent className="space-y-6 p-5 sm:p-6">
+            <div className="grid grid-cols-3 gap-3">
+              <StatTile
+                icon={ListChecks}
+                value={String(test.questionCount)}
+                label="Questions"
+              />
+              <StatTile
+                icon={Clock}
+                value={
+                  test.advisoryTimeMin
+                    ? `~${test.advisoryTimeMin} min`
+                    : "Self-paced"
+                }
+                label="Est. time"
+              />
+              <StatTile
+                icon={Award}
+                value={`${test.rewardPoints} pts`}
+                label="Reward"
+                highlight
+              />
+            </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Button size="lg" className="sm:px-10" onClick={handleBegin} disabled={starting}>
-              {starting ? "Starting…" : "Begin Test"}
-            </Button>
-            <Button
-              variant="ghost"
-              size="lg"
-              onClick={() => router.push("/dashboard")}
-              disabled={starting}
-            >
-              Back to Dashboard
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <MotionPress>
+                <Button
+                  size="lg"
+                  className="w-full sm:w-auto sm:px-10"
+                  onClick={handleBegin}
+                  disabled={starting}
+                >
+                  {starting ? "Starting…" : "Begin Test"}
+                </Button>
+              </MotionPress>
+              <Button
+                variant="ghost"
+                size="lg"
+                onClick={() => router.push("/dashboard")}
+                disabled={starting}
+              >
+                Back to Dashboard
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </MotionLift>
     </div>
   );
 }
