@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 import Animated, {
   Easing,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withDelay,
   withRepeat,
@@ -30,9 +31,13 @@ type DragHintProps = {
  */
 export function DragHint({ toX, toY, message }: DragHintProps) {
   const progress = useSharedValue(0);
+  // Reduce Motion (see lib/motion.ts): the ghost must never translate. It stays put next
+  // to the message, which already names the gesture in words.
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
     progress.value = 0;
+    if (reducedMotion) return;
     progress.value = withRepeat(
       withSequence(
         withTiming(1, { duration: TRAVEL_MS, easing: Easing.inOut(Easing.quad) }),
@@ -41,12 +46,15 @@ export function DragHint({ toX, toY, message }: DragHintProps) {
       -1,
       false
     );
-  }, [progress]);
+  }, [progress, reducedMotion]);
 
   const ghost = useAnimatedStyle(() => ({
-    transform: [{ translateX: progress.value * toX }, { translateY: progress.value * toY }],
+    transform: [
+      { translateX: reducedMotion ? 0 : progress.value * toX },
+      { translateY: reducedMotion ? 0 : progress.value * toY },
+    ],
     // Fades out as it lands, so the loop restarting does not read as the card snapping back.
-    opacity: 0.25 + 0.55 * (1 - progress.value),
+    opacity: reducedMotion ? 0.8 : 0.25 + 0.55 * (1 - progress.value),
   }));
 
   return (
