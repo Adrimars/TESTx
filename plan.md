@@ -191,7 +191,7 @@ Before moving to Phase 19, all of the following must be true:
 - Phase 16.6's optional-field labels ("City (Optional)" etc.) are the same on web.
 
 ### 19.3 Full Tab Navigation Parity
-- Phase 16.4's Dashboard/Shop/Profile/Settings tab structure looks and works identically on web; sign out/delete account under Settings sit in the same place.
+- Phase 16.4's Dashboard/Shop/Tests/Profile/Settings tab structure (Tests is a launcher into `/feed`, not a destination screen — see `(tabs)/_layout.tsx`) looks and works identically on web; sign out/delete account under Settings sit in the same place.
 
 ### 19.4 Full Port of Motion & Polish Details
 - All the fine-grained motion/polish items from Phase 15/16 (card entrance animation, ranking swap scale, reclaim/place scale+fade, first-test tutorial) are verified on web through reanimated's web fallback; complete with Framer Motion equivalents where needed.
@@ -206,7 +206,7 @@ Before moving to Phase 20, all of the following must be true:
 
 - [ ] The Shop/rewards screen works on web with balance and catalog items identical to native
 - [ ] The hobbies field can be selected, skipped, and changed later on web
-- [ ] The four tabs (Dashboard/Shop/Profile/Settings) match native in content and layout on web
+- [ ] The five tabs (Dashboard/Shop/Tests/Profile/Settings) match native in content and layout on web
 - [ ] All of Phase 15/16's motion/polish items work on web, or have been deliberately replaced with a documented, simplified web equivalent
 - [ ] With `prefers-reduced-motion` on, every gesture animation on web collapses to a short fade
 - [ ] The mobile-web experience has been compared end-to-end side-by-side with native on a real phone and no differences were found
