@@ -53,7 +53,7 @@ export default function RegisterScreen() {
         : `You must confirm you are ${MOBILE_MIN_AGE} or older to create an account`,
       aydinlatmaAcknowledged: aydinlatmaAcknowledged
         ? null
-        : "Devam etmek icin Aydinlatma Metni'ni okuyup onaylamaniz gerekir.",
+        : "You must read and confirm the Aydinlatma Metni to continue.",
     };
     setErrors(next);
     return (
@@ -165,7 +165,7 @@ export default function RegisterScreen() {
         <Pressable
           accessibilityRole="checkbox"
           accessibilityState={{ checked: aydinlatmaAcknowledged }}
-          accessibilityLabel="Aydinlatma Metnini okudum"
+          accessibilityLabel="I have read the Aydinlatma Metni"
           onPress={handleAydinlatmaCheckboxPress}
           style={styles.checkboxRow}
         >
@@ -174,7 +174,7 @@ export default function RegisterScreen() {
               <Check size={16} color={theme.colors.accentContrast} strokeWidth={3} />
             ) : null}
           </View>
-          <Text style={styles.checkboxLabel}>Aydinlatma Metni okundu, onaylandi.</Text>
+          <Text style={styles.checkboxLabel}>Aydinlatma Metni read and confirmed.</Text>
         </Pressable>
         {errors.aydinlatmaAcknowledged ? (
           <Text style={styles.checkboxError}>{errors.aydinlatmaAcknowledged}</Text>

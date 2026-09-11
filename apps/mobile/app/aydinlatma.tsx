@@ -33,7 +33,7 @@ export default function AydinlatmaScreen() {
       await acknowledgeAydinlatma();
       router.replace(hasProfile ? "/dashboard" : "/profile-onboarding");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Kaydedilemedi. Lutfen tekrar deneyin.");
+      setError(err instanceof Error ? err.message : "Could not save. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -52,11 +52,11 @@ export default function AydinlatmaScreen() {
 
       <View style={styles.footer}>
         {error ? <Text style={styles.error}>{error}</Text> : null}
-        <Button label="Okundu, onaylandi" onPress={handleAcknowledge} loading={busy} />
+        <Button label="I've read and confirmed" onPress={handleAcknowledge} loading={busy} />
         {/* Entered with `replace`, so there is no back button. Without this a failed
             acknowledgment would strand the user on a screen with one control that
             does not work and no way off it. */}
-        {user ? <Button label="Cikis yap" variant="quiet" onPress={handleSignOut} /> : null}
+        {user ? <Button label="Sign out" variant="quiet" onPress={handleSignOut} /> : null}
       </View>
     </View>
   );

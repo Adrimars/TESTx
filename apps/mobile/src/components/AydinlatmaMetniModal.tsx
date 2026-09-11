@@ -26,8 +26,8 @@ export function AydinlatmaMetniModal({
           <AydinlatmaMetniBody />
         </ScrollView>
         <View style={styles.footer}>
-          <Button label="Okundu, onaylandi" onPress={onConfirm} />
-          <Button label="Kapat" variant="quiet" onPress={onClose} />
+          <Button label="I've read and confirmed" onPress={onConfirm} />
+          <Button label="Close" variant="quiet" onPress={onClose} />
         </View>
       </View>
     </Modal>
