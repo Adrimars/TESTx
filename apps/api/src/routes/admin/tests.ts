@@ -16,6 +16,7 @@ import { Prisma } from "@testx/database";
 import { authenticateUser } from "../../middleware/authenticate";
 import { requireRole } from "../../middleware/requireRole";
 import { parsePageParams } from "../../lib/pagination";
+import { enqueueTestActivationNotifications } from "../../services/notification.service";
 
 const adminAuth = { preHandler: [authenticateUser, requireRole("ADMIN")] };
 
@@ -533,6 +534,21 @@ export const adminTestsRoutes: FastifyPluginAsync = async (app) => {
       data: { status, rewardPoints },
       include: testDetailInclude,
     });
+
+    if (status === "ACTIVE") {
+      // Best-effort: a notification-enqueue failure must never fail the activation itself,
+      // the admin's actual intent here. The dispatch plugin (21.2) will still send whatever
+      // rows do make it into the log on its next sweep.
+      enqueueTestActivationNotifications(app, {
+        id: test.id,
+        title: test.title,
+        demographicFilters: test.demographicFilters,
+        responseCap: test.responseCap,
+      }).catch((err) => {
+        app.log.error({ err, testId: test.id }, "failed to enqueue test-activation notifications");
+      });
+    }
+
     return serializeTest(test);
   });
 

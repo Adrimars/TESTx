@@ -17,6 +17,7 @@ import { errorHandlerPlugin } from "./plugins/error-handler";
 import { mediaCacheEvictionPlugin } from "./plugins/media-cache-eviction";
 import { prismaPlugin } from "./plugins/prisma";
 import { rateLimitPlugin } from "./plugins/rate-limit";
+import { reminderSweepPlugin } from "./plugins/reminder-sweep";
 
 const app = Fastify({
   logger: true,
@@ -61,6 +62,7 @@ await app.register(rateLimitPlugin);
 await app.register(errorHandlerPlugin);
 await app.register(prismaPlugin);
 await app.register(mediaCacheEvictionPlugin);
+await app.register(reminderSweepPlugin);
 
 app.get("/health", async () => ({ status: "ok" }));
 await app.register(authRoutes, { prefix: "/auth" });
