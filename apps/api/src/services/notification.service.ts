@@ -1,4 +1,6 @@
 import type { FastifyInstance } from "fastify";
+import webPush from "web-push";
+import type { Prisma, PushSubscription } from "@testx/database";
 import { matchesDemographics } from "../lib/demographics";
 
 /**
@@ -148,4 +150,154 @@ export async function runReminderSweep(app: FastifyInstance, now: Date = new Dat
   }
 
   return enqueued;
+}
+
+const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
+const DISPATCH_BATCH_SIZE = 50;
+
+type NotificationPayload = { title: string; body: string; data: Prisma.JsonValue };
+
+let vapidConfigured = false;
+
+/** VAPID keys are optional in dev - without them, web push sends are simply skipped rather
+ * than crashing the dispatch loop, so native push still works with no web push setup at all. */
+function ensureVapidConfigured(): boolean {
+  if (vapidConfigured) return true;
+  const publicKey = process.env.VAPID_PUBLIC_KEY;
+  const privateKey = process.env.VAPID_PRIVATE_KEY;
+  if (!publicKey || !privateKey) return false;
+
+  webPush.setVapidDetails(process.env.VAPID_SUBJECT ?? "mailto:support@testx.app", publicKey, privateKey);
+  vapidConfigured = true;
+  return true;
+}
+
+/**
+ * One Expo push API call for every IOS/ANDROID subscription this notification targets - the
+ * API accepts a batch of messages per request, which is both fewer round trips and how Expo
+ * itself recommends sending to many recipients at once.
+ */
+async function sendExpoPush(
+  app: FastifyInstance,
+  subs: PushSubscription[],
+  payload: NotificationPayload
+): Promise<void> {
+  if (subs.length === 0) return;
+
+  const response = await fetch(EXPO_PUSH_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(
+      subs.map((sub) => ({ to: sub.token, title: payload.title, body: payload.body, data: payload.data ?? undefined }))
+    ),
+  });
+
+  const result = (await response.json().catch(() => null)) as
+    | { data?: Array<{ status: string; details?: { error?: string } }> }
+    | null;
+  if (!response.ok) {
+    throw new Error(`Expo push API responded ${response.status}`);
+  }
+
+  // A token the OS itself has invalidated (uninstall, revoked permission) comes back tagged
+  // this way - deleting it here is what keeps PushSubscription from accumulating dead rows
+  // that would otherwise fail forever on every future send to this user.
+  const tickets = result?.data ?? [];
+  const staleIds = subs
+    .filter((_, index) => tickets[index]?.details?.error === "DeviceNotRegistered")
+    .map((sub) => sub.id);
+  if (staleIds.length > 0) {
+    await app.prisma.pushSubscription.deleteMany({ where: { id: { in: staleIds } } });
+  }
+}
+
+/** One `web-push` call per WEB subscription - unlike Expo's API, it has no batch endpoint. */
+async function sendWebPush(
+  app: FastifyInstance,
+  subs: PushSubscription[],
+  payload: NotificationPayload
+): Promise<void> {
+  if (subs.length === 0 || !ensureVapidConfigured()) return;
+
+  await Promise.all(
+    subs.map(async (sub) => {
+      try {
+        await webPush.sendNotification(JSON.parse(sub.token), JSON.stringify(payload));
+      } catch (err) {
+        const statusCode = (err as { statusCode?: number }).statusCode;
+        // 404/410 means the browser's push service considers the subscription gone -
+        // permanent, not worth retrying, so the stale row is removed rather than left to
+        // fail the same way on every future send.
+        if (statusCode === 404 || statusCode === 410) {
+          await app.prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => {});
+        } else {
+          throw err;
+        }
+      }
+    })
+  );
+}
+
+/**
+ * 21.2's dispatch loop. Claims a batch of PENDING rows with `SELECT ... FOR UPDATE SKIP
+ * LOCKED` inside a transaction that immediately flips them to PROCESSING and commits -
+ * releasing the row lock right away, but leaving the rows no longer PENDING, so a second
+ * worker's own claim query (run concurrently, e.g. if this is ever scaled past one process)
+ * simply skips them instead of double-sending. The actual network sends happen afterward,
+ * outside that transaction, since they can take long enough that holding a DB lock across
+ * them would be its own problem.
+ */
+export async function dispatchPendingNotifications(
+  app: FastifyInstance,
+  batchSize = DISPATCH_BATCH_SIZE
+): Promise<number> {
+  const claimedIds = await app.prisma.$transaction(async (tx) => {
+    const rows = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "NotificationLog"
+      WHERE status = 'PENDING'
+      ORDER BY "createdAt" ASC
+      LIMIT ${batchSize}
+      FOR UPDATE SKIP LOCKED
+    `;
+    if (rows.length === 0) return [];
+
+    const ids = rows.map((row) => row.id);
+    await tx.notificationLog.updateMany({
+      where: { id: { in: ids } },
+      data: { status: "PROCESSING", attempts: { increment: 1 } },
+    });
+    return ids;
+  });
+
+  if (claimedIds.length === 0) return 0;
+
+  const rows = await app.prisma.notificationLog.findMany({
+    where: { id: { in: claimedIds } },
+    include: { user: { include: { pushSubscriptions: true } } },
+  });
+
+  await Promise.all(
+    rows.map(async (row) => {
+      const payload: NotificationPayload = { title: row.title, body: row.body, data: row.data };
+      const subs = row.user.pushSubscriptions;
+      const expoSubs = subs.filter((sub) => sub.platform === "IOS" || sub.platform === "ANDROID");
+      const webSubs = subs.filter((sub) => sub.platform === "WEB");
+
+      try {
+        await Promise.all([sendExpoPush(app, expoSubs, payload), sendWebPush(app, webSubs, payload)]);
+        await app.prisma.notificationLog.update({
+          where: { id: row.id },
+          data: { status: "SENT", sentAt: new Date() },
+        });
+      } catch (err) {
+        await app.prisma.notificationLog.update({
+          where: { id: row.id },
+          data: { status: "FAILED", lastError: err instanceof Error ? err.message : String(err) },
+        });
+        app.log.error({ err, notificationId: row.id }, "notification dispatch failed");
+      }
+    })
+  );
+
+  return rows.length;
 }

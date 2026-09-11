@@ -58,6 +58,11 @@ enum NotificationKind {
 
 enum NotificationStatus {
   PENDING
+  /// Claimed by a dispatch worker (SELECT ... FOR UPDATE SKIP LOCKED) but not yet resolved.
+  /// A distinct state from PENDING so the claiming transaction can commit - releasing the
+  /// row lock - the instant it claims a batch, without another worker re-selecting the same
+  /// rows before the actual send finishes (see notification.service.ts's dispatch loop).
+  PROCESSING
   SENT
   FAILED
 }

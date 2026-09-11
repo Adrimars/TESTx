@@ -15,6 +15,7 @@ import { mobileRoutes } from "./routes/mobile";
 import { publicMediaRoutes } from "./routes/media";
 import { errorHandlerPlugin } from "./plugins/error-handler";
 import { mediaCacheEvictionPlugin } from "./plugins/media-cache-eviction";
+import { notificationDispatchPlugin } from "./plugins/notification-dispatch";
 import { prismaPlugin } from "./plugins/prisma";
 import { rateLimitPlugin } from "./plugins/rate-limit";
 import { reminderSweepPlugin } from "./plugins/reminder-sweep";
@@ -63,6 +64,7 @@ await app.register(errorHandlerPlugin);
 await app.register(prismaPlugin);
 await app.register(mediaCacheEvictionPlugin);
 await app.register(reminderSweepPlugin);
+await app.register(notificationDispatchPlugin);
 
 app.get("/health", async () => ({ status: "ok" }));
 await app.register(authRoutes, { prefix: "/auth" });
