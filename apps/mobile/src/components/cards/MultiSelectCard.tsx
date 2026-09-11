@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import type { GestureType } from "react-native-gesture-handler";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { TapZone } from "@/components/TapZone";
@@ -8,6 +8,7 @@ import { CardStack } from "./CardStack";
 import { DragHint } from "./DragHint";
 import { SwipeCard } from "./SwipeCard";
 import type { ReleaseGesture } from "./SwipeCard";
+import { useContentWidth } from "@/lib/responsive";
 import { advanceSubDeck, resolveHorizontalRelease } from "@/lib/swipe";
 import type { EvaluatorOption, EvaluatorQuestion } from "@/lib/test";
 import { useGestureTutorial } from "@/lib/tutorial";
@@ -34,7 +35,7 @@ type MultiSelectCardProps = {
  * options, but skipping stays available to finish.
  */
 export function MultiSelectCard({ question, isActive, onAnswer }: MultiSelectCardProps) {
-  const { width } = useWindowDimensions();
+  const width = useContentWidth();
   const max = question.config.maxSelections ?? question.options.length;
 
   const byId = useMemo(

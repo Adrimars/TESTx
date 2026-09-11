@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import Animated, {
   runOnJS,
   useAnimatedReaction,
@@ -14,6 +14,7 @@ import { DragHint } from "./DragHint";
 import { SwipeCard } from "./SwipeCard";
 import type { ReleaseGesture } from "./SwipeCard";
 import { triggerTargetHaptic } from "@/lib/motion";
+import { useContentWidth } from "@/lib/responsive";
 import { activeTargetValue, resolveDropTarget, targetProximity } from "@/lib/swipe";
 import type { DropTarget } from "@/lib/swipe";
 import type { EvaluatorQuestion } from "@/lib/test";
@@ -62,7 +63,7 @@ type RatingCardProps = {
  * to keep matching where it's actually rendered.
  */
 export function RatingCard({ question, isActive, onAnswer }: RatingCardProps) {
-  const { width } = useWindowDimensions();
+  const width = useContentWidth();
   const x = useSharedValue(0);
   const y = useSharedValue(0);
   const pointerX = useSharedValue(0);

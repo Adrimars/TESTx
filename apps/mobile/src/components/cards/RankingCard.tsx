@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import Animated, {
   runOnJS,
   useAnimatedReaction,
@@ -19,6 +19,7 @@ import { ENTRANCE_START_OPACITY, MAX_SLOT_SCALE, PROXIMITY_FALLOFF, sharedStyles
 import { SwipeCard } from "./SwipeCard";
 import type { ReleaseGesture } from "./SwipeCard";
 import { CARD_ENTRANCE_SPRING, REDUCED_MOTION_FADE_MS, triggerTargetHaptic } from "@/lib/motion";
+import { useContentWidth } from "@/lib/responsive";
 import {
   activeTargetValue,
   orderPlacements,
@@ -83,7 +84,7 @@ type RankingCardProps = {
  * undo, and that throws away the whole question.
  */
 export function RankingCard({ question, isActive, onAnswer }: RankingCardProps) {
-  const { width } = useWindowDimensions();
+  const width = useContentWidth();
 
   const options = question.options;
   const slotCount = options.length;

@@ -22,10 +22,12 @@ import {
 import { AvatarPicker } from "@/components/AvatarPicker";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
+import { FormRow } from "@/components/FormRow";
 import { HobbiesPicker } from "@/components/HobbiesPicker";
 import { Select } from "@/components/Select";
 import { alert } from "@/lib/alert";
 import { apiFetch } from "@/lib/api";
+import { useIsDesktopWeb } from "@/lib/responsive";
 import { useSession } from "@/lib/session";
 import {
   confirmLeavingUnsavedProfileChanges,
@@ -85,6 +87,7 @@ function snapshotFromProfile(profile: CurrentUser["evaluatorProfile"]): ProfileF
 
 export default function ProfileScreen() {
   const { user, refreshUser } = useSession();
+  const isDesktopWeb = useIsDesktopWeb();
 
   const profile = user?.evaluatorProfile ?? null;
 
@@ -273,65 +276,73 @@ export default function ProfileScreen() {
 
           <Text style={styles.email}>{user?.email}</Text>
 
-          <Field
-            label="Age"
-            value={age}
-            onChangeText={setAge}
-            error={errors.age}
-            keyboardType="number-pad"
-            inputMode="numeric"
-            maxLength={3}
-          />
-          <Select
-            label="Gender"
-            options={GENDER_OPTIONS}
-            value={gender}
-            onChange={setGender}
-            error={errors.gender}
-          />
-          <Select
-            label="Country"
-            options={COUNTRIES}
-            value={country}
-            onChange={setCountry}
-            error={errors.country}
-            searchable
-          />
-          <Field
-            label="City (Optional)"
-            value={city}
-            onChangeText={setCity}
-            error={errors.city}
-            placeholder="Optional"
-          />
-          <Field
-            label="Native language (Optional)"
-            value={nativeLanguage}
-            onChangeText={setNativeLanguage}
-            error={errors.nativeLanguage}
-            placeholder="Optional"
-          />
-          <Field
-            label="Occupation (Optional)"
-            value={occupation}
-            onChangeText={setOccupation}
-            error={errors.occupation}
-            placeholder="Optional"
-          />
-          <Select
-            label="Education level"
-            options={EDUCATION_LEVELS}
-            value={educationLevel}
-            onChange={setEducationLevel}
-            error={errors.educationLevel}
-          />
-          <Select
-            label="AI experience"
-            options={AI_EXPERIENCE_OPTIONS}
-            value={aiExperience}
-            onChange={setAiExperience}
-            error={errors.aiExperience}
-          />
+          <FormRow isDesktopWeb={isDesktopWeb}>
+            <Field
+              label="Age"
+              value={age}
+              onChangeText={setAge}
+              error={errors.age}
+              keyboardType="number-pad"
+              inputMode="numeric"
+              maxLength={3}
+            />
+            <Select
+              label="Gender"
+              options={GENDER_OPTIONS}
+              value={gender}
+              onChange={setGender}
+              error={errors.gender}
+            />
+          </FormRow>
+          <FormRow isDesktopWeb={isDesktopWeb}>
+            <Select
+              label="Country"
+              options={COUNTRIES}
+              value={country}
+              onChange={setCountry}
+              error={errors.country}
+              searchable
+            />
+            <Field
+              label="City (Optional)"
+              value={city}
+              onChangeText={setCity}
+              error={errors.city}
+              placeholder="Optional"
+            />
+          </FormRow>
+          <FormRow isDesktopWeb={isDesktopWeb}>
+            <Field
+              label="Native language (Optional)"
+              value={nativeLanguage}
+              onChangeText={setNativeLanguage}
+              error={errors.nativeLanguage}
+              placeholder="Optional"
+            />
+            <Field
+              label="Occupation (Optional)"
+              value={occupation}
+              onChangeText={setOccupation}
+              error={errors.occupation}
+              placeholder="Optional"
+            />
+          </FormRow>
+          <FormRow isDesktopWeb={isDesktopWeb}>
+            <Select
+              label="Education level"
+              options={EDUCATION_LEVELS}
+              value={educationLevel}
+              onChange={setEducationLevel}
+              error={errors.educationLevel}
+            />
+            <Select
+              label="AI experience"
+              options={AI_EXPERIENCE_OPTIONS}
+              value={aiExperience}
+              onChange={setAiExperience}
+              error={errors.aiExperience}
+            />
+          </FormRow>
           <Select
             label="How often do you use AI?"
             options={AI_FREQUENCY_OPTIONS}
