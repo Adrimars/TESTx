@@ -3,46 +3,19 @@
 @tailwind utilities;
 
 /*
- * Phase 20: reapplies apps/mobile's dark-only design system (src/lib/theme.ts, Phase 12)
+ * Phase 20 reapplied apps/mobile's dark-only design system (src/lib/theme.ts, Phase 12)
  * token-for-token via these CSS variables - @testx/ui's components already read only
  * these, unchanged, so this file is the entire redesign for apps/evaluator. apps/admin
  * keeps its own separate globals.css and is unaffected.
  *
- * A light palette is deliberately NOT restored here - see plan.md Phase 22.
+ * Phase 22 adds a light palette back and a toggle between the two. Cascade, low to high
+ * priority: :root (light, the CSS default) -> prefers-color-scheme: dark (applies dark
+ * when no explicit choice is stored) -> [data-theme] on <html> (explicit choice, set from
+ * a cookie server-side in layout.tsx so there's no flash on repeat visits, and by
+ * ThemeProvider client-side on toggle). The two [data-theme] blocks are ordered dark then
+ * light so an explicit light choice always wins over the OS-dark media query above it.
  */
 :root {
-  --background: 240 12% 5%; /* mobile surfaceBase #0B0B0E */
-  --foreground: 240 11% 96%; /* mobile textPrimary #F5F5F7 */
-
-  --card: 240 10% 10%; /* mobile surfaceRaised #17171C */
-  --card-foreground: 240 11% 96%;
-
-  /* Second surface: nested blocks inside a card, so they don't need another border.
-     Matches mobile surfaceOverlay #1F1F26 - "one step lighter than a card". */
-  --surface: 240 10% 14%;
-  --surface-foreground: 240 11% 96%;
-
-  --primary: 11 100% 61%; /* mobile accent #FF5A36 */
-  --primary-foreground: 240 12% 5%; /* mobile accentContrast #0B0B0E */
-
-  --muted: 240 8% 18%;
-  --muted-foreground: 240 6% 63%; /* mobile textSecondary #9B9BA6 */
-
-  /* Hover/hint fill for interactive rows and list items. */
-  --accent: 240 10% 14%;
-  --accent-foreground: 240 11% 96%;
-
-  --destructive: 350 100% 65%; /* mobile danger #FF4D6A */
-  --destructive-foreground: 0 0% 100%;
-  --success: 152 59% 48%; /* mobile success #33C481 */
-  --success-foreground: 0 0% 100%;
-  --warning: 38 92% 55%;
-  --warning-foreground: 240 12% 5%;
-
-  --border: 240 8% 18%; /* mobile borderHairline #2A2A31 */
-  --input: 240 8% 18%;
-  --ring: 11 100% 61%;
-
   /*
    * NOT mobile's 20px card radius - `--radius` is shared by every rounded-lg/md/sm
    * usage in the preset (Button, Input, Select, Field, badge chips, not just Card), and
@@ -51,9 +24,149 @@
    * live via getComputedStyle, confirmed regression. Cards render at 12px instead of
    * mobile's exact 20px as a result; an unforked @testx/ui has no separate card-only radius
    * token to carry that value without affecting controls too, so this is the same kind of
-   * "echo, not pixel-match" tradeoff already accepted for the type scale.
+   * "echo, not pixel-match" tradeoff already accepted for the type scale. Shared by both
+   * themes, so it lives outside the light/dark blocks below.
    */
   --radius: 0.75rem;
+
+  /* Light palette (Phase 22.1) - the CSS default. Same cool 240 hue family as dark's
+     neutrals, and the same 11deg accent hue as dark's #FF5A36, darkened/desaturated to
+     11 100% 61% (WCAG-formula contrast ~3.1:1 on white -> fails AA for text) down to
+     14 90% 42% (~5.7:1) so it's usable as text/ring, not just a button fill. */
+  --background: 240 20% 98%;
+  --foreground: 240 10% 12%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 12%;
+
+  --surface: 240 15% 95%;
+  --surface-foreground: 240 10% 12%;
+
+  --primary: 14 90% 42%;
+  --primary-foreground: 0 0% 100%;
+
+  --muted: 240 10% 92%;
+  --muted-foreground: 240 6% 40%;
+
+  --accent: 240 15% 95%;
+  --accent-foreground: 240 10% 12%;
+
+  --destructive: 350 80% 45%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 152 55% 32%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 85% 38%;
+  --warning-foreground: 0 0% 100%;
+
+  --border: 240 12% 88%;
+  --input: 240 12% 85%;
+  --ring: 14 90% 42%;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  /* No stored preference yet - follow the OS. */
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --background: 240 12% 5%; /* mobile surfaceBase #0B0B0E */
+    --foreground: 240 11% 96%; /* mobile textPrimary #F5F5F7 */
+
+    --card: 240 10% 10%; /* mobile surfaceRaised #17171C */
+    --card-foreground: 240 11% 96%;
+
+    --surface: 240 10% 14%; /* mobile surfaceOverlay #1F1F26 */
+    --surface-foreground: 240 11% 96%;
+
+    --primary: 11 100% 61%; /* mobile accent #FF5A36 */
+    --primary-foreground: 240 12% 5%; /* mobile accentContrast #0B0B0E */
+
+    --muted: 240 8% 18%;
+    --muted-foreground: 240 6% 63%; /* mobile textSecondary #9B9BA6 */
+
+    --accent: 240 10% 14%;
+    --accent-foreground: 240 11% 96%;
+
+    --destructive: 350 100% 65%; /* mobile danger #FF4D6A */
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 59% 48%; /* mobile success #33C481 */
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 55%;
+    --warning-foreground: 240 12% 5%;
+
+    --border: 240 8% 18%; /* mobile borderHairline #2A2A31 */
+    --input: 240 8% 18%;
+    --ring: 11 100% 61%;
+  }
+}
+
+/* Explicit choice, stored in the "testx-theme" cookie - always wins over the media query
+   above. Dark block first, light block second, so light beats an OS-dark media match. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --background: 240 12% 5%;
+  --foreground: 240 11% 96%;
+
+  --card: 240 10% 10%;
+  --card-foreground: 240 11% 96%;
+
+  --surface: 240 10% 14%;
+  --surface-foreground: 240 11% 96%;
+
+  --primary: 11 100% 61%;
+  --primary-foreground: 240 12% 5%;
+
+  --muted: 240 8% 18%;
+  --muted-foreground: 240 6% 63%;
+
+  --accent: 240 10% 14%;
+  --accent-foreground: 240 11% 96%;
+
+  --destructive: 350 100% 65%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 152 59% 48%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 92% 55%;
+  --warning-foreground: 240 12% 5%;
+
+  --border: 240 8% 18%;
+  --input: 240 8% 18%;
+  --ring: 11 100% 61%;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --background: 240 20% 98%;
+  --foreground: 240 10% 12%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 12%;
+
+  --surface: 240 15% 95%;
+  --surface-foreground: 240 10% 12%;
+
+  --primary: 14 90% 42%;
+  --primary-foreground: 0 0% 100%;
+
+  --muted: 240 10% 92%;
+  --muted-foreground: 240 6% 40%;
+
+  --accent: 240 15% 95%;
+  --accent-foreground: 240 10% 12%;
+
+  --destructive: 350 80% 45%;
+  --destructive-foreground: 0 0% 100%;
+  --success: 152 55% 32%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 85% 38%;
+  --warning-foreground: 0 0% 100%;
+
+  --border: 240 12% 88%;
+  --input: 240 12% 85%;
+  --ring: 14 90% 42%;
 }
 
 @layer base {
