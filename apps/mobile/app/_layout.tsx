@@ -3,13 +3,18 @@ import type { ReactNode } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StyleSheet, View } from "react-native";
-import { Stack, usePathname } from "expo-router";
+import { Stack, useRouter, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AlertHost } from "@/components/AlertHost";
 import { UpdateRequiredGate } from "@/components/UpdateRequiredGate";
 import { SessionProvider, useSession } from "@/lib/session";
 import { queryClient } from "@/lib/queryClient";
+import {
+  addNotificationTapListener,
+  notificationTarget,
+  registerForPushNotificationsAsync,
+} from "@/lib/pushNotifications";
 import { DESKTOP_MAX_WIDTH, DESKTOP_TABS_MAX_WIDTH, useIsDesktopWeb } from "@/lib/responsive";
 import { RegistrationDraftProvider } from "@/lib/registrationDraft";
 import { retryPendingSubmissionOnce } from "@/lib/submissionQueue";
@@ -79,6 +84,31 @@ function PendingSubmissionRetry() {
   return null;
 }
 
+/**
+ * 21.3/21.4's permission request, deliberately fired here rather than at first launch -
+ * only once a profile exists (`hasProfile`) does the evaluator have a reason to say yes,
+ * matching plan.md 21.3's "not on first launch" note. `registerForPushNotificationsAsync`
+ * itself only prompts once per account per device (see pushNotifications.native/.web.ts),
+ * so this effect re-running on every sign-in is not a re-nag.
+ */
+function PushNotificationRegistration() {
+  const { user, initializing, hasProfile } = useSession();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (initializing || !user || !hasProfile) return;
+    void registerForPushNotificationsAsync(user.id);
+  }, [initializing, user, hasProfile]);
+
+  useEffect(() => {
+    return addNotificationTapListener((data) => {
+      router.push(notificationTarget(data));
+    });
+  }, [router]);
+
+  return null;
+}
+
 export default function RootLayout() {
   return (
     // Every gesture in the swipe engine is routed through this root view; without it
@@ -87,6 +117,7 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <SessionProvider>
           <PendingSubmissionRetry />
+          <PushNotificationRegistration />
           <SafeAreaProvider>
             <StatusBar style="light" />
             <UpdateRequiredGate>

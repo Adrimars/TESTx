@@ -45,6 +45,28 @@ enum MediaSourceType {
   GOOGLE_DRIVE
 }
 
+enum PushPlatform {
+  IOS
+  ANDROID
+  WEB
+}
+
+enum NotificationKind {
+  TEST_ACTIVATED
+  REMINDER
+}
+
+enum NotificationStatus {
+  PENDING
+  /// Claimed by a dispatch worker (SELECT ... FOR UPDATE SKIP LOCKED) but not yet resolved.
+  /// A distinct state from PENDING so the claiming transaction can commit - releasing the
+  /// row lock - the instant it claims a batch, without another worker re-selecting the same
+  /// rows before the actual send finishes (see notification.service.ts's dispatch loop).
+  PROCESSING
+  SENT
+  FAILED
+}
+
 model User {
   id           String   @id @default(uuid()) @db.Uuid
   email        String   @unique
@@ -78,9 +100,11 @@ model User {
   /// it is decided at registration, before any profile row exists.
   isDeviceFlagged      Boolean @default(false)
 
-  evaluatorProfile EvaluatorProfile?
-  responses        TestResponse[]
-  mobileAuthCodes  MobileAuthCode[]
+  evaluatorProfile  EvaluatorProfile?
+  responses         TestResponse[]
+  mobileAuthCodes   MobileAuthCode[]
+  pushSubscriptions PushSubscription[]
+  notificationLogs  NotificationLog[]
 
   @@index([role])
   @@index([registrationDeviceId])
@@ -120,6 +144,10 @@ model EvaluatorProfile {
   aiFrequency      String?
   hobbies          String[] @default([])
   balance          Int      @default(0)
+  /// Bumped on every submitted response (and at profile creation) - 21.1's re-engagement
+  /// reminder reads this to find evaluators who have gone quiet, without a separate scan
+  /// over TestResponse for each one's most recent submission.
+  lastActivityAt   DateTime @default(now())
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }
@@ -134,10 +162,15 @@ model Test {
   minTimePerQuestion Int            @default(60)
   demographicFilters Json?
   rewardPoints       Int            @default(0)
+  /// Set every time status transitions to ACTIVE (including a PAUSED -> ACTIVE
+  /// reactivation) - 21.1's activation trigger folds this into NotificationLog's dedupeKey
+  /// so each activation is its own dedupeable event, not just the test's lifetime-first one.
+  activatedAt        DateTime?
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
   questions          Question[]
   responses          TestResponse[]
+  notificationLogs   NotificationLog[]
 
   // Replaces the old standalone [status] index — [status, createdAt] is a strict
   // superset (leftmost-prefix), matching /next-test's `WHERE status = 'ACTIVE' ORDER BY
@@ -266,4 +299,54 @@ model Template {
   isSystem    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+/// One push destination for one device/browser (21.2). `token` is an Expo push token for
+/// IOS/ANDROID or a JSON-stringified Web Push subscription (endpoint + keys) for WEB - unique
+/// on its own because it identifies the destination regardless of which account currently
+/// owns it, so re-registering the same device under a different account moves it rather than
+/// creating a duplicate row the old account would still receive sends for.
+model PushSubscription {
+  id         String       @id @default(uuid()) @db.Uuid
+  userId     String       @db.Uuid
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  platform   PushPlatform
+  token      String       @unique
+  createdAt  DateTime     @default(now())
+  lastUsedAt DateTime     @default(now())
+
+  @@index([userId])
+}
+
+/// One row per (user, notification) send, doubling as the dedup ledger 21.1 calls for. The
+/// unique constraint is on `(userId, kind, dedupeKey)` rather than `(userId, kind, testId)`
+/// because REMINDER rows carry no testId - Postgres treats NULLs as distinct in a unique
+/// index, so two reminders with testId null would never collide. `dedupeKey` is the testId
+/// for TEST_ACTIVATED and a reminder-window bucket (e.g. an ISO date) for REMINDER, so both
+/// kinds get a real de-dup key either way.
+model NotificationLog {
+  id        String             @id @default(uuid()) @db.Uuid
+  userId    String             @db.Uuid
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      NotificationKind
+  dedupeKey String
+  testId    String?            @db.Uuid
+  test      Test?              @relation(fields: [testId], references: [id], onDelete: Cascade)
+  status    NotificationStatus @default(PENDING)
+  title     String
+  body      String
+  data      Json?
+  attempts  Int                @default(0)
+  lastError String?
+  createdAt DateTime           @default(now())
+  /// Set when a dispatch worker claims this row (PENDING -> PROCESSING). Lets the claim
+  /// query also reclaim rows stuck in PROCESSING past a staleness threshold - e.g. the
+  /// process that claimed them crashed or restarted before resolving them to SENT/FAILED -
+  /// instead of leaving them stranded forever the moment they leave PENDING.
+  claimedAt DateTime?
+  sentAt    DateTime?
+
+  @@unique([userId, kind, dedupeKey])
+  @@index([status, createdAt])
+  @@index([userId])
 }

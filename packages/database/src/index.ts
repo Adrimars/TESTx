@@ -9,4 +9,6 @@ export type {
   TestResponse,
   Answer,
   Template,
+  PushSubscription,
+  NotificationLog,
 } from "@prisma/client";
