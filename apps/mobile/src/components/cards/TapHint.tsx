@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -18,6 +18,15 @@ const PAUSE_MS = 350;
 
 type TapHintProps = {
   message: string;
+  /**
+   * Called on the first tap anywhere the hint covers. Unlike `DragHint` - dismissed only by
+   * the evaluator actually performing the gesture being taught - a tap-to-select question has
+   * no separate "practice" motion to wait for: the tap that would normally hit an option *is*
+   * the gesture. So this hint eats that first tap itself (rather than passing it through, as
+   * `NO_TOUCH` used to) and clears out of the way; the second, now-unobstructed tap is what
+   * actually selects something.
+   */
+  onDismiss: () => void;
 };
 
 /**
@@ -26,11 +35,8 @@ type TapHintProps = {
  * (OptionListCard's grid, a swipe card's caption buttons) can hold any number of options
  * in any layout, so the ring pulses in place rather than pointing at a specific one - the
  * message text is what names which control to tap.
- *
- * Dismissed by the evaluator doing the gesture, same as DragHint - no button, because a
- * button would teach tapping something that isn't the answer.
  */
-export function TapHint({ message }: TapHintProps) {
+export function TapHint({ message, onDismiss }: TapHintProps) {
   const progress = useSharedValue(0);
   const reducedMotion = useReducedMotion();
 
@@ -53,7 +59,12 @@ export function TapHint({ message }: TapHintProps) {
   }));
 
   return (
-    <View style={[styles.overlay, NO_TOUCH]}>
+    <Pressable
+      style={styles.overlay}
+      onPress={onDismiss}
+      accessibilityRole="button"
+      accessibilityLabel="Dismiss tutorial"
+    >
       <View style={styles.messageWrap}>
         <Text style={styles.message}>{message}</Text>
       </View>
@@ -61,12 +72,9 @@ export function TapHint({ message }: TapHintProps) {
         <Animated.View style={[styles.ring, ring]} />
         <View style={styles.dot} />
       </View>
-    </View>
+    </Pressable>
   );
 }
-
-/** Inert overlay: the deprecated pointerEvents prop moved onto style. */
-const NO_TOUCH = { pointerEvents: "none" } as const;
 
 const styles = StyleSheet.create({
   overlay: {

@@ -46,8 +46,9 @@ export function OptionListCard({
   const isMedia = question.mediaType != null && question.mediaType !== "TEXT";
   const tutorial = useGestureTutorial("optionList", isActive);
 
+  // While the tutorial is up, TapHint's own overlay covers every option and eats the tap
+  // itself (see its doc) - this only ever fires once it's already gone.
   function handlePress(optionId: string) {
-    if (tutorial.shouldShow) tutorial.dismiss();
     onToggle(optionId);
   }
 
@@ -75,7 +76,9 @@ export function OptionListCard({
 
         {footer ? <View style={styles.footer}>{footer}</View> : null}
 
-        {tutorial.shouldShow ? <TapHint message="Tap an option to select it." /> : null}
+        {tutorial.shouldShow ? (
+          <TapHint message="Tap an option to select it." onDismiss={tutorial.dismiss} />
+        ) : null}
       </View>
     </View>
   );
