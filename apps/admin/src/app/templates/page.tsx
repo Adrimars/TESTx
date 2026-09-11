@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2 } from "lucide-react";
 import {
   Alert,
@@ -107,11 +108,10 @@ function toStructure(questions: DraftQuestion[]) {
 
 export default function TemplatesPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const deleteDialogRef = useRef<HTMLDialogElement>(null);
 
-  const [templates, setTemplates] = useState<TemplateItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const [creatingId, setCreatingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<TemplateItem | null>(null);
@@ -125,20 +125,19 @@ export default function TemplatesPage() {
   const [formSaving, setFormSaving] = useState(false);
   const [formError, setFormError] = useState("");
 
-  const loadTemplates = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const data = await apiFetch<{ items: TemplateItem[] }>("/admin/templates");
-      setTemplates(data.items);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load templates");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const {
+    data,
+    isPending: loading,
+    error: loadError,
+  } = useQuery({
+    queryKey: ["admin", "templates"],
+    queryFn: () => apiFetch<{ items: TemplateItem[] }>("/admin/templates"),
+  });
+  const templates = data?.items ?? [];
 
-  useEffect(() => { void loadTemplates(); }, [loadTemplates]);
+  function invalidateTemplates() {
+    return queryClient.invalidateQueries({ queryKey: ["admin", "templates"] });
+  }
 
   async function createFromTemplate(templateId: string) {
     setCreatingId(templateId);
@@ -158,7 +157,7 @@ export default function TemplatesPage() {
     setError("");
     try {
       await apiFetch(`/admin/templates/${templateId}`, { method: "DELETE" });
-      await loadTemplates();
+      await invalidateTemplates();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to delete template");
     } finally {
@@ -203,7 +202,7 @@ export default function TemplatesPage() {
         await apiFetch<TemplateItem>(`/admin/templates/${editingId}`, { method: "PUT", body: JSON.stringify(body) });
       }
       dialogRef.current?.close();
-      await loadTemplates();
+      await invalidateTemplates();
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : "Failed to save template");
     } finally {
@@ -253,6 +252,7 @@ export default function TemplatesPage() {
       />
 
       {error && <Alert>{error}</Alert>}
+      {loadError && <Alert>{loadError instanceof Error ? loadError.message : "Failed to load templates"}</Alert>}
 
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading templates...</p>

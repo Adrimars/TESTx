@@ -2,38 +2,57 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Phase 20: reapplies apps/mobile's dark-only design system (src/lib/theme.ts, Phase 12)
+ * token-for-token via these CSS variables - @testx/ui's components already read only
+ * these, unchanged, so this file is the entire redesign for apps/evaluator. apps/admin
+ * keeps its own separate globals.css and is unaffected.
+ *
+ * A light palette is deliberately NOT restored here - see plan.md Phase 22.
+ */
 :root {
-  --background: 220 33% 98%;
-  --foreground: 222 47% 11%;
+  --background: 240 12% 5%; /* mobile surfaceBase #0B0B0E */
+  --foreground: 240 11% 96%; /* mobile textPrimary #F5F5F7 */
 
-  --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
+  --card: 240 10% 10%; /* mobile surfaceRaised #17171C */
+  --card-foreground: 240 11% 96%;
 
-  /* Second surface: nested blocks inside a card, so they don't need another border. */
-  --surface: 220 20% 97%;
-  --surface-foreground: 222 47% 11%;
+  /* Second surface: nested blocks inside a card, so they don't need another border.
+     Matches mobile surfaceOverlay #1F1F26 - "one step lighter than a card". */
+  --surface: 240 10% 14%;
+  --surface-foreground: 240 11% 96%;
 
-  --primary: 230 84% 56%;
-  --primary-foreground: 0 0% 100%;
+  --primary: 11 100% 61%; /* mobile accent #FF5A36 */
+  --primary-foreground: 240 12% 5%; /* mobile accentContrast #0B0B0E */
 
-  --muted: 220 16% 92%;
-  --muted-foreground: 221 14% 38%;
+  --muted: 240 8% 18%;
+  --muted-foreground: 240 6% 63%; /* mobile textSecondary #9B9BA6 */
 
   /* Hover/hint fill for interactive rows and list items. */
-  --accent: 220 20% 94%;
-  --accent-foreground: 222 47% 11%;
+  --accent: 240 10% 14%;
+  --accent-foreground: 240 11% 96%;
 
-  --destructive: 0 72% 45%;
+  --destructive: 350 100% 65%; /* mobile danger #FF4D6A */
   --destructive-foreground: 0 0% 100%;
-  --success: 152 62% 28%;
+  --success: 152 59% 48%; /* mobile success #33C481 */
   --success-foreground: 0 0% 100%;
-  --warning: 32 85% 36%;
-  --warning-foreground: 0 0% 100%;
+  --warning: 38 92% 55%;
+  --warning-foreground: 240 12% 5%;
 
-  --border: 220 13% 88%;
-  --input: 220 13% 84%;
-  --ring: 230 84% 56%;
+  --border: 240 8% 18%; /* mobile borderHairline #2A2A31 */
+  --input: 240 8% 18%;
+  --ring: 11 100% 61%;
 
+  /*
+   * NOT mobile's 20px card radius - `--radius` is shared by every rounded-lg/md/sm
+   * usage in the preset (Button, Input, Select, Field, badge chips, not just Card), and
+   * mobile's own Button.tsx uses 12px, matching this exactly. Bumping this to 20px earlier
+   * made small controls (e.g. a 36px-tall size="sm" Button) render as near-pills - measured
+   * live via getComputedStyle, confirmed regression. Cards render at 12px instead of
+   * mobile's exact 20px as a result; an unforked @testx/ui has no separate card-only radius
+   * token to carry that value without affecting controls too, so this is the same kind of
+   * "echo, not pixel-match" tradeoff already accepted for the type scale.
+   */
   --radius: 0.75rem;
 }
 

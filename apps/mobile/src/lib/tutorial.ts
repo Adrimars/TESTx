@@ -6,13 +6,25 @@ import * as SecureStore from "expo-secure-store";
  * Which novel gestures the evaluator has been shown. Swipe-left/right needs no
  * explanation - it is universal muscle memory - but drag-to-target is a gesture most
  * people have never met, and an unexplained first encounter produces careless answers,
- * which is exactly the signal the quality service is trying to read.
+ * which is exactly the signal the quality service is trying to read. Tap-based gestures
+ * (optionList) are just as universal as swiping, but get a hint anyway so every question
+ * type shows the same courtesy on a evaluator's very first encounter with it.
  */
-export type TutorialGesture = "rating" | "ranking";
+export type TutorialGesture =
+  | "rating"
+  | "ranking"
+  | "rankingSwap"
+  | "twoOption"
+  | "multiSelect"
+  | "optionList";
 
 const KEYS: Record<TutorialGesture, string> = {
   rating: "testx.hasSeenRatingTutorial",
   ranking: "testx.hasSeenRankingTutorial",
+  rankingSwap: "testx.hasSeenRankingSwapTutorial",
+  twoOption: "testx.hasSeenTwoOptionTutorial",
+  multiSelect: "testx.hasSeenMultiSelectTutorial",
+  optionList: "testx.hasSeenOptionListTutorial",
 };
 
 /**
@@ -87,11 +99,13 @@ export function useGestureTutorial(gesture: TutorialGesture, enabled: boolean): 
 }
 
 /**
- * Retires the mid-test drag hints for both Rating and Ranking at once. Called when the
- * mandatory hands-on practice test (see app/practice-test.tsx) completes: it already
- * demonstrated both gestures for real, so the narrower in-card hint on a real Rating or
- * Ranking question later would only repeat what was just practiced.
+ * Retires every in-card gesture hint at once. Called when the mandatory hands-on practice
+ * test (see app/practice-test.tsx) completes: it already demonstrated every gesture for
+ * real, so the narrower in-card hint on a real question later would only repeat what was
+ * just practiced. Iterates `KEYS` rather than naming each gesture so a future addition to
+ * `TutorialGesture` is retired by practice automatically, instead of being born permanently
+ * visible until someone remembers to list it here too.
  */
 export async function markGestureHintsSeen(): Promise<void> {
-  await Promise.all([writeFlag(KEYS.rating), writeFlag(KEYS.ranking)]);
+  await Promise.all(Object.values(KEYS).map(writeFlag));
 }

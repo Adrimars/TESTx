@@ -47,3 +47,6 @@ prisma/generated/
 
 # Claude Code local settings (per-developer)
 .claude/settings.local.json
+
+# Local dev convenience scripts (hardcode per-developer secrets)
+/start-*.ps1

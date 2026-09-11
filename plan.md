@@ -110,7 +110,7 @@ Before moving to Phase 18, all of the following must be true:
 - [ ] Firing 20+ simultaneous cold requests for the same uncached Drive-sourced media produces exactly one Drive API call and one valid cache file
 - [ ] Running 2+ local API instances behind a simple round-robin proxy enforces the combined rate limit correctly via the shared store, not `limit × instance count`
 - [ ] With pool limits configured, running multiple API instances under sustained load keeps total Postgres connections under `max_connections`
-- [ ] `GET /admin/tests/:id/results` on a test with 10,000+ seeded responses returns within an acceptable latency budget (define a concrete target, e.g. under 2s) without a memory spike proportional to response count
+- [ ] `GET /admin/tests/:id/results` on a test with 10,000+ seeded responses returns in under 2 seconds, without a memory spike proportional to response count
 - [ ] `GET /evaluator/next-test` no longer fetches an unbounded active-test list or an unbounded response history per call
 - [ ] The Media Library and Test list show all items, not just the first 50, via working pagination controls
 - [ ] Thumbnails served to the admin grid and mobile/evaluator cards are meaningfully smaller than the original file
@@ -143,7 +143,7 @@ Before moving to Phase 18, all of the following must be true:
 ### 18.4 Device-Based Routing (Same Domain)
 - On the same domain, route by User-Agent/viewport: phone browsers get the mobile-web experience (Expo static export), desktop gets `apps/evaluator` (Phase 20).
 - Routing can be done via a middleware on the `apps/evaluator` side (rewrite/proxy to the mobile-web static build when mobile is detected); the exact hosting/infrastructure decision is finalized during implementation.
-- To guard against misdetection, both experiences carry a manual "Switch to desktop version" / "Switch to mobile version" link.
+- To guard against misdetection, both experiences carry a manual "Switch to desktop version" / "Switch to mobile version" link. **Removed post-Phase 20 revision** (plan.md's Phase 20 note): once mobile-web became the default for every device, not just phones, these two links stopped being something an evaluator would ever need - `/api/switch-device` itself is untouched and still works, just unlinked from either UI.
 
 ### 18.5 PWA — Installability
 - Add a web manifest + service worker (Serwist): app icon, theme color, standalone display mode.
@@ -171,7 +171,7 @@ Before moving to Phase 19, all of the following must be true:
 - [ ] Registering/logging in with Google works end-to-end through the web's existing `/auth/google` redirect flow
 - [ ] The web versions of `SwipeCard`, `RankingCard`, and `TapZone` have been tested on a real phone browser (iOS Safari + Android Chrome); gestures feel as smooth as native
 - [ ] Rating (drag-to-target) and Ranking (drag-to-slot) questions commit the correct value/order on web
-- [ ] Visiting the same domain from desktop opens `apps/evaluator`; visiting from a phone browser opens the mobile-web experience; the manual "switch version" link works both ways
+- [ ] ~~Visiting the same domain from desktop opens `apps/evaluator`; visiting from a phone browser opens the mobile-web experience; the manual "switch version" link works both ways~~ — superseded (Phase 20 revision): desktop now opens mobile-web too by default; the link was removed, the underlying `/api/switch-device` override still works unlinked
 - [ ] PWA manifest + service worker are installed; "Add to Home Screen" works on Safari iOS and Chrome Android and launches in standalone mode
 - [ ] KVKK Aydınlatma/açık rıza and the 18+ confirmation screens behave identically to native on web
 - [ ] `expo-haptics` silently no-ops, device flagging works via a localStorage UUID on web, and the min-version check is not enforced in the web build
@@ -191,7 +191,7 @@ Before moving to Phase 19, all of the following must be true:
 - Phase 16.6's optional-field labels ("City (Optional)" etc.) are the same on web.
 
 ### 19.3 Full Tab Navigation Parity
-- Phase 16.4's Dashboard/Shop/Profile/Settings tab structure looks and works identically on web; sign out/delete account under Settings sit in the same place.
+- Phase 16.4's Dashboard/Shop/Tests/Profile/Settings tab structure (Tests is a launcher into `/feed`, not a destination screen — see `(tabs)/_layout.tsx`) looks and works identically on web; sign out/delete account under Settings sit in the same place.
 
 ### 19.4 Full Port of Motion & Polish Details
 - All the fine-grained motion/polish items from Phase 15/16 (card entrance animation, ranking swap scale, reclaim/place scale+fade, first-test tutorial) are verified on web through reanimated's web fallback; complete with Framer Motion equivalents where needed.
@@ -206,7 +206,7 @@ Before moving to Phase 20, all of the following must be true:
 
 - [ ] The Shop/rewards screen works on web with balance and catalog items identical to native
 - [ ] The hobbies field can be selected, skipped, and changed later on web
-- [ ] The four tabs (Dashboard/Shop/Profile/Settings) match native in content and layout on web
+- [ ] The five tabs (Dashboard/Shop/Tests/Profile/Settings) match native in content and layout on web
 - [ ] All of Phase 15/16's motion/polish items work on web, or have been deliberately replaced with a documented, simplified web equivalent
 - [ ] With `prefers-reduced-motion` on, every gesture animation on web collapses to a short fade
 - [ ] The mobile-web experience has been compared end-to-end side-by-side with native on a real phone and no differences were found
@@ -215,11 +215,13 @@ Before moving to Phase 20, all of the following must be true:
 
 ## Phase 20: Desktop — Evaluator Redesign
 
-> This phase is fully independent of mobile-web (Phase 18–19): `apps/evaluator`'s existing page-by-page test-taking flow is kept (NO swipe/drag), only the design language (color, typography, motion/transitions) is reapplied from the mobile design system (Phase 12).
+> **Superseded (post-20.2, phase-19/20 branch):** the "keep page-by-page, no swipe/drag" premise below was reversed. `apps/evaluator`'s own test-taking flow (Test Intro/"Begin Test", per-question pages) reads as dated next to mobile's swipe/drag deck and its gesture tutorials, and evaluator never got either. Rather than rebuilding that gesture/tutorial engine a second time for desktop, `proxy.ts`'s device-based routing (18.4/20.4) now sends every visitor - phone or desktop - to the mobile-web build by default; `apps/evaluator`'s own pages (20.1-20.3's redesign included) still exist and still work, but are reachable only via the manual override (`testx_device=desktop` cookie, the existing "switch to desktop version" link). Mobile-web itself gained a desktop treatment for this: `apps/mobile/app/_layout.tsx`'s `DesktopWebShell` centers the phone-shaped app in a fixed-width column on a wide window instead of stretching it edge to edge, and every card that sized gesture thresholds off `useWindowDimensions()` now reads `lib/responsive.ts`'s `useContentWidth()` instead, so drag/swipe distances match the capped column rather than the raw monitor width. 20.1/20.2's design-token and motion work is not wasted - it is what evaluator's now-secondary pages still look like - but 20.3's page-by-page redesign and the exit criteria below describe a flow that is no longer the default path a desktop evaluator takes.
+>
+> Original premise, kept for history: this phase was fully independent of mobile-web (Phase 18-19) - `apps/evaluator`'s existing page-by-page test-taking flow was to be kept (NO swipe/drag), only the design language (color, typography, motion/transitions) reapplied from the mobile design system (Phase 12).
 
 ### 20.1 Design Token Migration
-- Adapt the color palette and type scale from mobile's `theme.ts`/`tokens.ts` for desktop (the dark-only constraint may be relaxed on desktop if needed — decided during implementation).
-- Update `apps/evaluator`'s `@testx/ui` with these new tokens; re-skin components like Button/Card/Input/Dialog.
+- Adapt the color palette and type scale from mobile's `theme.ts`/`tokens.ts` for desktop. Decided during implementation: ships dark-only, matching mobile's tokens exactly (`#0B0B0E` surface, `#FF5A36` accent, etc.) via `apps/evaluator/src/app/globals.css`'s `hsl(var(--token))` variables — a light mode is deliberately deferred to Phase 22 rather than designed alongside this redesign.
+- Re-skin `@testx/ui`'s components (Button/Card/Input/Dialog/etc.) only insofar as evaluator's own token values drive them — `apps/admin` reads the same component code but keeps its own separate CSS variables, so it is unaffected by this token migration.
 
 ### 20.2 Motion & Transitions
 - Add page transitions and button/card hover-focus states in the spirit of mobile's `lib/motion.ts` (using Framer Motion, for the DOM).
@@ -228,13 +230,13 @@ Before moving to Phase 20, all of the following must be true:
 - Redesign Login/Register, Onboarding, Dashboard, Test Intro/Question/Review/Completion pages (Phase 4.5) with the new design language — the flow/business logic does NOT change, only the visual language does.
 
 ### 20.4 Desktop Side of Device-Based Routing
-- Completes the desktop side of Phase 18.4's routing with this new design; the "switch to mobile version" link also lives here.
+- Completes the desktop side of Phase 18.4's routing with this new design; ~~the "switch to mobile version" link also lives here~~ — removed in the Phase 20 revision along with its mobile-side counterpart, see that note above.
 
 ### Phase 20 Exit Criteria
 
 - [ ] All of `apps/evaluator`'s pages have been redesigned with the new design language (color/typography/motion); the flow and business logic are unchanged
-- [ ] A desktop user can complete the test-taking flow end-to-end (page-by-page, no swipe)
-- [ ] The "switch to mobile version" link works on the desktop version
+- [ ] ~~A desktop user can complete the test-taking flow end-to-end (page-by-page, no swipe)~~ — superseded: a desktop user now completes it via the mobile-web deck (swipe/drag), reached by default; page-by-page only via the manual override
+- [ ] ~~The "switch to mobile version" **and** "switch to desktop version" links both work~~ — superseded: both links were removed; `/api/switch-device` still works, reachable only by visiting its URL directly
 - [ ] `apps/admin` is OUT of scope for this phase — only evaluator's user-facing side is redesigned
 
 ---
@@ -280,6 +282,27 @@ Before moving to Phase 20, all of the following must be true:
 
 ---
 
+## Phase 22: Desktop — Light/Dark Theme Toggle
+
+> Phase 20 ships `apps/evaluator` dark-only, matching mobile's design system exactly (decided during Phase 20 implementation, deferring the light-theme question here rather than doing it half-considered alongside the redesign). This phase adds an actual light palette back and a way to switch between them, thought through properly rather than reusing evaluator's pre-Phase-20 light theme as-is.
+
+### 22.1 Light Palette Design
+- Design a light `hsl(var(--token))` set for every token Phase 20 touches in `apps/evaluator/src/app/globals.css` (background/foreground/card/surface/primary/muted/accent/destructive/success/warning/border/input/ring), keeping mobile's accent hue as the throughline between both modes rather than reverting to the pre-Phase-20 light palette wholesale.
+- Contrast-check both palettes (WCAG AA at minimum) — this is also where the "Smaller Follow-Ups" backlog's desktop a11y pass (contrast + focus states) belongs, not as a separate effort.
+
+### 22.2 Toggle & Persistence
+- A visible light/dark toggle in the desktop shell (header or Settings-equivalent); persists the choice (e.g. `localStorage` + a cookie so SSR/first paint matches, avoiding a flash of the wrong theme) and defaults to the OS `prefers-color-scheme` when no explicit choice has been made yet.
+- Decide whether `apps/admin` gets the same toggle or stays on its own theme — `@testx/ui` components already read the same CSS-variable tokens, so extending it there is mechanical once the palette exists, not a re-design.
+
+### Phase 22 Exit Criteria
+
+- [ ] Every evaluator page/component (Phase 20's redesign) looks correct and passes contrast checks in both light and dark
+- [ ] The toggle switches instantly with no flash-of-wrong-theme on reload
+- [ ] The choice persists across sessions; unset defaults to the OS preference
+- [ ] A decision is recorded on whether `apps/admin` adopts the same toggle
+
+---
+
 ## Future / Backlog (Post-Mobile-MVP)
 
 Not scheduled into a phase yet — tracked here so they aren't lost:
@@ -303,7 +326,7 @@ Not scheduled into a phase yet — tracked here so they aren't lost:
 
 ### Smaller Follow-Ups
 
-- **Desktop accessibility (a11y) pass for Phase 20** — mobile got a dedicated accessibility phase (12.6: reduced motion, touch targets, safe area); the desktop redesign has no equivalent keyboard-navigation/screen-reader/contrast checklist yet.
+- **Desktop keyboard-navigation/screen-reader pass** — mobile got a dedicated accessibility phase (12.6: reduced motion, touch targets, safe area); the desktop redesign has no equivalent yet. Contrast is now covered by Phase 22.1, but keyboard nav and screen-reader behavior remain unscheduled.
 - **Admin audit log** — no record of who paused/closed a test, deleted media, etc.; worth adding once more than one admin account is in regular use.
 - **Public marketing/landing page** — there's currently no logged-out page explaining the product before login; worth deciding whether one is needed for the web launch.
 

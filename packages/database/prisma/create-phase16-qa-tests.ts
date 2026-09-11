@@ -51,7 +51,7 @@ async function upsertMedia(n: number, fileName: string, tags: string[]) {
       fileSize: size,
       sourceType: "UPLOAD",
       sourceUrl: path.posix.join("phase16-qa", fileName),
-      thumbnailUrl: `/media/${id}/file`,
+      thumbnailUrl: `/media/${id}/thumbnail`,
       tags: ["phase16-qa", ...tags],
     },
   });

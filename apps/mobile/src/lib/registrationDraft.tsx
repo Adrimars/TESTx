@@ -1,14 +1,13 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 
 /**
- * The half-filled registration form, held in memory while the flow steps out to the
- * Aydinlatma Metni screen and back.
+ * The half-filled registration form, held in memory so it survives a remount of the
+ * register screen (e.g. navigating back to /login and forward again).
  *
  * This exists specifically so the password never travels as a navigation param. Expo
  * Router params land in the route state - on Android that means the activity intent and
  * the task backstack, which are readable from task snapshots and get attached to crash
- * reports. A plaintext password has no business in either, and nothing about the
- * disclosure detour requires it to be there.
+ * reports. A plaintext password has no business in either.
  *
  * Nothing here is persisted: a killed app drops the draft, which is the correct outcome
  * for an unsubmitted signup form.
@@ -18,12 +17,6 @@ export type RegistrationDraft = {
   password: string;
   confirmPassword: string;
   ageConfirmed: boolean;
-  /**
-   * Set only by the Aydinlatma screen's own acknowledge button. Because it lives here
-   * rather than in a route param, the "Create account" step cannot be unlocked by
-   * deep-linking into /register with a forged flag.
-   */
-  acknowledged: boolean;
 };
 
 const EMPTY_DRAFT: RegistrationDraft = {
@@ -31,7 +24,6 @@ const EMPTY_DRAFT: RegistrationDraft = {
   password: "",
   confirmPassword: "",
   ageConfirmed: false,
-  acknowledged: false,
 };
 
 type RegistrationDraftValue = {

@@ -203,6 +203,16 @@ function sleep(ms: number): Promise<void> {
  */
 const RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 240_000];
 
+/**
+ * Every device hitting the same event (a regional network blip, or a mass relaunch a
+ * push notification blast would cause) would otherwise retry at the exact same fixed
+ * offsets, producing a synchronized, recurring load spike on the submit endpoint rather
+ * than a spread-out one (plan.md 17.7 / OPTIMIZATIONS.md Finding 8). ±50% spread.
+ */
+function jittered(ms: number): number {
+  return Math.round(ms * (0.5 + Math.random()));
+}
+
 export type PendingResult = { status: "settled" } | { status: "rejected"; message: string };
 
 /**
@@ -216,7 +226,7 @@ export async function submitWithBackoff(
   payload: PendingSubmission
 ): Promise<{ status: "success"; result: SubmitResult } | PendingResult | { status: "pending" }> {
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
-    if (attempt > 0) await sleep(RETRY_DELAYS_MS[attempt - 1]);
+    if (attempt > 0) await sleep(jittered(RETRY_DELAYS_MS[attempt - 1]));
     const outcome = await attemptSubmitOnce(payload);
     if (outcome.status === "network") continue;
 
@@ -243,7 +253,13 @@ export async function submitWithBackoff(
  * rather than firing blind at launch the way this used to, is what stops evaluator B's
  * bearer token ever being used to resubmit a payload evaluator A queued and never signed
  * out cleanly from - a different user id is simply a different storage key.
+ *
+ * Also jittered (17.7): every device this fires for at once (a mass relaunch, e.g. a
+ * push notification blast) would otherwise hit the submit endpoint in the same instant,
+ * since this runs synchronously at launch with no backoff loop of its own to jitter.
  */
+const LAUNCH_RETRY_JITTER_MAX_MS = 3_000;
+
 export async function retryPendingSubmissionOnce(
   queryClient: QueryClient,
   userId: string
@@ -251,6 +267,7 @@ export async function retryPendingSubmissionOnce(
   const pending = await readPendingSubmission(userId);
   if (!pending) return;
 
+  await sleep(Math.random() * LAUNCH_RETRY_JITTER_MAX_MS);
   const outcome = await attemptSubmitOnce(pending);
   if (outcome.status === "network") return;
 

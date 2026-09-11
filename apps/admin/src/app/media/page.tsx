@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useCallback } from "react";
-import { CloudUpload, FileAudio, FileVideo, FolderUp, Trash2, Upload } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronLeft, ChevronRight, CloudUpload, FileAudio, FileVideo, FolderUp, Trash2, Upload } from "lucide-react";
 import {
   Alert,
   Badge,
@@ -20,11 +21,9 @@ import {
   PageHeader,
 } from "@testx/ui";
 import type { Media } from "@testx/shared";
-import { apiFetch } from "@/lib/api";
+import { API_URL, apiFetch } from "@/lib/api";
 import { formatDate } from "@/lib/status";
 import type { UploadResult } from "@/lib/admin-types";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 type MediaListResponse = { items: Media[]; total: number; page: number; limit: number };
 
@@ -34,6 +33,8 @@ const FILE_TYPE_TABS = [
   { label: "Videos", value: "VIDEO" },
   { label: "Audio", value: "AUDIO" },
 ] as const;
+
+const PAGE_SIZE = 50;
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -47,7 +48,7 @@ function MediaThumbnail({ media }: { media: Media }) {
   if (media.fileType === "IMAGE") {
     return (
       <img
-        src={`${API_URL}/media/${media.id}/file`}
+        src={`${API_URL}/media/${media.id}/thumbnail`}
         alt={media.fileName}
         className="h-full w-full object-cover"
         loading="lazy"
@@ -63,9 +64,8 @@ function MediaThumbnail({ media }: { media: Media }) {
 }
 
 export default function MediaPage() {
-  const [items, setItems] = useState<Media[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
+  const [page, setPage] = useState(1);
   const [activeTab, setActiveTab] = useState<string>("");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -98,25 +98,30 @@ export default function MediaPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const fetchMedia = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ page: "1", limit: "50" });
+  const { data, isPending: loading } = useQuery({
+    queryKey: ["admin", "media", activeTab, debouncedSearch, page],
+    queryFn: () => {
+      const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
       if (activeTab) params.set("fileType", activeTab);
       if (debouncedSearch) params.set("search", debouncedSearch);
-      const data = await apiFetch<MediaListResponse>(`/admin/media?${params}`);
-      setItems(data.items);
-      setTotal(data.total);
-    } catch {
-      setItems([]);
-    } finally {
-      setLoading(false);
-    }
+      return apiFetch<MediaListResponse>(`/admin/media?${params}`);
+    },
+    placeholderData: keepPreviousData,
+  });
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
+
+  function invalidateMedia() {
+    return queryClient.invalidateQueries({ queryKey: ["admin", "media"] });
+  }
+
+  // A tab or search change can leave `page` pointing past the new filter's last page —
+  // reset to page 1 rather than showing an empty grid until the user notices.
+  useEffect(() => {
+    setPage(1);
   }, [activeTab, debouncedSearch]);
 
-  useEffect(() => {
-    void fetchMedia();
-  }, [fetchMedia]);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   // Upload flow
   function addFiles(files: FileList | File[]) {
@@ -182,7 +187,7 @@ export default function MediaPage() {
             return { ...item, status: "done" };
           })
         );
-        await fetchMedia();
+        await invalidateMedia();
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Upload failed";
@@ -213,7 +218,7 @@ export default function MediaPage() {
         body: JSON.stringify({ folderUrl: driveUrl.trim() }),
       });
       setDriveResult({ count: result.count });
-      await fetchMedia();
+      await invalidateMedia();
     } catch (err: unknown) {
       setDriveError(err instanceof Error ? err.message : "Import failed");
     } finally {
@@ -235,7 +240,7 @@ export default function MediaPage() {
       await apiFetch(`/admin/media/${deleteTarget.id}`, { method: "DELETE" });
       deleteDialogRef.current?.close();
       setDeleteTarget(null);
-      await fetchMedia();
+      await invalidateMedia();
     } catch (err: unknown) {
       setDeleteError(err instanceof Error ? err.message : "Delete failed");
     } finally {
@@ -334,6 +339,34 @@ export default function MediaPage() {
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      {!loading && items.length > 0 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm tabular-nums text-muted-foreground">
+            Page {page} of {totalPages}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+            >
+              <ChevronLeft className="size-4" aria-hidden />
+              Previous
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((current) => current + 1)}
+            >
+              Next
+              <ChevronRight className="size-4" aria-hidden />
+            </Button>
+          </div>
         </div>
       )}
 

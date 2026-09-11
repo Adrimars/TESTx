@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Alert,
   BackHandler,
   KeyboardAvoidingView,
   Platform,
@@ -23,9 +22,12 @@ import {
 import { AvatarPicker } from "@/components/AvatarPicker";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
+import { FormRow } from "@/components/FormRow";
 import { HobbiesPicker } from "@/components/HobbiesPicker";
 import { Select } from "@/components/Select";
+import { alert } from "@/lib/alert";
 import { apiFetch } from "@/lib/api";
+import { useIsDesktopWeb } from "@/lib/responsive";
 import { useSession } from "@/lib/session";
 import {
   confirmLeavingUnsavedProfileChanges,
@@ -85,6 +87,7 @@ function snapshotFromProfile(profile: CurrentUser["evaluatorProfile"]): ProfileF
 
 export default function ProfileScreen() {
   const { user, refreshUser } = useSession();
+  const isDesktopWeb = useIsDesktopWeb();
 
   const profile = user?.evaluatorProfile ?? null;
 
@@ -158,7 +161,7 @@ export default function ProfileScreen() {
       await refreshUser();
     } catch (error) {
       setAvatarId(previous);
-      Alert.alert(
+      alert(
         "Could not change avatar",
         error instanceof Error ? error.message : "Please try again."
       );
@@ -202,7 +205,7 @@ export default function ProfileScreen() {
       // "Saved" alert needed on top of that.
       return true;
     } catch (error) {
-      Alert.alert("Could not save", error instanceof Error ? error.message : "Please try again.");
+      alert("Could not save", error instanceof Error ? error.message : "Please try again.");
       return false;
     } finally {
       setSaving(false);
@@ -248,8 +251,10 @@ export default function ProfileScreen() {
 
   // Android's hardware back button doesn't go through the tab bar's own tabPress guard
   // (see (tabs)/_layout.tsx) - this is the same confirm, wired to the one other way off
-  // this screen. Only armed while Profile is the focused screen.
+  // this screen. Only armed while Profile is the focused screen. Web has no such button,
+  // and react-native-web's BackHandler is a warn-only stub, so skip it there.
   useFocusEffect(() => {
+    if (Platform.OS === "web") return;
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
       if (!isDirtyRef.current) return false;
       void confirmLeavingUnsavedProfileChanges();
@@ -271,65 +276,73 @@ export default function ProfileScreen() {
 
           <Text style={styles.email}>{user?.email}</Text>
 
-          <Field
-            label="Age"
-            value={age}
-            onChangeText={setAge}
-            error={errors.age}
-            keyboardType="number-pad"
-            inputMode="numeric"
-            maxLength={3}
-          />
-          <Select
-            label="Gender"
-            options={GENDER_OPTIONS}
-            value={gender}
-            onChange={setGender}
-            error={errors.gender}
-          />
-          <Select
-            label="Country"
-            options={COUNTRIES}
-            value={country}
-            onChange={setCountry}
-            error={errors.country}
-            searchable
-          />
-          <Field
-            label="City (Optional)"
-            value={city}
-            onChangeText={setCity}
-            error={errors.city}
-            placeholder="Optional"
-          />
-          <Field
-            label="Native language (Optional)"
-            value={nativeLanguage}
-            onChangeText={setNativeLanguage}
-            error={errors.nativeLanguage}
-            placeholder="Optional"
-          />
-          <Field
-            label="Occupation (Optional)"
-            value={occupation}
-            onChangeText={setOccupation}
-            error={errors.occupation}
-            placeholder="Optional"
-          />
-          <Select
-            label="Education level"
-            options={EDUCATION_LEVELS}
-            value={educationLevel}
-            onChange={setEducationLevel}
-            error={errors.educationLevel}
-          />
-          <Select
-            label="AI experience"
-            options={AI_EXPERIENCE_OPTIONS}
-            value={aiExperience}
-            onChange={setAiExperience}
-            error={errors.aiExperience}
-          />
+          <FormRow isDesktopWeb={isDesktopWeb}>
+            <Field
+              label="Age"
+              value={age}
+              onChangeText={setAge}
+              error={errors.age}
+              keyboardType="number-pad"
+              inputMode="numeric"
+              maxLength={3}
+            />
+            <Select
+              label="Gender"
+              options={GENDER_OPTIONS}
+              value={gender}
+              onChange={setGender}
+              error={errors.gender}
+            />
+          </FormRow>
+          <FormRow isDesktopWeb={isDesktopWeb}>
+            <Select
+              label="Country"
+              options={COUNTRIES}
+              value={country}
+              onChange={setCountry}
+              error={errors.country}
+              searchable
+            />
+            <Field
+              label="City (Optional)"
+              value={city}
+              onChangeText={setCity}
+              error={errors.city}
+              placeholder="Optional"
+            />
+          </FormRow>
+          <FormRow isDesktopWeb={isDesktopWeb}>
+            <Field
+              label="Native language (Optional)"
+              value={nativeLanguage}
+              onChangeText={setNativeLanguage}
+              error={errors.nativeLanguage}
+              placeholder="Optional"
+            />
+            <Field
+              label="Occupation (Optional)"
+              value={occupation}
+              onChangeText={setOccupation}
+              error={errors.occupation}
+              placeholder="Optional"
+            />
+          </FormRow>
+          <FormRow isDesktopWeb={isDesktopWeb}>
+            <Select
+              label="Education level"
+              options={EDUCATION_LEVELS}
+              value={educationLevel}
+              onChange={setEducationLevel}
+              error={errors.educationLevel}
+            />
+            <Select
+              label="AI experience"
+              options={AI_EXPERIENCE_OPTIONS}
+              value={aiExperience}
+              onChange={setAiExperience}
+              error={errors.aiExperience}
+            />
+          </FormRow>
           <Select
             label="How often do you use AI?"
             options={AI_FREQUENCY_OPTIONS}

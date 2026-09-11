@@ -14,12 +14,27 @@ import { userRoutes } from "./routes/users";
 import { mobileRoutes } from "./routes/mobile";
 import { publicMediaRoutes } from "./routes/media";
 import { errorHandlerPlugin } from "./plugins/error-handler";
+import { mediaCacheEvictionPlugin } from "./plugins/media-cache-eviction";
 import { prismaPlugin } from "./plugins/prisma";
 import { rateLimitPlugin } from "./plugins/rate-limit";
 
 const app = Fastify({
   logger: true,
 });
+
+const isProduction = process.env.NODE_ENV === "production";
+
+/**
+ * In dev, a browser can reach an app two ways at once - `localhost` from this machine,
+ * or the LAN IP from a phone on the same Wi-Fi (see start-all.ps1) - and both need to be
+ * in the CORS allow-list simultaneously, not either/or via a single env var. Production
+ * has exactly one real origin per app, so this collapses to just that (never falling back
+ * to a `localhost` entry that would have no purpose there).
+ */
+function devOrigins(defaultPort: number, envUrl: string | undefined): string[] {
+  if (isProduction) return envUrl ? [envUrl] : [`http://localhost:${defaultPort}`];
+  return [...new Set([`http://localhost:${defaultPort}`, envUrl].filter((v): v is string => !!v))];
+}
 
 await app.register(cors, {
   credentials: true,
@@ -28,14 +43,12 @@ await app.register(cors, {
   // clients bypass CORS entirely, but any browser-based client needs it.
   allowedHeaders: ["Content-Type", "Authorization"],
   origin: [
-    process.env.EVALUATOR_APP_URL ?? "http://localhost:3000",
-    process.env.ADMIN_APP_URL ?? "http://localhost:3001",
+    ...devOrigins(3000, process.env.EVALUATOR_APP_URL),
+    ...devOrigins(3001, process.env.ADMIN_APP_URL),
     // Expo's web target, used to exercise the mobile app during development. Native
     // builds are not subject to CORS at all, so this origin has no production use and
     // is left out of production entirely rather than shipped as a permanent hole.
-    ...(process.env.NODE_ENV === "production"
-      ? []
-      : [process.env.MOBILE_WEB_URL ?? "http://localhost:8081"]),
+    ...(isProduction ? [] : devOrigins(8081, process.env.MOBILE_WEB_URL)),
   ],
 });
 await app.register(cookie);
@@ -47,6 +60,7 @@ await app.register(multipart, {
 await app.register(rateLimitPlugin);
 await app.register(errorHandlerPlugin);
 await app.register(prismaPlugin);
+await app.register(mediaCacheEvictionPlugin);
 
 app.get("/health", async () => ({ status: "ok" }));
 await app.register(authRoutes, { prefix: "/auth" });

@@ -1,8 +1,10 @@
 import { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import type { StyleProp, ViewStyle } from "react-native";
 import Animated, {
   Easing,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withDelay,
   withRepeat,
@@ -20,6 +22,17 @@ type DragHintProps = {
   toX: number;
   toY: number;
   message: string;
+  /**
+   * Overrides the message box's own position/width, on top of the default (inset from
+   * this overlay's own left/right edges - fine when the overlay sits over the full-width
+   * gesture surface it's teaching). Needed when the overlay instead sits over a much
+   * narrower parent - RankingCard's swap hint lives inside its rank column, a sliver next
+   * to the photo - since wrapping the message to that column's own width there reads as a
+   * near-vertical stack of words rather than a sentence. Passing a wider, left-shifted box
+   * here lets the text span the full row while the ghost and background dimming stay
+   * scoped to the narrower parent they're actually demonstrating.
+   */
+  messageWrapStyle?: StyleProp<ViewStyle>;
 };
 
 /**
@@ -28,11 +41,15 @@ type DragHintProps = {
  * It is an overlay rather than a modal with a dismiss button: the evaluator gets rid of
  * it by doing the gesture, which is the thing being taught. A button would teach tapping.
  */
-export function DragHint({ toX, toY, message }: DragHintProps) {
+export function DragHint({ toX, toY, message, messageWrapStyle }: DragHintProps) {
   const progress = useSharedValue(0);
+  // Reduce Motion (see lib/motion.ts): the ghost must never translate. It stays put next
+  // to the message, which already names the gesture in words.
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
     progress.value = 0;
+    if (reducedMotion) return;
     progress.value = withRepeat(
       withSequence(
         withTiming(1, { duration: TRAVEL_MS, easing: Easing.inOut(Easing.quad) }),
@@ -41,17 +58,20 @@ export function DragHint({ toX, toY, message }: DragHintProps) {
       -1,
       false
     );
-  }, [progress]);
+  }, [progress, reducedMotion]);
 
   const ghost = useAnimatedStyle(() => ({
-    transform: [{ translateX: progress.value * toX }, { translateY: progress.value * toY }],
+    transform: [
+      { translateX: reducedMotion ? 0 : progress.value * toX },
+      { translateY: reducedMotion ? 0 : progress.value * toY },
+    ],
     // Fades out as it lands, so the loop restarting does not read as the card snapping back.
-    opacity: 0.25 + 0.55 * (1 - progress.value),
+    opacity: reducedMotion ? 0.8 : 0.25 + 0.55 * (1 - progress.value),
   }));
 
   return (
     <View style={[styles.overlay, NO_TOUCH]}>
-      <View style={styles.messageWrap}>
+      <View style={[styles.messageWrap, messageWrapStyle]}>
         <Text style={styles.message}>{message}</Text>
       </View>
       <Animated.View style={[styles.ghost, ghost]}>

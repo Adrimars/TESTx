@@ -6,6 +6,7 @@ import { CircleCheck, Flame, TrendingUp } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useSession } from "@/lib/session";
 import { Button } from "@/components/Button";
+import { useIsDesktopWeb } from "@/lib/responsive";
 import { useBalance, useEvaluatorStats, prefetchNextTest, type EvaluatorStats } from "@/lib/test";
 import { theme } from "@/lib/theme";
 
@@ -24,6 +25,7 @@ export default function DashboardScreen() {
   const balance = useBalance();
   const stats = useEvaluatorStats();
   const queryClient = useQueryClient();
+  const isDesktopWeb = useIsDesktopWeb();
 
   const missingProfileFields = getMissingOptionalProfileFields(user);
 
@@ -60,57 +62,61 @@ export default function DashboardScreen() {
         </View>
 
         {stats.data ? (
-          <>
-            <View style={styles.statRow}>
-              <StatTile
-                Icon={CircleCheck}
-                value={stats.data.totalCompleted}
-                label="Tests completed"
-              />
-              <StatTile
-                Icon={TrendingUp}
-                value={stats.data.completedThisWeek}
-                label="This week"
-              />
-              <StatTile Icon={Flame} value={stats.data.currentStreakDays} label="Day streak" />
+          <View style={[styles.statsStack, isDesktopWeb && styles.desktopGrid]}>
+            <View style={[styles.statsStack, isDesktopWeb && styles.desktopColumn]}>
+              <View style={styles.statRow}>
+                <StatTile
+                  Icon={CircleCheck}
+                  value={stats.data.totalCompleted}
+                  label="Tests completed"
+                />
+                <StatTile
+                  Icon={TrendingUp}
+                  value={stats.data.completedThisWeek}
+                  label="This week"
+                />
+                <StatTile Icon={Flame} value={stats.data.currentStreakDays} label="Day streak" />
+              </View>
+
+              {missingProfileFields.length > 0 ? (
+                <View style={styles.nudgeCard}>
+                  <Text style={styles.nudgeTitle}>Finish your profile</Text>
+                  <Text style={styles.nudgeBody}>
+                    {missingProfileFields.join(", ")} still {missingProfileFields.length === 1 ? "isn't" : "aren't"} filled
+                    in - it helps match you to more tests.
+                  </Text>
+                  <Button
+                    label="Go to Profile"
+                    variant="secondary"
+                    onPress={() => router.push("/profile")}
+                  />
+                </View>
+              ) : null}
             </View>
 
-            <PointsSparkline pointsByDay={stats.data.pointsByDay} />
+            <View style={[styles.statsStack, isDesktopWeb && styles.desktopColumn]}>
+              <PointsSparkline pointsByDay={stats.data.pointsByDay} />
 
-            {missingProfileFields.length > 0 ? (
-              <View style={styles.nudgeCard}>
-                <Text style={styles.nudgeTitle}>Finish your profile</Text>
-                <Text style={styles.nudgeBody}>
-                  {missingProfileFields.join(", ")} still {missingProfileFields.length === 1 ? "isn't" : "aren't"} filled
-                  in - it helps match you to more tests.
-                </Text>
-                <Button
-                  label="Go to Profile"
-                  variant="secondary"
-                  onPress={() => router.push("/profile")}
-                />
-              </View>
-            ) : null}
-
-            {stats.data.recentActivity.length > 0 ? (
-              <View style={styles.activitySection}>
-                <Text style={styles.sectionTitle}>Recent activity</Text>
-                {stats.data.recentActivity.map((entry) => (
-                  <View key={entry.testId} style={styles.activityRow}>
-                    <View style={styles.activityText}>
-                      <Text style={styles.activityTitle} numberOfLines={1}>
-                        {entry.title}
+              {stats.data.recentActivity.length > 0 ? (
+                <View style={styles.activitySection}>
+                  <Text style={styles.sectionTitle}>Recent activity</Text>
+                  {stats.data.recentActivity.map((entry) => (
+                    <View key={entry.testId} style={styles.activityRow}>
+                      <View style={styles.activityText}>
+                        <Text style={styles.activityTitle} numberOfLines={1}>
+                          {entry.title}
+                        </Text>
+                        <Text style={styles.activityDate}>{formatRelativeDate(entry.completedAt)}</Text>
+                      </View>
+                      <Text style={styles.activityPoints}>
+                        {entry.isFlagged ? "Flagged" : `+${entry.pointsEarned}`}
                       </Text>
-                      <Text style={styles.activityDate}>{formatRelativeDate(entry.completedAt)}</Text>
                     </View>
-                    <Text style={styles.activityPoints}>
-                      {entry.isFlagged ? "Flagged" : `+${entry.pointsEarned}`}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            ) : null}
-          </>
+                  ))}
+                </View>
+              ) : null}
+            </View>
+          </View>
         ) : stats.isPending ? (
           <ActivityIndicator color={theme.colors.textSecondary} />
         ) : null}
@@ -228,6 +234,12 @@ const styles = StyleSheet.create({
   balanceLabel: { color: theme.colors.accentContrast, fontSize: 13, opacity: 0.85 },
   balanceValue: { color: theme.colors.accentContrast, fontSize: 32, fontWeight: "800" },
   balanceUnit: { fontSize: 15, fontWeight: "600" },
+  // Column on mobile (unchanged) - the same stat row/nudge/sparkline/activity blocks that
+  // used to flow as one long stack, just split into two of these side by side on desktop
+  // (desktopGrid) instead of a single ever-longer one.
+  statsStack: { gap: theme.spacing(2) },
+  desktopGrid: { flexDirection: "row", alignItems: "flex-start" },
+  desktopColumn: { flex: 1 },
   statRow: { flexDirection: "row", gap: theme.spacing(1.25) },
   statTile: {
     flex: 1,

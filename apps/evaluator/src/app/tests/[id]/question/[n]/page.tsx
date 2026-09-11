@@ -3,14 +3,21 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { ArrowLeft, ArrowRight, Check, GripVertical } from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
 import { Button } from "@testx/ui";
 import { useTestSession } from "@/components/test-session-provider";
 import { resolveMediaUrl } from "@/lib/api";
+import { PRESS_SPRING } from "@/lib/motion";
 import type { Question, QuestionOption } from "@/lib/test-types";
 
 /** Shared frame for a selectable option, so text and media options behave the same. */
 /** Question types this page knows how to render. */
-const RENDERABLE_TYPES = new Set(["SINGLE_SELECT", "MULTI_SELECT", "RATING", "RANKING"]);
+const RENDERABLE_TYPES = new Set([
+  "SINGLE_SELECT",
+  "MULTI_SELECT",
+  "RATING",
+  "RANKING",
+]);
 
 function OptionShell({
   selected,
@@ -23,11 +30,15 @@ function OptionShell({
   className?: string;
   children: React.ReactNode;
 }) {
+  const reducedMotion = useReducedMotion();
+
   return (
-    <button
+    <motion.button
       type="button"
       onClick={onClick}
       aria-pressed={selected}
+      whileTap={reducedMotion ? undefined : { scale: 0.98 }}
+      transition={PRESS_SPRING}
       className={`group relative min-h-11 overflow-hidden rounded-lg border-2 text-left transition-colors ${
         selected
           ? "border-primary bg-primary/5"
@@ -38,12 +49,14 @@ function OptionShell({
       <span
         aria-hidden
         className={`pointer-events-none absolute right-2.5 top-2.5 flex size-6 items-center justify-center rounded-full transition-opacity ${
-          selected ? "bg-primary text-primary-foreground opacity-100" : "opacity-0"
+          selected
+            ? "bg-primary text-primary-foreground opacity-100"
+            : "opacity-0"
         }`}
       >
         <Check className="size-3.5" strokeWidth={3} />
       </span>
-    </button>
+    </motion.button>
   );
 }
 
@@ -54,7 +67,13 @@ function OptionMedia({ option }: { option: QuestionOption }) {
   const label = option.label ?? option.media?.fileName ?? "Option";
 
   if (kind === "VIDEO") {
-    return <video src={url} controls className="aspect-video w-full bg-muted object-cover" />;
+    return (
+      <video
+        src={url}
+        controls
+        className="aspect-video w-full bg-muted object-cover"
+      />
+    );
   }
   if (kind === "AUDIO") {
     return (
@@ -82,7 +101,11 @@ function QuestionMediaPanel({ question }: { question: Question }) {
 
   if (kind === "VIDEO") {
     return (
-      <video src={url} controls className="mb-5 w-full rounded-lg border border-border bg-muted" />
+      <video
+        src={url}
+        controls
+        className="mb-5 w-full rounded-lg border border-border bg-muted"
+      />
     );
   }
   if (kind === "AUDIO") {
@@ -116,9 +139,15 @@ function SingleSelectQuestion({
     return (
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {question.options.map((opt) => (
-          <OptionShell key={opt.id} selected={selected.includes(opt.id)} onClick={() => onSelect([opt.id])}>
+          <OptionShell
+            key={opt.id}
+            selected={selected.includes(opt.id)}
+            onClick={() => onSelect([opt.id])}
+          >
             <OptionMedia option={opt} />
-            {opt.label && <p className="px-3 py-2.5 text-sm font-medium">{opt.label}</p>}
+            {opt.label && (
+              <p className="px-3 py-2.5 text-sm font-medium">{opt.label}</p>
+            )}
           </OptionShell>
         ))}
       </div>
@@ -150,7 +179,10 @@ function MultiSelectQuestion({
   selected: string[];
   onSelect: (ids: string[]) => void;
 }) {
-  const config = question.config as { maxSelections?: number; minSelections?: number };
+  const config = question.config as {
+    maxSelections?: number;
+    minSelections?: number;
+  };
   const max = config.maxSelections ?? question.options.length;
   const hasMedia = question.options.some((o) => o.mediaUrl);
 
@@ -165,7 +197,9 @@ function MultiSelectQuestion({
   const counter = (
     <p className="mb-3 text-sm text-muted-foreground">
       Select up to {max}{" "}
-      <span className="font-medium tabular-nums text-foreground">({selected.length} selected)</span>
+      <span className="font-medium tabular-nums text-foreground">
+        ({selected.length} selected)
+      </span>
     </p>
   );
 
@@ -175,9 +209,15 @@ function MultiSelectQuestion({
         {counter}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {question.options.map((opt) => (
-            <OptionShell key={opt.id} selected={selected.includes(opt.id)} onClick={() => toggle(opt.id)}>
+            <OptionShell
+              key={opt.id}
+              selected={selected.includes(opt.id)}
+              onClick={() => toggle(opt.id)}
+            >
               <OptionMedia option={opt} />
-              {opt.label && <p className="px-3 py-2.5 text-sm font-medium">{opt.label}</p>}
+              {opt.label && (
+                <p className="px-3 py-2.5 text-sm font-medium">{opt.label}</p>
+              )}
             </OptionShell>
           ))}
         </div>
@@ -213,20 +253,28 @@ function RatingQuestion({
   value: number | null;
   onRate: (v: number) => void;
 }) {
-  const config = question.config as { min?: number; max?: number; minLabel?: string; maxLabel?: string };
+  const config = question.config as {
+    min?: number;
+    max?: number;
+    minLabel?: string;
+    maxLabel?: string;
+  };
   const min = config.min ?? 1;
   const max = config.max ?? 5;
   const values = Array.from({ length: max - min + 1 }, (_, i) => min + i);
+  const reducedMotion = useReducedMotion();
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
         {values.map((v) => (
-          <button
+          <motion.button
             key={v}
             type="button"
             onClick={() => onRate(v)}
             aria-pressed={value === v}
+            whileTap={reducedMotion ? undefined : { scale: 0.92 }}
+            transition={PRESS_SPRING}
             className={`min-h-12 min-w-12 rounded-lg border-2 text-base font-bold tabular-nums transition-colors ${
               value === v
                 ? "border-primary bg-primary text-primary-foreground"
@@ -234,7 +282,7 @@ function RatingQuestion({
             }`}
           >
             {v}
-          </button>
+          </motion.button>
         ))}
       </div>
       {(config.minLabel || config.maxLabel) && (
@@ -272,9 +320,12 @@ function RankingQuestion({
 
   const byId = new Map(question.options.map((option) => [option.id, option]));
   // The session seeds a shuffled order; fall back to the authored one if it is ever missing.
-  const ranked = order.length === question.options.length
-    ? order.map((id) => byId.get(id)).filter((option): option is QuestionOption => option !== undefined)
-    : question.options;
+  const ranked =
+    order.length === question.options.length
+      ? order
+          .map((id) => byId.get(id))
+          .filter((option): option is QuestionOption => option !== undefined)
+      : question.options;
 
   function optionName(option: QuestionOption, index: number) {
     return option.label ?? option.media?.fileName ?? `Option ${index + 1}`;
@@ -308,12 +359,19 @@ function RankingQuestion({
     // where the dragged row would land if it were dropped now.
     const goingDown = event.clientY > grabY.current;
     const neighbour = ranked[goingDown ? index + 1 : index - 1];
-    const rect = neighbour ? rowRefs.current.get(neighbour.id)?.getBoundingClientRect() : undefined;
-    const draggedRect = rowRefs.current.get(draggingId)?.getBoundingClientRect();
+    const rect = neighbour
+      ? rowRefs.current.get(neighbour.id)?.getBoundingClientRect()
+      : undefined;
+    const draggedRect = rowRefs.current
+      .get(draggingId)
+      ?.getBoundingClientRect();
 
     if (rect && draggedRect) {
       const midpoint = rect.top + rect.height / 2;
-      if ((goingDown && event.clientY > midpoint) || (!goingDown && event.clientY < midpoint)) {
+      if (
+        (goingDown && event.clientY > midpoint) ||
+        (!goingDown && event.clientY < midpoint)
+      ) {
         // Shift the reference point by the distance the row just travelled — measured between
         // slots rather than by row height, so the gap between rows is accounted for and the
         // row keeps sitting under the pointer instead of drifting away from it.
@@ -335,14 +393,21 @@ function RankingQuestion({
     setDragOffset(0);
   }
 
-  function onGripKeyDown(event: React.KeyboardEvent, index: number, option: QuestionOption) {
-    const direction = event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
+  function onGripKeyDown(
+    event: React.KeyboardEvent,
+    index: number,
+    option: QuestionOption,
+  ) {
+    const direction =
+      event.key === "ArrowUp" ? -1 : event.key === "ArrowDown" ? 1 : 0;
     if (direction === 0) return;
     const target = index + direction;
     if (target < 0 || target >= ranked.length) return;
     event.preventDefault();
     moveTo(index, target);
-    setAnnouncement(`${optionName(option, index)} moved to position ${target + 1} of ${ranked.length}.`);
+    setAnnouncement(
+      `${optionName(option, index)} moved to position ${target + 1} of ${ranked.length}.`,
+    );
   }
 
   return (
@@ -367,9 +432,15 @@ function RankingQuestion({
               onPointerMove={onDrag}
               onPointerUp={endDrag}
               onPointerCancel={endDrag}
-              style={dragging ? { transform: `translateY(${dragOffset}px)` } : undefined}
+              style={
+                dragging
+                  ? { transform: `translateY(${dragOffset}px)` }
+                  : undefined
+              }
               className={`flex select-none items-center gap-3 rounded-lg border-2 bg-card p-2.5 ${
-                dragging ? "z-10 border-primary shadow-lg" : "border-border hover:border-primary/40"
+                dragging
+                  ? "z-10 border-primary shadow-lg"
+                  : "border-border hover:border-primary/40"
               }`}
             >
               <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-sm font-bold tabular-nums text-muted-foreground">
@@ -398,7 +469,9 @@ function RankingQuestion({
                 onPointerDown={(event) => startDrag(event, option.id)}
                 onKeyDown={(event) => onGripKeyDown(event, index, option)}
                 className={`flex min-h-11 w-11 shrink-0 touch-none items-center justify-center self-stretch rounded-md text-muted-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 ${
-                  dragging ? "cursor-grabbing bg-primary/10 text-primary" : "cursor-grab hover:bg-accent"
+                  dragging
+                    ? "cursor-grabbing bg-primary/10 text-primary"
+                    : "cursor-grab hover:bg-accent"
                 }`}
               >
                 <GripVertical className="size-5" aria-hidden />
@@ -477,7 +550,10 @@ export default function QuestionPage() {
     if (question!.type === "RATING") return ratingValue !== null;
     if (question!.type === "RANKING") {
       // The list arrives pre-filled with a shuffle, so only a deliberate rearrangement counts.
-      return selected.length === question!.options.length && answer?.orderTouched === true;
+      return (
+        selected.length === question!.options.length &&
+        answer?.orderTouched === true
+      );
     }
     // A type this app cannot render yet must not trap the evaluator on a dead question
     // with Next disabled forever. Treating it as answerable lets them move past it, and
@@ -505,10 +581,12 @@ export default function QuestionPage() {
       <div className="sticky top-16 z-30 -mx-4 mb-6 border-b border-border bg-background/90 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
         <div className="mb-2 flex items-baseline justify-between text-sm">
           <span className="font-medium text-foreground">
-            Question <span className="tabular-nums">{questionIndex + 1}</span> of{" "}
-            <span className="tabular-nums">{totalVisible}</span>
+            Question <span className="tabular-nums">{questionIndex + 1}</span>{" "}
+            of <span className="tabular-nums">{totalVisible}</span>
           </span>
-          <span className="text-xs tabular-nums text-muted-foreground">{Math.round(percent)}%</span>
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {Math.round(percent)}%
+          </span>
         </div>
         <div
           role="progressbar"
@@ -524,7 +602,9 @@ export default function QuestionPage() {
         </div>
       </div>
 
-      <h1 className="mb-5 text-xl font-semibold leading-snug text-foreground">{question.prompt}</h1>
+      <h1 className="mb-5 text-xl font-semibold leading-snug text-foreground">
+        {question.prompt}
+      </h1>
 
       <QuestionMediaPanel question={question} />
 
@@ -553,13 +633,18 @@ export default function QuestionPage() {
         <RankingQuestion
           question={question}
           order={selected}
-          onReorder={(ids) => setAnswer(question.id, { selectedOptionIds: ids, orderTouched: true })}
+          onReorder={(ids) =>
+            setAnswer(question.id, {
+              selectedOptionIds: ids,
+              orderTouched: true,
+            })
+          }
         />
       )}
       {!RENDERABLE_TYPES.has(question.type) && (
         <div className="rounded-lg border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
-          This question type is not available on the web yet. Skip it here, or answer it in
-          the TESTx mobile app.
+          This question type is not available on the web yet. Skip it here, or
+          answer it in the TESTx mobile app.
         </div>
       )}
 

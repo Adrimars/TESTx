@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Alert,
@@ -23,32 +24,21 @@ import type { EvaluatorListItem, Paginated } from "@/lib/admin-types";
 const PAGE_SIZE = 25;
 
 export default function UsersPage() {
-  const [users, setUsers] = useState<EvaluatorListItem[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
-  const fetchUsers = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
+  const { data, isPending: loading, error } = useQuery({
+    queryKey: ["admin", "users", page],
+    queryFn: () => {
       const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
-      const data = await apiFetch<Paginated<EvaluatorListItem>>(`/admin/users?${params}`);
-      setUsers(data.items);
-      setTotal(data.total);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load users");
-      setUsers([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [page]);
+      return apiFetch<Paginated<EvaluatorListItem>>(`/admin/users?${params}`);
+    },
+    // Keeps the current page's rows on screen while the next page loads, instead of
+    // flashing back to a "Loading…" table on every Previous/Next click.
+    placeholderData: keepPreviousData,
+  });
 
-  useEffect(() => {
-    void fetchUsers();
-  }, [fetchUsers]);
-
+  const users = data?.items ?? [];
+  const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
@@ -58,7 +48,7 @@ export default function UsersPage() {
         description={`${total} registered evaluator${total === 1 ? "" : "s"}.`}
       />
 
-      {error && <Alert>{error}</Alert>}
+      {error && <Alert>{error instanceof Error ? error.message : "Failed to load users"}</Alert>}
 
       <Card>
         <CardContent className="overflow-x-auto p-0">
