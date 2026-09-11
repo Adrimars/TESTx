@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Image, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { X } from "lucide-react-native";
 import type { GestureType } from "react-native-gesture-handler";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
@@ -11,6 +11,7 @@ import { DragHint } from "./DragHint";
 import { SwipeCard } from "./SwipeCard";
 import type { ReleaseGesture } from "./SwipeCard";
 import { resolveMediaUrl } from "@/lib/env";
+import { DESKTOP_MAX_WIDTH, useContentWidth } from "@/lib/responsive";
 import { resolveHorizontalRelease } from "@/lib/swipe";
 import type { EvaluatorOption, EvaluatorQuestion } from "@/lib/test";
 import { useGestureTutorial } from "@/lib/tutorial";
@@ -35,7 +36,7 @@ type TwoOptionCardProps = {
  * that selects them - the layout is the only instruction the gesture gets.
  */
 export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardProps) {
-  const { width } = useWindowDimensions();
+  const width = useContentWidth();
   const insets = useSafeAreaInsets();
   const x = useSharedValue(0);
   const y = useSharedValue(0);
@@ -48,6 +49,14 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
   // it before committing to a swipe. Scoped to IMAGE questions - a cropped video/text/audio
   // half isn't the bug being fixed here.
   const [previewOption, setPreviewOption] = useState<EvaluatorOption | null>(null);
+  // The touch that opens the preview (a tap on a TapZone half) can still be in flight when
+  // this Modal mounts on top of it - on Android in particular, the same touch's "up" can
+  // land on the Modal's own backdrop a frame later and be read as a tap-to-close, so the
+  // preview flashes open and immediately closes itself with no second touch from the
+  // evaluator. `onShow` fires once the modal has actually finished presenting, well after
+  // that original touch has been delivered, so gating dismissal behind it is what tells a
+  // stray continuation of the opening touch apart from a real, later tap to close.
+  const [previewReady, setPreviewReady] = useState(false);
   const canPreview = question.mediaType === "IMAGE";
 
   const tutorial = useGestureTutorial("twoOption", isActive);
@@ -96,10 +105,16 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
   function handleHalfPress(option: EvaluatorOption | undefined) {
     if (!option) return;
     if (canPreview) {
+      setPreviewReady(false);
       setPreviewOption(option);
     } else {
       onAnswer(option.id);
     }
+  }
+
+  function closePreview() {
+    if (!previewReady) return;
+    setPreviewOption(null);
   }
 
   return (
@@ -176,33 +191,40 @@ export function TwoOptionCard({ question, isActive, onAnswer }: TwoOptionCardPro
         visible={previewOption !== null}
         transparent
         animationType="fade"
-        onRequestClose={() => setPreviewOption(null)}
+        onShow={() => setPreviewReady(true)}
+        onRequestClose={closePreview}
       >
-        <Pressable style={styles.previewBackdrop} onPress={() => setPreviewOption(null)}>
-          <Image
-            source={{ uri: resolveMediaUrl(previewOption?.mediaUrl ?? null) ?? undefined }}
-            style={styles.previewImage}
-            resizeMode="contain"
-          />
-          <Pressable
-            style={[styles.previewClose, { top: insets.top + theme.spacing(1.5) }]}
-            onPress={() => setPreviewOption(null)}
-            accessibilityRole="button"
-            accessibilityLabel="Close photo preview"
-          >
-            <X size={22} color={theme.colors.textPrimary} strokeWidth={1.5} />
-          </Pressable>
-
-          {/* The preview only shows the photo - this is what actually commits the
-              evaluator's choice, once they've seen it uncropped. */}
-          <View style={[styles.previewActions, { paddingBottom: insets.bottom + theme.spacing(2) }]}>
-            <Button
-              label={`Choose ${previewOption?.label ?? "this photo"}`}
-              onPress={() => {
-                if (previewOption) onAnswer(previewOption.id);
-                setPreviewOption(null);
-              }}
+        <Pressable style={styles.previewBackdrop} onPress={closePreview}>
+          {/* Capped to the same desktop column width as the rest of the shell
+              (DESKTOP_MAX_WIDTH) - the Modal portals outside that capped app shell on web,
+              so without its own cap here a wide desktop window would show a full-monitor
+              photo with the close button stranded in the far corner instead of by the image. */}
+          <View style={styles.previewColumn}>
+            <Image
+              source={{ uri: resolveMediaUrl(previewOption?.mediaUrl ?? null) ?? undefined }}
+              style={styles.previewImage}
+              resizeMode="contain"
             />
+            <Pressable
+              style={[styles.previewClose, { top: insets.top + theme.spacing(1.5) }]}
+              onPress={closePreview}
+              accessibilityRole="button"
+              accessibilityLabel="Close photo preview"
+            >
+              <X size={22} color={theme.colors.textPrimary} strokeWidth={1.5} />
+            </Pressable>
+
+            {/* The preview only shows the photo - this is what actually commits the
+                evaluator's choice, once they've seen it uncropped. */}
+            <View style={[styles.previewActions, { paddingBottom: insets.bottom + theme.spacing(2) }]}>
+              <Button
+                label={`Choose ${previewOption?.label ?? "this photo"}`}
+                onPress={() => {
+                  if (previewOption) onAnswer(previewOption.id);
+                  setPreviewOption(null);
+                }}
+              />
+            </View>
           </View>
         </Pressable>
       </Modal>
@@ -258,6 +280,11 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.surfaceBase,
     alignItems: "center",
     justifyContent: "center",
+  },
+  previewColumn: {
+    flex: 1,
+    width: "100%",
+    maxWidth: DESKTOP_MAX_WIDTH,
   },
   previewImage: { width: "100%", height: "100%" },
   previewClose: {
