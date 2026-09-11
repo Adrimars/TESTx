@@ -53,6 +53,9 @@ type ActivatedTest = {
   title: string;
   demographicFilters: unknown;
   responseCap: number | null;
+  /** The value just persisted to Test.activatedAt for this activation - see admin/tests.ts's
+   * status route, which sets it in the same update this data comes from. */
+  activatedAt: Date;
 };
 
 /**
@@ -60,7 +63,13 @@ type ActivatedTest = {
  * matching, not-yet-responded evaluator, relying on the `(userId, kind, dedupeKey)` unique
  * constraint plus `skipDuplicates` for the "never notify twice for the same activation"
  * guarantee - that ON CONFLICT DO NOTHING is atomic per row, so it holds even if this ever
- * runs twice concurrently for the same test (e.g. a retried status-update request).
+ * runs twice concurrently for the same activation (e.g. a retried status-update request).
+ *
+ * `dedupeKey` folds in `activatedAt` rather than being just `test.id`: a test that goes
+ * ACTIVE -> PAUSED -> ACTIVE again is two separate activation events per plan.md 21.1, and
+ * an evaluator who was already notified about the first one should still hear about the
+ * second - `test.id` alone would treat this as "already notified, ever" and silently
+ * enqueue nothing on the reactivation.
  */
 export async function enqueueTestActivationNotifications(
   app: FastifyInstance,
@@ -77,11 +86,12 @@ export async function enqueueTestActivationNotifications(
   const targetUserIds = matchingUserIds.filter((userId) => !respondedIds.has(userId));
   if (targetUserIds.length === 0) return 0;
 
+  const dedupeKey = `${test.id}:${test.activatedAt.toISOString()}`;
   const result = await app.prisma.notificationLog.createMany({
     data: targetUserIds.map((userId) => ({
       userId,
       kind: "TEST_ACTIVATED" as const,
-      dedupeKey: test.id,
+      dedupeKey,
       testId: test.id,
       title: "A new test is waiting for you",
       body: test.title,
@@ -154,6 +164,12 @@ export async function runReminderSweep(app: FastifyInstance, now: Date = new Dat
 
 const EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
 const DISPATCH_BATCH_SIZE = 50;
+
+/** How long a row may sit in PROCESSING before the claim query treats it as abandoned (the
+ * process that claimed it crashed or restarted before resolving it to SENT/FAILED) and
+ * reclaims it - otherwise a mid-batch crash leaves it stuck there forever, since PENDING is
+ * the only status the claim query would otherwise ever look at. */
+const STALE_PROCESSING_MS = 5 * 60 * 1000;
 
 type NotificationPayload = { title: string; body: string; data: Prisma.JsonValue };
 
@@ -251,10 +267,19 @@ export async function dispatchPendingNotifications(
   app: FastifyInstance,
   batchSize = DISPATCH_BATCH_SIZE
 ): Promise<number> {
+  const staleCutoff = new Date(Date.now() - STALE_PROCESSING_MS);
   const claimedIds = await app.prisma.$transaction(async (tx) => {
+    // `"claimedAt"` is a plain `timestamp` column (Prisma always writes/reads it as UTC wall
+    // time, with no tz marker of its own). Comparing it directly against a `timestamptz`
+    // parameter is wrong whenever the DB session's timezone isn't UTC: Postgres casts the
+    // parameter down to `timestamp` using that session timezone before comparing, which
+    // silently shifts it by the offset. `AT TIME ZONE 'UTC'` re-expresses the parameter as
+    // the same UTC wall-clock representation the column already uses, so the comparison
+    // means what it looks like it means regardless of the connection's timezone setting.
     const rows = await tx.$queryRaw<{ id: string }[]>`
       SELECT id FROM "NotificationLog"
       WHERE status = 'PENDING'
+         OR (status = 'PROCESSING' AND "claimedAt" < (${staleCutoff}::timestamptz AT TIME ZONE 'UTC'))
       ORDER BY "createdAt" ASC
       LIMIT ${batchSize}
       FOR UPDATE SKIP LOCKED
@@ -264,7 +289,7 @@ export async function dispatchPendingNotifications(
     const ids = rows.map((row) => row.id);
     await tx.notificationLog.updateMany({
       where: { id: { in: ids } },
-      data: { status: "PROCESSING", attempts: { increment: 1 } },
+      data: { status: "PROCESSING", claimedAt: new Date(), attempts: { increment: 1 } },
     });
     return ids;
   });

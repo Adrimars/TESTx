@@ -162,6 +162,10 @@ model Test {
   minTimePerQuestion Int            @default(60)
   demographicFilters Json?
   rewardPoints       Int            @default(0)
+  /// Set every time status transitions to ACTIVE (including a PAUSED -> ACTIVE
+  /// reactivation) - 21.1's activation trigger folds this into NotificationLog's dedupeKey
+  /// so each activation is its own dedupeable event, not just the test's lifetime-first one.
+  activatedAt        DateTime?
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
   questions          Question[]
@@ -335,6 +339,11 @@ model NotificationLog {
   attempts  Int                @default(0)
   lastError String?
   createdAt DateTime           @default(now())
+  /// Set when a dispatch worker claims this row (PENDING -> PROCESSING). Lets the claim
+  /// query also reclaim rows stuck in PROCESSING past a staleness threshold - e.g. the
+  /// process that claimed them crashed or restarted before resolving them to SENT/FAILED -
+  /// instead of leaving them stranded forever the moment they leave PENDING.
+  claimedAt DateTime?
   sentAt    DateTime?
 
   @@unique([userId, kind, dedupeKey])

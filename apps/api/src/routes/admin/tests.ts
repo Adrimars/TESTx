@@ -531,11 +531,14 @@ export const adminTestsRoutes: FastifyPluginAsync = async (app) => {
     const rewardPoints = await recalculateReward(app, existing.id);
     const test = await app.prisma.test.update({
       where: { id: existing.id },
-      data: { status, rewardPoints },
+      // A PAUSED -> ACTIVE reactivation is its own activation event, not a repeat of the
+      // test's first one - activatedAt gives 21.1's trigger a per-activation discriminator
+      // so evaluators who already saw the first activation are notified about this one too.
+      data: { status, rewardPoints, ...(status === "ACTIVE" ? { activatedAt: new Date() } : {}) },
       include: testDetailInclude,
     });
 
-    if (status === "ACTIVE") {
+    if (status === "ACTIVE" && test.activatedAt) {
       // Best-effort: a notification-enqueue failure must never fail the activation itself,
       // the admin's actual intent here. The dispatch plugin (21.2) will still send whatever
       // rows do make it into the log on its next sweep.
@@ -544,6 +547,7 @@ export const adminTestsRoutes: FastifyPluginAsync = async (app) => {
         title: test.title,
         demographicFilters: test.demographicFilters,
         responseCap: test.responseCap,
+        activatedAt: test.activatedAt,
       }).catch((err) => {
         app.log.error({ err, testId: test.id }, "failed to enqueue test-activation notifications");
       });
