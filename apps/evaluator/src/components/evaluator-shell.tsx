@@ -69,12 +69,6 @@ export function EvaluatorShell({ children }: { children: React.ReactNode }) {
               {balance}
               <span className="font-normal">pts</span>
             </span>
-            <a
-              href="/api/switch-device?to=mobile"
-              className="hidden text-sm text-muted-foreground underline-offset-4 hover:underline sm:inline"
-            >
-              Switch to mobile version
-            </a>
             <Avatar className="size-9 bg-muted text-xs">
               {user?.email?.charAt(0).toUpperCase() ?? "E"}
             </Avatar>
