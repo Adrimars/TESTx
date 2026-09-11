@@ -169,6 +169,31 @@
   --ring: 14 90% 42%;
 }
 
+/*
+ * testxlogo-dark.png is a light-on-transparent wordmark (RGBA, verified via its PNG
+ * header) made for the dark theme - on the light theme it goes invisible against a near-
+ * white background. Inverting it turns the light strokes dark while transparency is
+ * untouched (invert() only remaps RGB, not alpha), so light mode gets a dark wordmark
+ * without a second logo asset. Same cascade as the color tokens above.
+ */
+.app-logo {
+  filter: invert(1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .app-logo {
+    filter: none;
+  }
+}
+
+:root[data-theme="dark"] .app-logo {
+  filter: none;
+}
+
+:root[data-theme="light"] .app-logo {
+  filter: invert(1);
+}
+
 @layer base {
   body {
     margin: 0;

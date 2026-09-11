@@ -293,6 +293,7 @@ Before moving to Phase 20, all of the following must be true:
 ### 22.2 Toggle & Persistence
 - A visible light/dark toggle in the desktop shell (header or Settings-equivalent); persists the choice (e.g. `localStorage` + a cookie so SSR/first paint matches, avoiding a flash of the wrong theme) and defaults to the OS `prefers-color-scheme` when no explicit choice has been made yet.
 - Decide whether `apps/admin` gets the same toggle or stays on its own theme — `@testx/ui` components already read the same CSS-variable tokens, so extending it there is mechanical once the palette exists, not a re-design.
+- **Decided during implementation:** a single `testx-theme` cookie is the persistence mechanism (not `localStorage` + cookie) — it alone already satisfies both SSR-matching and cross-session persistence without a second source of truth that could drift out of sync with the first. `apps/admin` stays on its own light-only theme, unaffected, matching Phase 20's precedent of leaving admin out of the evaluator redesign entirely.
 
 ### Phase 22 Exit Criteria
 
