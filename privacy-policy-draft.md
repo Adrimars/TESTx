@@ -1,6 +1,6 @@
 # Gizlilik Politikası (TASLAK - HUKUKİ ONAYDAN GEÇMEMİŞTİR)
 
-> Bu belge, `apps/mobile/src/content/aydinlatmaMetni.ts` içindeki KVKK Madde 10
+> Bu belge, içindeki KVKK Madde 10
 > aydınlatma metniyle **aynı amaca hizmet etmez ve onun yerine geçmez**.
 > Aydınlatma metni yalnızca KVKK Madde 10 kapsamındaki dar bilgilendirme
 > yükümlülüğünü karşılar; bu belge ise Apple App Store / Google Play'in ayrıca
@@ -9,7 +9,7 @@
 > §8). İki belge birbirinden bağımsız güncellenebilir ama tutarlı olmalıdır.
 >
 > `privacy-policy` dosyasındaki PlantApp/ScaleUp metni yapısal referans olarak
-> kullanılmış, TESTx'in gerçek veri modeline (`schema.prisma`) ve
+> kullanılmış, TESTx'in gerçek veri modeline ve
 > `kvkk-compliance-research.md`'deki hukuki iskelete göre yeniden yazılmıştır.
 > PlantApp metnindeki TESTx'e uymayan bölümler (yüz verisi, IDFA/IDVF,
 > Microsoft Clarity, reklam çerezleri, in-app purchase, CCPA/CalOPPA, 13 yaş
@@ -26,7 +26,7 @@
 ## 1. Kapsam
 
 Bu Gizlilik Politikası, TESTx mobil uygulamasını ve TESTx'in yönetici
-(`apps/admin`) ile değerlendirme (`apps/evaluator`) web arayüzlerini
+ ile değerlendirme  web arayüzlerini
 (birlikte "Hizmet") kullanan tüm kullanıcılar için geçerlidir.
 
 ## 2. Veri Sorumlusu
@@ -67,8 +67,8 @@ değerlendirmeler, bunlara karşılık kazandığınız puan bakiyesi.
 tanımlayıcı; bu tanımlayıcı yalnızca aynı cihazdan birden fazla hesap
 açılıp açılmadığının tespiti için kullanılır.
 
-**Oturum/Çerez Bilgisi (yalnızca web arayüzleri):** `apps/admin` ve
-`apps/evaluator` web arayüzlerinde, oturumunuzu güvenli biçimde sürdürmek
+**Oturum/Çerez Bilgisi (yalnızca web arayüzleri):** ve
+web arayüzlerinde, oturumunuzu güvenli biçimde sürdürmek
 için zorunlu (httpOnly, tarafımızca reklam veya izleme amacıyla
 kullanılmayan) oturum çerezleri kullanılır. Bu çerezler devre dışı
 bırakılırsa oturum açık tutulamaz. TESTx şu anda reklam, izleme veya
