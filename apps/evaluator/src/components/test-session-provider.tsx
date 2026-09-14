@@ -8,7 +8,6 @@ type TestSessionState = {
   answers: Map<string, AnswerData>;
   /** Server-signed token holding the authoritative session start time. */
   sessionToken: string | null;
-  questionTimers: Map<string, number>; // seconds spent on the question's latest visit
 };
 
 type TestSessionContextValue = {
@@ -60,7 +59,6 @@ export function TestSessionProvider({ children }: { children: React.ReactNode })
     test: null,
     answers: new Map(),
     sessionToken: null,
-    questionTimers: new Map(),
   });
 
   const startSession = useCallback((test: TestDetail) => {
@@ -68,7 +66,6 @@ export function TestSessionProvider({ children }: { children: React.ReactNode })
       test,
       answers: seedRankingAnswers(test),
       sessionToken: test.sessionToken,
-      questionTimers: new Map(),
     });
   }, []);
 
@@ -87,12 +84,10 @@ export function TestSessionProvider({ children }: { children: React.ReactNode })
   // the two clients' timings must agree, since results pool them into one metric.
   const recordTime = useCallback((questionId: string, seconds: number) => {
     setState((prev) => {
-      const timers = new Map(prev.questionTimers);
-      timers.set(questionId, seconds);
       const answers = new Map(prev.answers);
       const existing = answers.get(questionId) ?? { ...initialAnswer };
       answers.set(questionId, { ...existing, timeSpentSeconds: seconds });
-      return { ...prev, questionTimers: timers, answers };
+      return { ...prev, answers };
     });
   }, []);
 
@@ -102,7 +97,7 @@ export function TestSessionProvider({ children }: { children: React.ReactNode })
   );
 
   const resetSession = useCallback(() => {
-    setState({ test: null, answers: new Map(), sessionToken: null, questionTimers: new Map() });
+    setState({ test: null, answers: new Map(), sessionToken: null });
   }, []);
 
   return (

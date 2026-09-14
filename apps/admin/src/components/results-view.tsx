@@ -229,14 +229,13 @@ export function QuestionResults({
             <p className="text-meta uppercase text-muted-foreground">
               Question {index + 1} · {question.type.replace("_", " ").toLowerCase()}
               {showAnsweredCount && ` · ${question.answeredCount} responses`}
-              {showAnsweredCount && question.timing.sampleCount > 0 && (
-                <>
-                  {" "}
-                  · avg {formatDuration(question.timing.averageSeconds)} (median{" "}
-                  {formatDuration(question.timing.medianSeconds)})
-                </>
-              )}
             </p>
+            {showAnsweredCount && question.answeredCount > 0 && question.timing.averageSeconds !== null && (
+              <p className="text-xs text-muted-foreground">
+                Avg time: {formatDuration(question.timing.averageSeconds)}
+                {" · "}Median: {formatDuration(question.timing.medianSeconds)}
+              </p>
+            )}
             <CardTitle>{question.prompt}</CardTitle>
             {/* Rating results are unreadable without the thing that was rated. */}
             {question.mediaId && (

@@ -59,8 +59,6 @@ export type RankingAggregation = {
 };
 
 export type TimingAggregation = {
-  /** Answers this aggregate is drawn from — same population as answeredCount. */
-  sampleCount: number;
   averageSeconds: number | null;
   medianSeconds: number | null;
   minSeconds: number | null;
@@ -96,14 +94,13 @@ function round(value: number): number {
 function aggregateTiming(answers: ResultAnswer[]): TimingAggregation {
   const seconds = answers.map((answer) => answer.timeSpentSeconds).sort((a, b) => a - b);
   if (seconds.length === 0) {
-    return { sampleCount: 0, averageSeconds: null, medianSeconds: null, minSeconds: null, maxSeconds: null };
+    return { averageSeconds: null, medianSeconds: null, minSeconds: null, maxSeconds: null };
   }
   const sum = seconds.reduce((total, value) => total + value, 0);
   const mid = Math.floor(seconds.length / 2);
   const median =
     seconds.length % 2 === 0 ? (seconds[mid - 1]! + seconds[mid]!) / 2 : seconds[mid]!;
   return {
-    sampleCount: seconds.length,
     averageSeconds: round(sum / seconds.length),
     medianSeconds: round(median),
     minSeconds: seconds[0]!,

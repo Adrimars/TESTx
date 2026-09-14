@@ -130,8 +130,6 @@ export type RankingAggregation = {
 };
 
 export type TimingAggregation = {
-  /** Answers this aggregate is drawn from — same population as answeredCount. */
-  sampleCount: number;
   averageSeconds: number | null;
   medianSeconds: number | null;
   minSeconds: number | null;
