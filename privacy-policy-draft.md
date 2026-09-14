@@ -149,6 +149,7 @@ olarak okunmamalıdır.
 
 ## 10. Çocukların Gizliliği
 
+<!-- Yaş konusu konuşulcak -->
 TESTx yalnızca **18 yaş ve üzeri** kullanıcılara yöneliktir; kayıt
 sırasında yaşınızı 18 veya üzeri olarak beyan etmeniz istenir. 18 yaşından
 küçük olduğunu öğrendiğimiz bir hesabı kapatırız.
