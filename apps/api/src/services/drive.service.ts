@@ -83,9 +83,9 @@ export const driveService = {
     }));
   },
 
-  async importFolder(prisma: PrismaClient, folderUrl: string) {
-    const folderId = driveService.parseFolderId(folderUrl);
-    const files = await driveService.listFolderFiles(folderId);
+  async importFolder(prisma: PrismaClient, folderUrl: string, targetFolderId: string | null = null) {
+    const driveFolderId = driveService.parseFolderId(folderUrl);
+    const files = await driveService.listFolderFiles(driveFolderId);
 
     const created: Media[] = [];
 
@@ -107,6 +107,7 @@ export const driveService = {
           sourceUrl: file.id,
           thumbnailUrl: null,
           tags: [],
+          folderId: targetFolderId,
         },
       });
 

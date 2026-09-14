@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BarChart3, Eye, Pencil, Play, Plus, Square, PauseCircle } from "lucide-react";
+import { BarChart3, Eye, FileJson, Pencil, Play, Plus, Square, PauseCircle } from "lucide-react";
 import {
   Alert,
   Badge,
@@ -71,12 +71,20 @@ export default function TestsPage() {
         title="Tests"
         description="Create and manage evaluation tests."
         actions={
-          <Link href="/tests/new">
-            <Button>
-              <Plus className="size-4" aria-hidden />
-              Create Test
-            </Button>
-          </Link>
+          <div className="flex gap-2">
+            <Link href="/tests/import">
+              <Button variant="secondary">
+                <FileJson className="size-4" aria-hidden />
+                Import JSON
+              </Button>
+            </Link>
+            <Link href="/tests/new">
+              <Button>
+                <Plus className="size-4" aria-hidden />
+                Create Test
+              </Button>
+            </Link>
+          </div>
         }
       />
 

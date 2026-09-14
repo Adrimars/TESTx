@@ -38,6 +38,7 @@ enum MediaType {
   VIDEO
   AUDIO
   TEXT
+  JSON
 }
 
 enum MediaSourceType {
@@ -181,21 +182,39 @@ model QuestionOption {
   @@index([questionId])
 }
 
+model MediaFolder {
+  id        String        @id @default(uuid()) @db.Uuid
+  name      String
+  parentId  String?       @db.Uuid
+  parent    MediaFolder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  MediaFolder[] @relation("FolderTree")
+  media     Media[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([parentId])
+}
+
 model Media {
-  id          String            @id @default(uuid()) @db.Uuid
-  fileName    String
-  fileType    MediaType
-  mimeType    String
-  fileSize    Int
-  sourceType  MediaSourceType
-  sourceUrl   String?
+  id           String            @id @default(uuid()) @db.Uuid
+  fileName     String
+  fileType     MediaType
+  mimeType     String
+  fileSize     Int
+  sourceType   MediaSourceType
+  sourceUrl    String?
   thumbnailUrl String?
-  tags        String[]          @default([])
-  uploadedAt  DateTime          @default(now())
-  options     QuestionOption[]
-  questions   Question[]
+  tags         String[]          @default([])
+  uploadedAt   DateTime          @default(now())
+  /// Populated only for fileType = TEXT. Cap enforced at upload time (50 000 chars).
+  textContent  String?
+  folderId     String?           @db.Uuid
+  folder       MediaFolder?      @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  options      QuestionOption[]
+  questions    Question[]
 
   @@index([fileType])
+  @@index([folderId])
 }
 
 model TestResponse {
