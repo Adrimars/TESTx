@@ -264,7 +264,6 @@ function FolderDropCard({
             <IconButton
               variant="ghost"
               aria-label="Rename folder"
-              size="sm"
               onClick={(e) => { e.stopPropagation(); onRename(folder); }}
             >
               <Pencil className="size-3.5" aria-hidden />
@@ -272,7 +271,6 @@ function FolderDropCard({
             <IconButton
               variant="ghost"
               aria-label="Delete folder"
-              size="sm"
               className="text-destructive"
               onClick={(e) => { e.stopPropagation(); onDelete(folder); }}
             >
@@ -1086,7 +1084,7 @@ export default function MediaPage() {
               multiple className="hidden"
               onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ""; }} />
             <input ref={dirInputRef} type="file" className="hidden"
-              {...{ webkitdirectory: "", multiple: "" } as React.InputHTMLAttributes<HTMLInputElement>}
+              {...{ webkitdirectory: "", multiple: true } as unknown as React.InputHTMLAttributes<HTMLInputElement>}
               onChange={(e) => { if (e.target.files) addDirFiles(e.target.files); e.target.value = ""; }} />
           </div>
 
