@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, GripVertical } from "lucide-react";
 import {
   Alert,
@@ -110,24 +111,14 @@ function QuestionPreview({ question }: { question: AdminQuestion }) {
 
 export default function TestPreviewPage() {
   const params = useParams<{ id: string }>();
-  const [test, setTest] = useState<AdminTestDetail | null>(null);
   const [index, setIndex] = useState(0);
-  const [error, setError] = useState("");
 
-  useEffect(() => {
-    async function load() {
-      setError("");
-      try {
-        const data = await apiFetch<AdminTestDetail>(`/admin/tests/${params.id}/preview`);
-        setTest(data);
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : "Failed to load preview");
-      }
-    }
-    void load();
-  }, [params.id]);
+  const { data: test, error } = useQuery({
+    queryKey: ["admin", "tests", params.id, "preview"],
+    queryFn: () => apiFetch<AdminTestDetail>(`/admin/tests/${params.id}/preview`),
+  });
 
-  if (error) return <Alert>{error}</Alert>;
+  if (error) return <Alert>{error instanceof Error ? error.message : "Failed to load preview"}</Alert>;
   if (!test) return <p className="text-sm text-muted-foreground">Loading preview...</p>;
 
   const question = test.questions[index];

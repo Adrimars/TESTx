@@ -178,7 +178,7 @@ async function main() {
           fileSize,
           sourceType: "UPLOAD",
           sourceUrl: filePath,
-          thumbnailUrl: `/media/${id}/file`,
+          thumbnailUrl: `/media/${id}/thumbnail`,
           tags: ["sample", i < 6 ? "product" : "lifestyle"],
         },
       });
@@ -251,7 +251,7 @@ async function main() {
           fileSize: size,
           sourceType: "UPLOAD",
           sourceUrl: path.posix.join("seed", fileName),
-          thumbnailUrl: `/media/${id}/file`,
+          thumbnailUrl: `/media/${id}/thumbnail`,
           tags: ["seed", "studio"],
         },
       });

@@ -110,10 +110,10 @@ Report only — no code has been modified.
 - **Severity:** High
 - **Impact:** Risk of a synchronized burst of `/evaluator/tests/:id/submit` requests hitting the API at the same instants across many devices
 - **Evidence:** `apps/mobile/src/lib/submissionQueue.ts:204` — `const RETRY_DELAYS_MS = [5_000, 15_000, 30_000, 60_000, 120_000, 240_000];`, applied in a plain `for` loop with `await sleep(RETRY_DELAYS_MS[attempt - 1])` (lines 213-230) — no randomization anywhere in the file. Separately, `retryPendingSubmissionOnce` (lines 247-259) fires once at every app launch.
-- **Why it's inefficient:** every device affected by the same event (a regional network blip, or a mass app relaunch — which the new Phase 20 push-notification feature will directly cause, since a notification blast is designed to bring many users back into the app at once) retries at the exact same fixed offsets. At small scale this is invisible; at large scale it produces a predictable, recurring load spike on the submit endpoint timed to exactly 5s/15s/30s/... after whatever event triggered it.
+- **Why it's inefficient:** every device affected by the same event (a regional network blip, or a mass app relaunch — which the new Phase 21 push-notification feature will directly cause, since a notification blast is designed to bring many users back into the app at once) retries at the exact same fixed offsets. At small scale this is invisible; at large scale it produces a predictable, recurring load spike on the submit endpoint timed to exactly 5s/15s/30s/... after whatever event triggered it.
 - **Recommended fix:** add jitter to `RETRY_DELAYS_MS` (e.g. `delay * (0.5 + Math.random())`) and to the app-launch retry.
 - **Tradeoffs / Risks:** none meaningful — jitter is a strict improvement here.
-- **Expected impact estimate:** smooths a sharp, synchronized load spike into a spread-out one — directly relevant once Phase 20 (notifications) ships, since that feature is explicitly designed to bring many users back simultaneously.
+- **Expected impact estimate:** smooths a sharp, synchronized load spike into a spread-out one — directly relevant once Phase 21 (notifications) ships, since that feature is explicitly designed to bring many users back simultaneously.
 - **Removal Safety:** Safe.
 - **Reuse Scope:** local file (`submissionQueue.ts`).
 
@@ -177,13 +177,13 @@ Report only — no code has been modified.
 - **Removal Safety:** Safe.
 - **Reuse Scope:** local, three files.
 
-### Finding 14 — Forward-looking note: the planned Notification dispatch (Phase 20) needs a distributed-safe job pattern from day one
+### Finding 14 — Forward-looking note: the planned Notification dispatch (Phase 21) needs a distributed-safe job pattern from day one
 - **Category:** Concurrency / Reliability
 - **Severity:** Low (not yet built — a design note, not a bug)
 - **Impact:** Would prevent duplicate-send bugs once the API runs as more than one instance
-- **Evidence:** N/A — this is about the design discussed for `plan.md`'s Phase 20 (a Postgres-table-based job/polling approach, explicitly chosen over a Redis queue for simplicity at current scale).
+- **Evidence:** N/A — this is about the design discussed for `plan.md`'s Phase 21 (a Postgres-table-based job/polling approach, explicitly chosen over a Redis queue for simplicity at current scale).
 - **Why it matters:** if the dispatch job is ever run from more than one process/instance (which the rest of this audit assumes will eventually happen), two instances polling the same "pending notifications" table naively can both pick up and send the same row, double-notifying a user — the same class of bug as Finding 1's cache race, just in a not-yet-built feature.
-- **Recommended fix:** when implementing Phase 20's dispatch polling query, use `SELECT ... FOR UPDATE SKIP LOCKED` (a standard Postgres pattern for exactly this "multiple workers claim rows from one queue table safely" case) instead of a plain `SELECT` + separate `UPDATE`.
+- **Recommended fix:** when implementing Phase 21's dispatch polling query, use `SELECT ... FOR UPDATE SKIP LOCKED` (a standard Postgres pattern for exactly this "multiple workers claim rows from one queue table safely" case) instead of a plain `SELECT` + separate `UPDATE`.
 - **Tradeoffs / Risks:** none — this is the same amount of code either way, just written correctly from the start.
 - **Expected impact estimate:** avoids a bug class before it ships, rather than fixing it retroactively.
 - **Removal Safety:** N/A (not yet implemented).

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Alert,
   Badge,
@@ -27,25 +27,10 @@ function formatDate(iso: string) {
 }
 
 export default function DashboardPage() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  const fetchStats = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    try {
-      setStats(await apiFetch<DashboardStats>("/admin/dashboard"));
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load dashboard");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void fetchStats();
-  }, [fetchStats]);
+  const { data: stats, isPending: loading, error } = useQuery({
+    queryKey: ["admin", "dashboard"],
+    queryFn: () => apiFetch<DashboardStats>("/admin/dashboard"),
+  });
 
   const cards = [
     { label: "Total Evaluators", value: stats?.totalEvaluators, tone: "default" as const },
@@ -58,7 +43,7 @@ export default function DashboardPage() {
     <div className="space-y-8">
       <PageHeader title="Dashboard" description="Platform overview at a glance." />
 
-      {error && <Alert>{error}</Alert>}
+      {error && <Alert>{error instanceof Error ? error.message : "Failed to load dashboard"}</Alert>}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { Award, Clock, ListChecks } from "lucide-react";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@testx/ui";
 import { apiFetch } from "@/lib/api";
@@ -37,17 +38,22 @@ export default function TestIntroPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const { startSession } = useTestSession();
-  const [test, setTest] = useState<TestDetail | null>(null);
-  const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    apiFetch<TestDetail>(`/evaluator/tests/${params.id}`)
-      .then(setTest)
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load test"))
-      .finally(() => setLoading(false));
-  }, [params.id]);
+  // staleTime 0: this endpoint mints a fresh session token (startedAt = now) on every
+  // call, mirrored server-side by the submit endpoint's own re-entry check - serving a
+  // cached token here would let its `startedAt` drift from when the evaluator actually
+  // begins, which matters for the quality service's timing-based checks.
+  const {
+    data: test,
+    isPending: loading,
+    error: queryError,
+  } = useQuery({
+    queryKey: ["evaluator", "tests", params.id],
+    queryFn: () => apiFetch<TestDetail>(`/evaluator/tests/${params.id}`),
+    staleTime: 0,
+  });
+  const error = queryError ? (queryError instanceof Error ? queryError.message : "Failed to load test") : null;
 
   useEffect(() => {
     function handleUnload(e: BeforeUnloadEvent) {

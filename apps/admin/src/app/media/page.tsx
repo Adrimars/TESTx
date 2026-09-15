@@ -2,7 +2,9 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+
 import {
+  ChevronLeft,
   ChevronRight,
   CloudUpload,
   FileArchive,
@@ -63,6 +65,8 @@ const FILE_TYPE_TABS = [
   { label: "JSON", value: "JSON" },
 ] as const;
 
+const PAGE_SIZE = 50;
+
 // ---------------------------------------------------------------------------
 // Utility
 // ---------------------------------------------------------------------------
@@ -96,7 +100,7 @@ function MediaThumbnail({ media }: { media: AdminMedia }) {
   if (media.fileType === "IMAGE") {
     return (
       <img
-        src={`${API_URL}/media/${media.id}/file`}
+        src={`${API_URL}/media/${media.id}/thumbnail`}
         alt={media.fileName}
         className="h-full w-full object-cover"
         loading="lazy"
@@ -289,9 +293,9 @@ function FolderDropCard({
 
 export default function MediaPage() {
   const router = useRouter();
+  const [page, setPage] = useState(1);
 
   // ── State ────────────────────────────────────────────────────────────────
-
   const [items, setItems] = useState<AdminMedia[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -381,7 +385,7 @@ export default function MediaPage() {
   const fetchMedia = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: "1", limit: "50" });
+      const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
       if (activeTab) params.set("fileType", activeTab);
       if (debouncedSearch) params.set("search", debouncedSearch);
       // When searching across all, don't filter by folder
@@ -396,7 +400,7 @@ export default function MediaPage() {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, debouncedSearch, activeFolderId]);
+  }, [activeTab, debouncedSearch, activeFolderId, page]);
 
   const fetchBreadcrumb = useCallback(async () => {
     if (!activeFolderId) { setBreadcrumb([]); return; }
@@ -413,6 +417,14 @@ export default function MediaPage() {
   useEffect(() => { void fetchFolders(); }, [fetchFolders]);
   useEffect(() => { void fetchMedia(); }, [fetchMedia]);
   useEffect(() => { void fetchBreadcrumb(); }, [fetchBreadcrumb]);
+
+  // A tab, search, or folder change can leave `page` pointing past the new filter's last page —
+  // reset to page 1 rather than showing an empty grid until the user notices.
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab, debouncedSearch, activeFolderId]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   function refresh() {
     void fetchFolders();
@@ -1040,6 +1052,34 @@ export default function MediaPage() {
                 {viewingTextMedia.textContent ?? "(empty)"}
               </pre>
             </div>
+          </div>
+        </div>
+      )}
+
+      {!loading && items.length > 0 && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm tabular-nums text-muted-foreground">
+            Page {page} of {totalPages}
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+            >
+              <ChevronLeft className="size-4" aria-hidden />
+              Previous
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => setPage((current) => current + 1)}
+            >
+              Next
+              <ChevronRight className="size-4" aria-hidden />
+            </Button>
           </div>
         </div>
       )}

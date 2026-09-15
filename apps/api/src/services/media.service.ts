@@ -3,13 +3,16 @@ import { Readable } from "node:stream";
 import fsPromises from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { fileURLToPath } from "node:url";
+import sharp from "sharp";
 import type { PrismaClient, Prisma } from "@testx/database";
 import type { FastifyReply } from "fastify";
 import type { MultipartFile } from "@fastify/multipart";
 import type { FileMediaType, MediaType } from "@testx/shared";
 import { TEXT_MAX_CHARS, TEXT_MAX_FILE_BYTES, JSON_MAX_CHARS, JSON_MAX_FILE_BYTES } from "@testx/shared";
 import { driveService } from "./drive.service";
+import { getCacheDir, getThumbnailPath, getUploadDir, resolveUploadPath } from "../lib/media-paths";
+
+type Media = Prisma.MediaGetPayload<Record<string, never>>;
 
 // ---------------------------------------------------------------------------
 // Type widened to include TEXT
@@ -25,23 +28,118 @@ const MAX_FILE_SIZE_BY_TYPE: Record<AllMediaType, number> = {
   JSON: JSON_MAX_FILE_BYTES,
 };
 
-// ---------------------------------------------------------------------------
-// Paths
-// ---------------------------------------------------------------------------
+const THUMBNAIL_MAX_DIMENSION = 480;
+const inFlightThumbnails = new Map<string, Promise<string>>();
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
+/**
+ * Guarantees a resized webp thumbnail exists for `media` (IMAGE only — callers are
+ * expected to check `fileType`) and returns its path, generating it on first request
+ * from the original (the upload on disk, or the Drive-cached original, fetching it first
+ * if needed). Finding 7 / plan.md 17.6: every client previously loaded the exact same
+ * full-resolution original for every thumbnail-sized view regardless of source or size.
+ */
+export async function ensureThumbnail(media: Media): Promise<string> {
+  const thumbPath = getThumbnailPath(media.id);
 
-export function getUploadDir(): string {
-  const configured = process.env.UPLOAD_DIR ?? "./uploads";
-  return path.isAbsolute(configured) ? configured : path.resolve(REPO_ROOT, configured);
+  try {
+    await fsPromises.access(thumbPath);
+    return thumbPath;
+  } catch {
+    // cache miss — generate
+  }
+
+  const existing = inFlightThumbnails.get(media.id);
+  if (existing) return existing;
+
+  const task = generateThumbnail(media, thumbPath).finally(() => {
+    inFlightThumbnails.delete(media.id);
+  });
+  inFlightThumbnails.set(media.id, task);
+  return task;
 }
 
-export function resolveUploadPath(sourceUrl: string): string {
-  return path.isAbsolute(sourceUrl) ? sourceUrl : path.resolve(getUploadDir(), sourceUrl);
+async function generateThumbnail(media: Media, thumbPath: string): Promise<string> {
+  const sourcePath =
+    media.sourceType === "UPLOAD" && media.sourceUrl
+      ? resolveUploadPath(media.sourceUrl)
+      : await driveService.ensureCachedFile(media as Parameters<typeof driveService.ensureCachedFile>[0]);
+
+  await fsPromises.mkdir(getCacheDir(), { recursive: true });
+  const tempPath = `${thumbPath}.${randomUUID()}.tmp`;
+  try {
+    await sharp(sourcePath)
+      .resize(THUMBNAIL_MAX_DIMENSION, THUMBNAIL_MAX_DIMENSION, { fit: "inside", withoutEnlargement: true })
+      .webp({ quality: 72 })
+      .toFile(tempPath);
+    await fsPromises.rename(tempPath, thumbPath);
+  } catch (err) {
+    await fsPromises.unlink(tempPath).catch(() => {});
+    throw err;
+  }
+  return thumbPath;
 }
 
-export function getCacheDir(): string {
-  return path.resolve(process.env.CACHE_DIR ?? "./cache/media");
+export async function serveThumbnail(prisma: PrismaClient, id: string, reply: FastifyReply) {
+  const media = await prisma.media.findUnique({ where: { id } });
+  if (!media) {
+    return reply.status(404).send({ error: "NOT_FOUND", message: "Media not found" });
+  }
+  if (media.fileType !== "IMAGE") {
+    return reply.status(404).send({ error: "NOT_FOUND", message: "No thumbnail for this file type" });
+  }
+
+  let thumbPath: string;
+  try {
+    thumbPath = await ensureThumbnail(media);
+  } catch {
+    return reply.status(502).send({ error: "THUMBNAIL_ERROR", message: "Failed to generate thumbnail" });
+  }
+
+  reply.header("Content-Type", "image/webp");
+  reply.header("Cache-Control", "public, max-age=86400");
+  return reply.send(Readable.toWeb(fs.createReadStream(thumbPath)));
+}
+
+/**
+ * Caps `dir`'s total size by deleting least-recently-accessed files first. Nothing in
+ * `cache/media` is authoritative data — Drive originals are re-fetchable, thumbnails are
+ * regeneratable — so eviction here is always safe, unlike `uploads/`.
+ *
+ * In-progress downloads (`*.tmp`, see `drive.service.ts`) are left alone; they're not
+ * yet part of the served cache and will rename into place or be cleaned up on failure.
+ */
+export async function enforceCacheSizeLimit(dir: string, maxBytes: number): Promise<void> {
+  let entries: string[];
+  try {
+    entries = await fsPromises.readdir(dir);
+  } catch {
+    return;
+  }
+
+  const stats = await Promise.all(
+    entries
+      .filter((name) => !name.endsWith(".tmp"))
+      .map(async (name) => {
+        const filePath = path.join(dir, name);
+        try {
+          const stat = await fsPromises.stat(filePath);
+          return { filePath, size: stat.size, atimeMs: stat.atimeMs };
+        } catch {
+          return null;
+        }
+      })
+  );
+  const files = stats.filter((f): f is { filePath: string; size: number; atimeMs: number } => f !== null);
+
+  let remaining = files.reduce((sum, f) => sum + f.size, 0);
+  if (remaining <= maxBytes) return;
+
+  files.sort((a, b) => a.atimeMs - b.atimeMs);
+  for (const file of files) {
+    if (remaining <= maxBytes) break;
+    await fsPromises.unlink(file.filePath).catch(() => {});
+    remaining -= file.size;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -203,7 +301,7 @@ export async function uploadFile(
     textContent = decoded;
   }
 
-  const thumbnailUrl = mediaType === "IMAGE" ? `/media/${id}/file` : null;
+  const thumbnailUrl = mediaType === "IMAGE" ? `/media/${id}/thumbnail` : null;
   const fileName = await resolveFileName(prisma, file.filename || `upload.${ext}`, folderId);
 
   return prisma.media.create({
@@ -509,6 +607,11 @@ export async function deleteMedia(prisma: PrismaClient, id: string) {
     const ext = media.mimeType ? extFromMime(media.mimeType) : "bin";
     const cachePath = path.join(cacheDir, `${media.id}.${ext}`);
     await fsPromises.unlink(cachePath).catch(() => {});
+  }
+
+  // Thumbnails apply to both sources (17.6) — clean up regardless of sourceType.
+  if (media.fileType === "IMAGE") {
+    await fsPromises.unlink(getThumbnailPath(media.id)).catch(() => {});
   }
 
   await prisma.media.delete({ where: { id } });

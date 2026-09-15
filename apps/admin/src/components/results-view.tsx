@@ -68,7 +68,7 @@ function OptionBars({ result }: { result: QuestionResult }) {
             <span className="flex min-w-0 items-center gap-2">
               {option.mediaId && (
                 <img
-                  src={`${API_URL}/media/${option.mediaId}/file`}
+                  src={`${API_URL}/media/${option.mediaId}/thumbnail`}
                   alt={optionLabel(option, index)}
                   className="size-8 shrink-0 rounded object-cover"
                 />
@@ -147,7 +147,7 @@ function RankingResult({ result }: { result: QuestionResult }) {
                 </span>
                 {rank.mediaId && (
                   <img
-                    src={`${API_URL}/media/${rank.mediaId}/file`}
+                    src={`${API_URL}/media/${rank.mediaId}/thumbnail`}
                     alt={rank.label ?? `Option ${index + 1}`}
                     className="size-8 shrink-0 rounded object-cover"
                   />
@@ -240,7 +240,7 @@ export function QuestionResults({
             {/* Rating results are unreadable without the thing that was rated. */}
             {question.mediaId && (
               <img
-                src={`${API_URL}/media/${question.mediaId}/file`}
+                src={`${API_URL}/media/${question.mediaId}/thumbnail`}
                 alt={question.prompt}
                 className="mt-3 max-h-40 rounded-md border border-border object-contain"
               />

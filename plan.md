@@ -110,7 +110,7 @@ Before moving to Phase 18, all of the following must be true:
 - [ ] Firing 20+ simultaneous cold requests for the same uncached Drive-sourced media produces exactly one Drive API call and one valid cache file
 - [ ] Running 2+ local API instances behind a simple round-robin proxy enforces the combined rate limit correctly via the shared store, not `limit × instance count`
 - [ ] With pool limits configured, running multiple API instances under sustained load keeps total Postgres connections under `max_connections`
-- [ ] `GET /admin/tests/:id/results` on a test with 10,000+ seeded responses returns within an acceptable latency budget (define a concrete target, e.g. under 2s) without a memory spike proportional to response count
+- [ ] `GET /admin/tests/:id/results` on a test with 10,000+ seeded responses returns in under 2 seconds, without a memory spike proportional to response count
 - [ ] `GET /evaluator/next-test` no longer fetches an unbounded active-test list or an unbounded response history per call
 - [ ] The Media Library and Test list show all items, not just the first 50, via working pagination controls
 - [ ] Thumbnails served to the admin grid and mobile/evaluator cards are meaningfully smaller than the original file

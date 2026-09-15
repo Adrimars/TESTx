@@ -1,0 +1,9 @@
+{
+  "extends": "@testx/config/tsconfig/base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "noEmit": true
+  },
+  "include": ["src", "scripts"],
+  "exclude": ["node_modules", "dist"]
+}
