@@ -32,6 +32,13 @@ export type ReleaseDecision =
 
 const DEFAULT_FLY_DISTANCE = 700;
 
+/** How far the pointer must travel from its down-point before this counts as a drag
+ * rather than a tap - matches TapZone's own `maxDistance(10)` so the two systems agree on
+ * where that line sits. Below it, the pointer is never captured, which is what lets a tap
+ * meant for a nested TapZone (TwoOptionCard's halves, MultiSelectCard's caption buttons)
+ * reach that TapZone's own listener instead of being hijacked by this card's drag. */
+const DRAG_THRESHOLD_PX = 10;
+
 /** A move sample older than this cannot speak for the current release - a finger that
  * paused mid-drag before lifting should not report the flick it made a while ago. */
 const VELOCITY_SAMPLE_MAX_AGE_MS = 100;
@@ -104,6 +111,10 @@ export function SwipeCard({
 
   const nodeRef = useRef<View>(null);
   const activePointerId = useRef<number | null>(null);
+  /** True once the active pointer has crossed `DRAG_THRESHOLD_PX` and this has captured
+   * it as a drag. False for the span between pointerdown and that crossing (or for the
+   * whole gesture, if it lifts again before ever crossing it) - a plain tap. */
+  const dragStarted = useRef(false);
   /** clientX/Y at the moment the drag started - translationX/Y is just the delta from
    * here, mirroring RNGH's own `event.translationX` rather than re-deriving it from a
    * bounding rect that itself moves as the card translates. */
@@ -117,6 +128,7 @@ export function SwipeCard({
 
   function resetDragTracking() {
     activePointerId.current = null;
+    dragStarted.current = false;
     lastSample.current = null;
     lastVelocityX.current = 0;
     lastVelocityY.current = 0;
@@ -129,10 +141,25 @@ export function SwipeCard({
     // Primary button only, matching RNGH's own `isButtonInConfig` check - a right- or
     // middle-click must not drag a card. Touch and pen contacts both report 0 here.
     if (event.nativeEvent.button !== 0) return;
-    const node = nodeRef.current as unknown as HTMLElement | null;
-    if (!node) return;
 
     const { pointerId, clientX, clientY } = event.nativeEvent;
+    // Capturing the pointer and firing onDragStart happen later, in handlePointerMove,
+    // once the pointer actually crosses DRAG_THRESHOLD_PX - not here. Capturing on down
+    // would hijack every subsequent event for this pointer, including the pointerup a
+    // nested TapZone (e.g. TwoOptionCard's halves) needs to see to recognize its own tap.
+    activePointerId.current = pointerId;
+    dragStarted.current = false;
+    startClientX.current = clientX;
+    startClientY.current = clientY;
+    lastSample.current = { x: clientX, y: clientY, t: Date.now() };
+    lastVelocityX.current = 0;
+    lastVelocityY.current = 0;
+  }
+
+  /** Promotes the tracked pointer to an actual drag once it crosses the threshold: grabs
+   * pointer capture, computes the grab point from the original down-point (not wherever
+   * the threshold happened to be crossed), and fires onDragStart. */
+  function beginDrag(node: HTMLElement, pointerId: number) {
     // A pointer capture request can be rejected (e.g. the pointer already lifted between
     // the event firing and this running) - that must not abort tracking the drag itself.
     try {
@@ -140,25 +167,20 @@ export function SwipeCard({
     } catch {
       // Ignored - see above.
     }
-    activePointerId.current = pointerId;
-    startClientX.current = clientX;
-    startClientY.current = clientY;
-    lastSample.current = { x: clientX, y: clientY, t: Date.now() };
-    lastVelocityX.current = 0;
-    lastVelocityY.current = 0;
 
     // The rect moves with the card, so a grab landing while a previous rejected drag is
     // still springing back would be measured against where the card currently sits.
     // `pointerX`/`pointerY` are defined relative to the card's *resting* centre - that is
     // the space the drag-to-target hit-testing works in - so undo the live translate here.
     const rect = node.getBoundingClientRect();
-    const localX = clientX - rect.left + translateX.value;
-    const localY = clientY - rect.top + translateY.value;
+    const localX = startClientX.current - rect.left + translateX.value;
+    const localY = startClientY.current - rect.top + translateY.value;
     grabX.value = boxWidth.value > 0 ? localX - boxWidth.value / 2 : 0;
     grabY.value = boxHeight.value > 0 ? localY - boxHeight.value / 2 : 0;
     pointerX.value = grabX.value;
     pointerY.value = grabY.value;
 
+    dragStarted.current = true;
     if (onDragStart) onDragStart();
   }
 
@@ -166,6 +188,19 @@ export function SwipeCard({
     const { pointerId, clientX, clientY } = event.nativeEvent;
     if (activePointerId.current === null || pointerId !== activePointerId.current) return;
     if (isSettling.value) return;
+
+    if (!dragStarted.current) {
+      const traveled = Math.hypot(clientX - startClientX.current, clientY - startClientY.current);
+      if (traveled < DRAG_THRESHOLD_PX) {
+        // Still inside tap territory - keep the velocity sample fresh but don't start
+        // dragging (or capture the pointer) yet.
+        lastSample.current = { x: clientX, y: clientY, t: Date.now() };
+        return;
+      }
+      const node = nodeRef.current as unknown as HTMLElement | null;
+      if (!node) return;
+      beginDrag(node, pointerId);
+    }
 
     const now = Date.now();
     const previous = lastSample.current;
@@ -191,6 +226,13 @@ export function SwipeCard({
   function handlePointerUp(event: { nativeEvent: { pointerId: number } }) {
     const { pointerId } = event.nativeEvent;
     if (activePointerId.current === null || pointerId !== activePointerId.current) return;
+    if (!dragStarted.current) {
+      // Never crossed DRAG_THRESHOLD_PX - a tap, not a drag. The pointer was never
+      // captured, so whatever was actually under it (a nested TapZone, most often) already
+      // got its own pointerup; there is nothing for this card to release or evaluate.
+      resetDragTracking();
+      return;
+    }
     const node = nodeRef.current as unknown as HTMLElement | null;
     try {
       node?.releasePointerCapture?.(pointerId);

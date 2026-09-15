@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import type { MutableRefObject, ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import type { LayoutChangeEvent, StyleProp, ViewStyle } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import type { GestureType } from "react-native-gesture-handler";
 import Animated, {
   interpolate,
   runOnJS,
@@ -82,6 +83,16 @@ type SwipeCardProps = {
   pointer?: DragPosition;
   /** False renders the card as a static surface: the 3+ option select does not drag. */
   enabled?: boolean;
+  /**
+   * `gestureRef`s of `TapZone`s nested inside this card's children (e.g. TwoOptionCard's
+   * halves, MultiSelectCard's caption buttons). The Pan won't start recognizing a touch
+   * until every listed tap has failed to recognize it first - this file's own `.web`
+   * sibling doesn't use RNGH's Pan at all (see its doc), so this native-only relation is
+   * what makes the two platforms agree on the same tap-first arbitration. Confirmed fixing
+   * a real swallowed-tap bug on web (SwipeCard.web's pointer capture, not this file); still
+   * unverified whether native needed it (see TapZone's own doc for what to check on-device).
+   */
+  waitFor?: MutableRefObject<GestureType | undefined>[];
   /** Degrees of tilt at the horizontal edges of the screen. 0 keeps the card flat. */
   maxTiltDeg?: number;
   /** Screen width, used to scale the tilt and the default fly-away. */
@@ -109,6 +120,7 @@ export function SwipeCard({
   width,
   style,
   surface = true,
+  waitFor,
 }: SwipeCardProps) {
   const ownX = useSharedValue(0);
   const ownY = useSharedValue(0);
@@ -151,8 +163,9 @@ export function SwipeCard({
   // card everywhere else, so a fly-off there is a fade instead of a slide.
   const opacity = useSharedValue(1);
 
-  const pan = Gesture.Pan()
-    .enabled(enabled)
+  const pan = Gesture.Pan().enabled(enabled);
+  if (waitFor && waitFor.length > 0) pan.requireExternalGestureToFail(...waitFor);
+  pan
     .onStart((event) => {
       if (isSettling.value) return;
       // event.x/y are relative to the card's own box, so subtracting half its size gives

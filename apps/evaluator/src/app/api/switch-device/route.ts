@@ -4,10 +4,15 @@ const DEVICE_OVERRIDE_COOKIE = "testx_device";
 const COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 
 /**
- * Backs both apps' "switch version" link (18.4). Setting the cookie here - rather than
- * in the client that renders the link - is what makes it stick: the very next request to
- * `/` is what `proxy.ts` reads it on, and that request only carries a cookie this endpoint
- * has already set via a `Set-Cookie` header on its own redirect response.
+ * Sets `proxy.ts`'s device-override cookie (18.4) and redirects. Originally backed a
+ * "switch version" link in each app's own UI; both were removed once mobile-web became
+ * the default everywhere (see proxy.ts's own doc), so this is now reachable only by
+ * visiting the URL directly (`/api/switch-device?to=desktop`) - a manual/dev escape hatch
+ * back to this app's own pages, not a user-facing control. Setting the cookie here rather
+ * than in a client that renders a link is still what makes it stick either way: the very
+ * next request to `/` is what `proxy.ts` reads it on, and that request only carries a
+ * cookie this endpoint has already set via a `Set-Cookie` header on its own redirect
+ * response.
  */
 export function GET(request: NextRequest): NextResponse {
   const to = request.nextUrl.searchParams.get("to");

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useRouter } from "expo-router";
-import { CheckSquare, Hand, ListOrdered, MoveHorizontal, MoveVertical, PartyPopper } from "lucide-react-native";
+import { PartyPopper } from "lucide-react-native";
 import { StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
@@ -12,8 +12,6 @@ import type { EvaluatorQuestion } from "@/lib/test";
 import { markGestureHintsSeen } from "@/lib/tutorial";
 import { theme } from "@/lib/theme";
 
-type StepIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth?: number }>;
-
 /**
  * One synthetic question per gesture the real deck can ask for, in the same order the
  * deck itself tends to introduce them: the universal gesture first, then the two novel
@@ -22,119 +20,96 @@ type StepIcon = React.ComponentType<{ size?: number; color?: string; strokeWidth
  * These are never sent anywhere - no test, no session token, no submission - so the
  * content only has to be legible and harmless, not authored to any admin standard.
  * `mediaType: null` and every option's `mediaUrl: null` land on CardMedia's text-label
- * fallback, the same path a real question with no photo takes.
+ * fallback, the same path a real question with no photo takes. Each step's own card
+ * carries the instruction (TwoOptionCard's DragHint, OptionListCard's TapHint, etc.) -
+ * there is no separate banner here narrating the gesture in words a second time.
  */
-const PRACTICE_STEPS: { question: EvaluatorQuestion; Icon: StepIcon; instruction: string }[] = [
+const PRACTICE_QUESTIONS: EvaluatorQuestion[] = [
   {
-    Icon: MoveHorizontal,
-    instruction: "Swipe the card left or right to pick a side.",
-    question: {
-      id: "practice-two-option",
-      testId: "practice",
-      type: "SINGLE_SELECT",
-      prompt: "Pizza or burger?",
-      mediaType: null,
-      mediaId: null,
-      mediaUrl: null,
-      order: 0,
-      config: {},
-      isReviewHidden: false,
-      options: [
-        { id: "practice-two-option-a", questionId: "practice-two-option", label: "🍕 Pizza", mediaId: null, order: 0, mediaUrl: null, media: null },
-        { id: "practice-two-option-b", questionId: "practice-two-option", label: "🍔 Burger", mediaId: null, order: 1, mediaUrl: null, media: null },
-      ],
-    },
+    id: "practice-two-option",
+    testId: "practice",
+    type: "SINGLE_SELECT",
+    prompt: "Pizza or burger?",
+    mediaType: null,
+    mediaId: null,
+    mediaUrl: null,
+    order: 0,
+    config: {},
+    isReviewHidden: false,
+    options: [
+      { id: "practice-two-option-a", questionId: "practice-two-option", label: "🍕 Pizza", mediaId: null, order: 0, mediaUrl: null, media: null },
+      { id: "practice-two-option-b", questionId: "practice-two-option", label: "🍔 Burger", mediaId: null, order: 1, mediaUrl: null, media: null },
+    ],
   },
   {
-    Icon: CheckSquare,
-    instruction: "Tap the option you want.",
-    question: {
-      id: "practice-option-list",
-      testId: "practice",
-      type: "SINGLE_SELECT",
-      prompt: "Pick your favorite season",
-      mediaType: null,
-      mediaId: null,
-      mediaUrl: null,
-      order: 1,
-      config: {},
-      isReviewHidden: false,
-      options: [
-        { id: "practice-option-list-a", questionId: "practice-option-list", label: "🌸 Spring", mediaId: null, order: 0, mediaUrl: null, media: null },
-        { id: "practice-option-list-b", questionId: "practice-option-list", label: "☀️ Summer", mediaId: null, order: 1, mediaUrl: null, media: null },
-        { id: "practice-option-list-c", questionId: "practice-option-list", label: "🍁 Autumn", mediaId: null, order: 2, mediaUrl: null, media: null },
-        { id: "practice-option-list-d", questionId: "practice-option-list", label: "❄️ Winter", mediaId: null, order: 3, mediaUrl: null, media: null },
-      ],
-    },
+    id: "practice-option-list",
+    testId: "practice",
+    type: "SINGLE_SELECT",
+    prompt: "Pick your favorite season",
+    mediaType: null,
+    mediaId: null,
+    mediaUrl: null,
+    order: 1,
+    config: {},
+    isReviewHidden: false,
+    options: [
+      { id: "practice-option-list-a", questionId: "practice-option-list", label: "🌸 Spring", mediaId: null, order: 0, mediaUrl: null, media: null },
+      { id: "practice-option-list-b", questionId: "practice-option-list", label: "☀️ Summer", mediaId: null, order: 1, mediaUrl: null, media: null },
+      { id: "practice-option-list-c", questionId: "practice-option-list", label: "🍁 Autumn", mediaId: null, order: 2, mediaUrl: null, media: null },
+      { id: "practice-option-list-d", questionId: "practice-option-list", label: "❄️ Winter", mediaId: null, order: 3, mediaUrl: null, media: null },
+    ],
   },
   {
-    Icon: Hand,
-    instruction:
-      "One option shows at a time. Swipe right to include it, left to skip it - liking zero, some, or all of them is a fine answer.",
-    question: {
-      id: "practice-multi-select",
-      testId: "practice",
-      type: "MULTI_SELECT",
-      prompt: "Which of these do you enjoy?",
-      mediaType: null,
-      mediaId: null,
-      mediaUrl: null,
-      order: 2,
-      config: {},
-      isReviewHidden: false,
-      options: [
-        { id: "practice-multi-select-a", questionId: "practice-multi-select", label: "📚 Reading", mediaId: null, order: 0, mediaUrl: null, media: null },
-        { id: "practice-multi-select-b", questionId: "practice-multi-select", label: "🎮 Gaming", mediaId: null, order: 1, mediaUrl: null, media: null },
-        { id: "practice-multi-select-c", questionId: "practice-multi-select", label: "🎵 Music", mediaId: null, order: 2, mediaUrl: null, media: null },
-        { id: "practice-multi-select-d", questionId: "practice-multi-select", label: "🏀 Sports", mediaId: null, order: 3, mediaUrl: null, media: null },
-      ],
-    },
+    id: "practice-multi-select",
+    testId: "practice",
+    type: "MULTI_SELECT",
+    prompt: "Which of these do you enjoy?",
+    mediaType: null,
+    mediaId: null,
+    mediaUrl: null,
+    order: 2,
+    config: {},
+    isReviewHidden: false,
+    options: [
+      { id: "practice-multi-select-a", questionId: "practice-multi-select", label: "📚 Reading", mediaId: null, order: 0, mediaUrl: null, media: null },
+      { id: "practice-multi-select-b", questionId: "practice-multi-select", label: "🎮 Gaming", mediaId: null, order: 1, mediaUrl: null, media: null },
+      { id: "practice-multi-select-c", questionId: "practice-multi-select", label: "🎵 Music", mediaId: null, order: 2, mediaUrl: null, media: null },
+      { id: "practice-multi-select-d", questionId: "practice-multi-select", label: "🏀 Sports", mediaId: null, order: 3, mediaUrl: null, media: null },
+    ],
   },
   {
-    Icon: MoveVertical,
-    instruction:
-      "Drag the photo onto a number to rate it. Let go anywhere else and it springs back, so a stray touch can't score it by accident.",
-    question: {
-      id: "practice-rating",
-      testId: "practice",
-      type: "RATING",
-      prompt: "How would you rate this?",
-      mediaType: null,
-      mediaId: null,
-      mediaUrl: null,
-      order: 3,
-      config: {},
-      isReviewHidden: false,
-      options: [
-        { id: "practice-rating-a", questionId: "practice-rating", label: "⭐ Sample photo", mediaId: null, order: 0, mediaUrl: null, media: null },
-      ],
-    },
+    id: "practice-rating",
+    testId: "practice",
+    type: "RATING",
+    prompt: "How would you rate this?",
+    mediaType: null,
+    mediaId: null,
+    mediaUrl: null,
+    order: 3,
+    config: {},
+    isReviewHidden: false,
+    options: [
+      { id: "practice-rating-a", questionId: "practice-rating", label: "⭐ Sample photo", mediaId: null, order: 0, mediaUrl: null, media: null },
+    ],
   },
   {
-    Icon: ListOrdered,
-    instruction:
-      "Drag each card onto an open slot to put it in order. Hold and drag a placed card to swap it with another - or just tap a placed card to pull it back out and place it again.",
-    question: {
-      id: "practice-ranking",
-      testId: "practice",
-      type: "RANKING",
-      prompt: "Put these in your favorite order",
-      mediaType: null,
-      mediaId: null,
-      mediaUrl: null,
-      order: 4,
-      config: {},
-      isReviewHidden: false,
-      options: [
-        { id: "practice-ranking-a", questionId: "practice-ranking", label: "☕ Coffee", mediaId: null, order: 0, mediaUrl: null, media: null },
-        { id: "practice-ranking-b", questionId: "practice-ranking", label: "🍵 Tea", mediaId: null, order: 1, mediaUrl: null, media: null },
-        { id: "practice-ranking-c", questionId: "practice-ranking", label: "🧃 Juice", mediaId: null, order: 2, mediaUrl: null, media: null },
-      ],
-    },
+    id: "practice-ranking",
+    testId: "practice",
+    type: "RANKING",
+    prompt: "Put these in your favorite order",
+    mediaType: null,
+    mediaId: null,
+    mediaUrl: null,
+    order: 4,
+    config: {},
+    isReviewHidden: false,
+    options: [
+      { id: "practice-ranking-a", questionId: "practice-ranking", label: "☕ Coffee", mediaId: null, order: 0, mediaUrl: null, media: null },
+      { id: "practice-ranking-b", questionId: "practice-ranking", label: "🍵 Tea", mediaId: null, order: 1, mediaUrl: null, media: null },
+      { id: "practice-ranking-c", questionId: "practice-ranking", label: "🧃 Juice", mediaId: null, order: 2, mediaUrl: null, media: null },
+    ],
   },
 ];
-
-const PRACTICE_QUESTIONS = PRACTICE_STEPS.map((step) => step.question);
 
 /**
  * The mandatory, hands-on first-run walkthrough, run once between registration and the
@@ -171,9 +146,6 @@ export default function PracticeTestScreen() {
     return <PracticeCompleteScreen onContinue={() => router.replace("/dashboard")} />;
   }
 
-  const stepIndex = deck.index;
-  const step = PRACTICE_STEPS[stepIndex];
-
   return (
     <SafeAreaView style={styles.flex} edges={["top", "bottom"]}>
       <ProgressBar total={PRACTICE_QUESTIONS.length} index={deck.index} />
@@ -181,13 +153,8 @@ export default function PracticeTestScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>Quick practice</Text>
         <Text style={styles.stepCount}>
-          {stepIndex + 1} of {PRACTICE_QUESTIONS.length}
+          {deck.index + 1} of {PRACTICE_QUESTIONS.length}
         </Text>
-      </View>
-
-      <View style={styles.instruction}>
-        <step.Icon size={28} color={theme.colors.accent} strokeWidth={1.5} />
-        <Text style={styles.instructionText}>{step.instruction}</Text>
       </View>
 
       <CardStack
@@ -246,18 +213,4 @@ const styles = StyleSheet.create({
   },
   title: { color: theme.colors.textPrimary, fontSize: 17, fontWeight: "700" },
   stepCount: { color: theme.colors.textSecondary, fontSize: 13 },
-  instruction: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing(1.5),
-    marginHorizontal: theme.spacing(2),
-    marginTop: theme.spacing(1.5),
-    marginBottom: theme.spacing(0.5),
-    padding: theme.spacing(1.5),
-    borderRadius: 14,
-    backgroundColor: theme.colors.surfaceRaised,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: theme.colors.borderHairline,
-  },
-  instructionText: { flex: 1, color: theme.colors.textPrimary, fontSize: 14, lineHeight: 20 },
 });

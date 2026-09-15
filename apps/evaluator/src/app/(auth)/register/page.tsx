@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation";
 import { Alert, Button, Field, Input, PasswordInput } from "@testx/ui";
 import { AuthCard } from "@/components/auth-card";
 import { useAuth } from "@/components/auth-provider";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+import { API_URL } from "@/lib/api";
 
 export default function RegisterPage() {
   const { register } = useAuth();

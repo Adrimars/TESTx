@@ -4,10 +4,10 @@
   "private": true,
   "packageManager": "pnpm@10.33.0",
   "scripts": {
-    "dev": "turbo dev",
+    "dev": "turbo dev --continue",
     "dev:api": "pnpm --filter @testx/api dev",
-    "dev:evaluator": "pnpm --filter @testx/api dev & pnpm --filter @testx/evaluator dev",
-    "dev:admin": "pnpm --filter @testx/api dev & pnpm --filter @testx/admin dev",
+    "dev:evaluator": "turbo dev --continue --filter=@testx/api --filter=@testx/evaluator",
+    "dev:admin": "turbo dev --continue --filter=@testx/api --filter=@testx/admin",
     "build": "turbo build",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",

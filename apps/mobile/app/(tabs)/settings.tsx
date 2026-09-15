@@ -1,10 +1,10 @@
-import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
 import { alert } from "@/lib/alert";
 import { apiFetch } from "@/lib/api";
-import { EVALUATOR_APP_URL } from "@/lib/env";
+import { DESKTOP_FORM_MAX_WIDTH, useIsDesktopWeb } from "@/lib/responsive";
 import { useSession } from "@/lib/session";
 import { theme } from "@/lib/theme";
 
@@ -16,6 +16,7 @@ import { theme } from "@/lib/theme";
 export default function SettingsScreen() {
   const router = useRouter();
   const { signOut } = useSession();
+  const isDesktopWeb = useIsDesktopWeb();
 
   async function handleSignOut() {
     await signOut();
@@ -52,20 +53,10 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={styles.flex} edges={["top", "bottom"]}>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView
+        contentContainerStyle={[styles.container, isDesktopWeb && styles.containerDesktop]}
+      >
         <Text style={styles.title}>Settings</Text>
-
-        {Platform.OS === "web" ? (
-          // 18.4 - the counterpart to apps/evaluator's "Switch to mobile version" link;
-          // only meaningful on web, since native has no desktop experience to switch to.
-          <Button
-            label="Switch to desktop version"
-            variant="quiet"
-            onPress={() => {
-              window.location.href = `${EVALUATOR_APP_URL}/api/switch-device?to=desktop`;
-            }}
-          />
-        ) : null}
 
         <View style={styles.dangerZone}>
           <Button label="Sign out" variant="secondary" onPress={handleSignOut} />
@@ -82,6 +73,10 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1, backgroundColor: theme.colors.surfaceBase },
   container: { padding: theme.spacing(3), gap: theme.spacing(2) },
+  // Settings is a short list of buttons - left at the tabs group's full ~1040px width it
+  // reads as mostly empty page rather than a deliberately compact screen, so this caps it
+  // to a narrower, centered column of its own instead.
+  containerDesktop: { maxWidth: DESKTOP_FORM_MAX_WIDTH, width: "100%", alignSelf: "center" },
   title: { color: theme.colors.textPrimary, fontSize: 22, fontWeight: "700" },
   dangerZone: { marginTop: theme.spacing(2), gap: theme.spacing(1) },
   dangerNote: { color: theme.colors.textSecondary, fontSize: 12, textAlign: "center" },

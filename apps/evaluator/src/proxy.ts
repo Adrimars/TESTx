@@ -11,11 +11,15 @@ const PUBLIC_PATHS = ["/login", "/register"];
 const OPEN_PATHS = ["/delete-account"];
 
 /**
- * Device-based routing (18.4): on the same domain, phone browsers get the mobile-web
- * build (Expo static export) instead of this desktop app. Reads a manual override
- * cookie first - set by either app's "switch version" link (see /api/switch-device) -
- * so a phone that explicitly asked for the desktop experience is not immediately routed
- * straight back by its own user agent.
+ * Device-based routing (18.4, revised): every browser - phone or desktop - gets the
+ * mobile-web build (Expo static export) by default; this app's own page-by-page pages
+ * still exist but are only reachable via the manual override below. The desktop-native
+ * pages predate the deck's swipe/drag/tutorial system and never got it, which is the
+ * whole reason for this flip - one gesture engine and tutorial implementation instead of
+ * two. Neither app links to `/api/switch-device` anymore (both "switch version" buttons
+ * were removed once mobile-web became the default everywhere) - it's still live as a
+ * manual/dev-only escape hatch (`/api/switch-device?to=desktop`) back to this app's own
+ * pages, just not surfaced in either UI.
  */
 const DEVICE_OVERRIDE_COOKIE = "testx_device";
 
@@ -32,14 +36,12 @@ const MOBILE_WEB_PROXY_TARGET = process.env.MOBILE_WEB_PROXY_TARGET ?? "http://l
  * this app's backend, never the mobile-web proxy target. */
 const NEVER_PROXIED_PREFIXES = ["/api/"];
 
-/** Phone-class user agents only (18.4) - a tablet stays on the desktop experience. */
-const MOBILE_UA_PATTERN = /iPhone|iPod|Android.*Mobile|Windows Phone/i;
-
 function wantsMobileWeb(request: NextRequest): boolean {
   const override = request.cookies.get(DEVICE_OVERRIDE_COOKIE)?.value;
   if (override === "desktop") return false;
-  if (override === "mobile") return true;
-  return MOBILE_UA_PATTERN.test(request.headers.get("user-agent") ?? "");
+  // "mobile" (explicit) and unset (the new default for every device) land the same way -
+  // there is no longer a user-agent check to fall back on.
+  return true;
 }
 
 export default function proxy(request: NextRequest) {
@@ -49,15 +51,19 @@ export default function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Checked ahead of the mobile-web rewrite, not after: mobile-web has no equivalent
+  // route, and this one has to keep working for a visitor who has already uninstalled the
+  // app (Google Play's requirement, see OPEN_PATHS' own doc) regardless of which device
+  // class they're on.
+  if (OPEN_PATHS.includes(pathname)) {
+    return NextResponse.next();
+  }
+
   if (wantsMobileWeb(request)) {
     return NextResponse.rewrite(new URL(`${pathname}${search}`, MOBILE_WEB_PROXY_TARGET));
   }
 
   const token = request.cookies.get("access_token");
-
-  if (OPEN_PATHS.includes(pathname)) {
-    return NextResponse.next();
-  }
 
   if (PUBLIC_PATHS.includes(pathname)) {
     if (token) return NextResponse.redirect(new URL("/dashboard", request.url));

@@ -195,6 +195,8 @@ Draft → Active → Paused → Active → Closed
 
 ## 8. Evaluator Experience
 
+> **Superseded as the default flow (see plan.md Phase 20's revision note):** §9.2's page-by-page test-taking (Start Next Test → intro screen → one question per page → review/submit) was the original spec, before §15/§16's swipe/drag deck existed. Both were live side by side afterward - §9.2 on desktop web (`apps/evaluator`), §15 on mobile - until `apps/evaluator`'s own flow never got the gesture tutorials or the drag-to-target Rating/Ranking interactions §15/§16 later added, and stayed visibly behind. Device-based routing (§18.4/20.4 in plan.md) now sends every visitor, phone or desktop, into §15's swipe/drag deck by default; §9.2's flow still exists in `apps/evaluator` and still works, reachable only via the manual "switch to desktop version" override. §9.1/§9.3 below (dashboard, responsive priorities) describe that same now-secondary page set. Treat §15/§16 as the current spec for what a desktop evaluator actually sees.
+
 ### 9.1 Dashboard
 - **Auto-assigned test:** Prominent "Start Next Test" button. System picks the next eligible test.
 - **Points balance** displayed.
@@ -592,6 +594,7 @@ Coupon {
 ### 15.1 Vision & Scope
 - A native mobile app for **evaluators only** (admin remains web-only). Reframes test-taking as a continuous, social-media-style swipeable feed instead of a paginated question-by-question flow.
 - Same test/question/media data model, same admin panel, same test pool as the web evaluator app — mobile is a new presentation and interaction layer on the existing backend, not a separate content system. An admin creates one test; it can be taken on web or mobile.
+- Also the **default desktop web experience**, not mobile-only, since plan.md's Phase 20 revision: this same build (its web export) is what device-based routing now sends desktop browsers to as well (see §8's note above), run inside a centered desktop-width column (`apps/mobile/app/_layout.tsx`'s `DesktopWebShell`) rather than a separate page-by-page desktop UI.
 
 ### 15.2 Platform & Tech Stack
 - **React Native + Expo** (managed workflow), TypeScript, added as a new `apps/mobile` package in the existing pnpm/Turborepo workspace. Targets iOS and Android from one codebase.

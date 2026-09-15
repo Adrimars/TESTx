@@ -1,6 +1,12 @@
 import { useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
-import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring } from "react-native-reanimated";
+import Animated, {
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withSequence,
+  withSpring,
+} from "react-native-reanimated";
 import { CARD_REJECT_SPRING } from "@/lib/motion";
 import { theme } from "@/lib/theme";
 
@@ -16,13 +22,17 @@ type CounterChipProps = {
 export function CounterChip({ count, label }: CounterChipProps) {
   const pulse = useSharedValue(1);
   const previousCount = useRef(count);
+  // Reduce Motion (see lib/motion.ts): scale must never animate, and there is no opacity
+  // component here to fade instead - the count itself already updates, so this is simply
+  // not run.
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
-    if (count < previousCount.current) {
+    if (count < previousCount.current && !reducedMotion) {
       pulse.value = withSequence(withSpring(1.2, CARD_REJECT_SPRING), withSpring(1, CARD_REJECT_SPRING));
     }
     previousCount.current = count;
-  }, [count, pulse]);
+  }, [count, pulse, reducedMotion]);
 
   const numberStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulse.value }] }));
 

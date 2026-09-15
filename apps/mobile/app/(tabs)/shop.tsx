@@ -3,6 +3,7 @@ import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from "re
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Button } from "@/components/Button";
 import { resolveMediaUrl } from "@/lib/env";
+import { useIsDesktopWeb } from "@/lib/responsive";
 import { useBalance } from "@/lib/test";
 import { useCoupons, type EvaluatorCoupon } from "@/lib/coupons";
 import { theme } from "@/lib/theme";
@@ -16,6 +17,7 @@ import { theme } from "@/lib/theme";
 export default function ShopScreen() {
   const balance = useBalance();
   const coupons = useCoupons();
+  const isDesktopWeb = useIsDesktopWeb();
 
   return (
     <SafeAreaView style={styles.flex} edges={["top", "bottom"]}>
@@ -51,27 +53,55 @@ export default function ShopScreen() {
             <Text style={styles.stateBody}>Check back later for rewards to spend your points on.</Text>
           </View>
         ) : (
-          coupons.data.map((coupon) => (
-            <CouponCard key={coupon.id} coupon={coupon} balance={balance.data?.balance ?? 0} />
-          ))
+          <View style={isDesktopWeb && styles.grid}>
+            {coupons.data.map((coupon) => (
+              <CouponCard
+                key={coupon.id}
+                coupon={coupon}
+                balance={balance.data?.balance ?? 0}
+                tile={isDesktopWeb}
+              />
+            ))}
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function CouponCard({ coupon, balance }: { coupon: EvaluatorCoupon; balance: number }) {
+function CouponCard({
+  coupon,
+  balance,
+  tile,
+}: {
+  coupon: EvaluatorCoupon;
+  balance: number;
+  /** Image-on-top card for the desktop grid, in place of the mobile list's image-beside-
+   * text row - a row that wide would leave the text column stretched far past a
+   * comfortable reading width. */
+  tile: boolean;
+}) {
   const [comingSoon, setComingSoon] = useState(false);
   const resolvedImage = resolveMediaUrl(coupon.imageUrl);
   const canAfford = balance >= coupon.pointsCost;
 
   return (
-    <View style={styles.couponCard}>
-      <View style={styles.couponImage}>
+    <View style={[styles.couponCard, tile && styles.couponCardTile]}>
+      <View style={[styles.couponImage, tile && styles.couponImageTile]}>
         {resolvedImage ? (
-          <Image source={{ uri: resolvedImage }} style={styles.couponImage} resizeMode="cover" />
+          <Image
+            source={{ uri: resolvedImage }}
+            style={[styles.couponImage, tile && styles.couponImageTile]}
+            resizeMode="cover"
+          />
         ) : (
-          <View style={[styles.couponImage, styles.couponImageFallback]}>
+          <View
+            style={[
+              styles.couponImage,
+              tile && styles.couponImageTile,
+              styles.couponImageFallback,
+            ]}
+          >
             <Text style={styles.couponImageFallbackGlyph}>🎁</Text>
           </View>
         )}
@@ -129,6 +159,9 @@ const styles = StyleSheet.create({
   },
   stateTitle: { color: theme.colors.textPrimary, fontSize: 16, fontWeight: "600" },
   stateBody: { color: theme.colors.textSecondary, fontSize: 14, textAlign: "center" },
+  // Wraps into a multi-column grid on desktop instead of the mobile list's single column -
+  // a catalog reads as a shelf of items, not a chat-style feed, once there's room for it.
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: theme.spacing(2) },
   couponCard: {
     flexDirection: "row",
     gap: theme.spacing(1.5),
@@ -138,6 +171,9 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: theme.colors.borderHairline,
   },
+  // Image-on-top instead of image-beside-text: a row that wide reads as an oversized list
+  // item, not a shop tile.
+  couponCardTile: { flexDirection: "column", flexGrow: 1, flexBasis: 280, maxWidth: "32%" },
   couponImage: {
     width: 88,
     height: 88,
@@ -145,6 +181,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     backgroundColor: theme.colors.surfaceOverlay,
   },
+  couponImageTile: { width: "100%", height: 140 },
   couponImageFallback: { alignItems: "center", justifyContent: "center" },
   couponImageFallbackGlyph: { fontSize: 32 },
   couponBody: { flex: 1, justifyContent: "space-between", gap: theme.spacing(0.5) },

@@ -9,6 +9,7 @@ export default [
     // are the places that matter, and there is no alternative.
     files: [
       "apps/mobile/src/lib/avatars.ts",
+      "apps/mobile/app/(tabs)/_layout.tsx",
       "apps/mobile/app/(tabs)/dashboard.tsx",
       "apps/mobile/app/index.tsx",
       "apps/mobile/app/login.tsx",

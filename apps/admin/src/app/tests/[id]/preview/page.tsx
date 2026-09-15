@@ -14,11 +14,9 @@ import {
   EmptyState,
   Progress,
 } from "@testx/ui";
-import { apiFetch } from "@/lib/api";
+import { API_URL, apiFetch } from "@/lib/api";
 import { statusVariant } from "@/lib/status";
 import type { AdminQuestion, AdminTestDetail } from "@/lib/admin-types";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 function optionLabel(question: AdminQuestion, optionIndex: number) {
   return question.options[optionIndex]?.label ?? `Option ${optionIndex + 1}`;

@@ -16,7 +16,7 @@ export function AuthCard({
     <div className="flex w-full max-w-md flex-col items-center gap-8">
       <div className="flex flex-col items-center gap-2.5">
         <p className="text-sm text-muted-foreground">Welcome to</p>
-        <img src="/testxlogo.jpg" alt="TESTx" className="h-11 w-auto" />
+        <img src="/testxlogo-dark.png" alt="TESTx" className="h-11 w-auto" />
       </div>
 
       <Card className="w-full">
