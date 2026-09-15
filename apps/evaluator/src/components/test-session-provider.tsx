@@ -8,7 +8,6 @@ type TestSessionState = {
   answers: Map<string, AnswerData>;
   /** Server-signed token holding the authoritative session start time. */
   sessionToken: string | null;
-  questionTimers: Map<string, number>; // accumulated seconds per question
 };
 
 type TestSessionContextValue = {
@@ -60,7 +59,6 @@ export function TestSessionProvider({ children }: { children: React.ReactNode })
     test: null,
     answers: new Map(),
     sessionToken: null,
-    questionTimers: new Map(),
   });
 
   const startSession = useCallback((test: TestDetail) => {
@@ -68,7 +66,6 @@ export function TestSessionProvider({ children }: { children: React.ReactNode })
       test,
       answers: seedRankingAnswers(test),
       sessionToken: test.sessionToken,
-      questionTimers: new Map(),
     });
   }, []);
 
@@ -81,15 +78,16 @@ export function TestSessionProvider({ children }: { children: React.ReactNode })
     });
   }, []);
 
+  // Overwrites rather than accumulates: revisiting a question (Back, or editing from
+  // review) times only that latest visit, not the sum of every visit ever made. This
+  // matches the mobile app's deck.ts, whose `back()` discards the prior dwell entirely -
+  // the two clients' timings must agree, since results pool them into one metric.
   const recordTime = useCallback((questionId: string, seconds: number) => {
     setState((prev) => {
-      const timers = new Map(prev.questionTimers);
-      timers.set(questionId, (timers.get(questionId) ?? 0) + seconds);
-      // Also update the answer's timeSpentSeconds
       const answers = new Map(prev.answers);
       const existing = answers.get(questionId) ?? { ...initialAnswer };
-      answers.set(questionId, { ...existing, timeSpentSeconds: timers.get(questionId)! });
-      return { ...prev, questionTimers: timers, answers };
+      answers.set(questionId, { ...existing, timeSpentSeconds: seconds });
+      return { ...prev, answers };
     });
   }, []);
 
@@ -99,7 +97,7 @@ export function TestSessionProvider({ children }: { children: React.ReactNode })
   );
 
   const resetSession = useCallback(() => {
-    setState({ test: null, answers: new Map(), sessionToken: null, questionTimers: new Map() });
+    setState({ test: null, answers: new Map(), sessionToken: null });
   }, []);
 
   return (
