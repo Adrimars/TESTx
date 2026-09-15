@@ -100,7 +100,7 @@ function canBeAttentionCheck(type: QuestionType) {
 }
 
 const GENDERS: Gender[] = ["MALE", "FEMALE", "OTHER", "UNDISCLOSED"];
-const FILE_MEDIA_TYPES: Array<Exclude<MediaType, "TEXT">> = ["IMAGE", "VIDEO", "AUDIO"];
+const FILE_MEDIA_TYPES: MediaType[] = ["IMAGE", "VIDEO", "AUDIO"];
 
 const SETTINGS_TABS = [
   { value: "general", label: "General" },
