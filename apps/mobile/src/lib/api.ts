@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import { API_URL } from "./env";
 import { clearTokens, getAccessToken, getRefreshToken, saveTokens } from "./tokens";
 
@@ -23,24 +24,39 @@ export function setSessionExpiredHandler(handler: (() => void) | null): void {
 // Concurrent 401s must trigger one refresh, not one per in-flight request.
 let refreshPromise: Promise<boolean> | null = null;
 
+/**
+ * Web has no local refresh token to send (18.2) - the API reads its own `refresh_token`
+ * cookie instead, so an empty body plus `credentials: "include"` is enough. A native
+ * client with no stored refresh token has nothing to refresh with, so it skips the
+ * network round trip entirely rather than making a request the API would just reject.
+ */
 async function refreshAccessToken(): Promise<boolean> {
+  const isWeb = Platform.OS === "web";
   const refreshToken = await getRefreshToken();
-  if (!refreshToken) return false;
+  if (!isWeb && !refreshToken) return false;
 
   const response = await fetchWithTimeout(`${API_URL}/auth/refresh`, {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refreshToken }),
+    body: JSON.stringify(refreshToken ? { refreshToken } : {}),
   });
 
   if (!response.ok) return false;
+
+  // The API already rotated the access_token cookie on this response; there is
+  // nothing further for a web client to store.
+  if (isWeb) return true;
 
   const body = (await response.json().catch(() => null)) as {
     accessToken?: string;
     refreshToken?: string;
   } | null;
 
-  if (!body?.accessToken) return false;
+  // The early return above only guarantees this for the isWeb branch already handled;
+  // a native client reaching this point always has one, but the check still has to be
+  // repeated here for the type narrowing.
+  if (!body?.accessToken || !refreshToken) return false;
 
   await saveTokens({
     accessToken: body.accessToken,
@@ -100,6 +116,10 @@ export async function apiFetch<T>(path: string, init?: RequestInit, retry = true
 
   const response = await fetchWithTimeout(`${API_URL}${path}`, {
     ...init,
+    // Web's session lives in an httpOnly cookie (18.2); this is what makes the browser
+    // attach it on every request. RN's own fetch has no cookie jar to act on it, so this
+    // is a harmless no-op there rather than something that needs a platform guard.
+    credentials: "include",
     headers: {
       ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),

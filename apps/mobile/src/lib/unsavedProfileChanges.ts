@@ -1,4 +1,4 @@
-import { Alert } from "react-native";
+import { alert } from "./alert";
 
 /**
  * Bridges the Profile screen's dirty-form state up to the tab bar and the hardware back
@@ -33,7 +33,7 @@ export function confirmLeavingUnsavedProfileChanges(): Promise<boolean> {
   if (!guard || !guard.isDirty()) return Promise.resolve(true);
 
   return new Promise((resolve) => {
-    Alert.alert(
+    alert(
       "Unsaved changes",
       "You have profile changes that haven't been saved yet. What would you like to do?",
       [

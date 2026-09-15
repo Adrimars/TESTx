@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Check } from "lucide-react-native";
 import { MOBILE_MIN_AGE } from "@testx/shared";
 import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
+import { alert } from "@/lib/alert";
 import { useSession } from "@/lib/session";
 import { getDeviceId } from "@/lib/device";
 import { useRegistrationDraft } from "@/lib/registrationDraft";
@@ -74,7 +75,7 @@ export default function RegisterScreen() {
       clearDraft();
       router.replace("/profile-onboarding");
     } catch (error) {
-      Alert.alert(
+      alert(
         "Registration failed",
         error instanceof Error ? error.message : "Please try again."
       );

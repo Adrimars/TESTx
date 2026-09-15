@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { Platform } from "react-native";
 import type { CurrentUser } from "@testx/shared";
 import { apiFetch, setSessionExpiredHandler } from "./api";
 import { clearInProgressTest, clearPendingSubmission } from "./submissionQueue";
@@ -63,8 +64,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     void (async () => {
+      // Web has no local token to check (18.2) - the session lives in an httpOnly cookie
+      // invisible to this code, so the only way to know whether one exists is to ask
+      // `/auth/me` and treat a 401 as signed out. Native still skips that round trip
+      // when there is plainly no stored token to have started a session with.
       const token = await getAccessToken();
-      if (!token) {
+      if (Platform.OS !== "web" && !token) {
         if (!cancelled) setInitializing(false);
         return;
       }
@@ -72,7 +77,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const current = await apiFetch<CurrentUser>("/auth/me");
         if (!cancelled) setUser(current);
       } catch {
-        // Token was present but unusable; treat it as signed out.
+        // Token/cookie was present but unusable; treat it as signed out.
         await clearTokens();
       } finally {
         if (!cancelled) setInitializing(false);
@@ -124,6 +129,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // clearing on the way out.
     if (user) {
       await Promise.all([clearInProgressTest(user.id), clearPendingSubmission(user.id)]);
+    }
+    try {
+      // On web this is what actually ends the session - the cookie is httpOnly, so
+      // nothing client-side can clear it; the API has to. An already-expired session
+      // makes this fail, but the intent is still to end up signed out locally either way.
+      await apiFetch("/auth/logout", { method: "POST" });
+    } catch {
+      // Ignored - see above.
     }
     await clearTokens();
     setUser(null);

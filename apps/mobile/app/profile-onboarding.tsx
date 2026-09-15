@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import {
   AI_EXPERIENCE_OPTIONS,
@@ -13,6 +13,7 @@ import { Button } from "@/components/Button";
 import { Field } from "@/components/Field";
 import { HobbiesPicker } from "@/components/HobbiesPicker";
 import { Select } from "@/components/Select";
+import { alert } from "@/lib/alert";
 import { apiFetch } from "@/lib/api";
 import { useSession } from "@/lib/session";
 import { evaluatorProfileSchema, fieldErrors } from "@/lib/validation";
@@ -79,13 +80,13 @@ export default function ProfileOnboardingScreen() {
       // why this is where it's triggered, rather than a persisted seen-it flag. Named here
       // rather than sprung silently, so the deck that opens next doesn't read as a real
       // test the account already got assigned.
-      Alert.alert(
+      alert(
         "You're all set!",
         "Now let's do a short, hands-on tutorial so you know how each kind of question works.",
         [{ text: "Let's go", onPress: () => router.replace("/practice-test") }]
       );
     } catch (error) {
-      Alert.alert(
+      alert(
         "Could not save profile",
         error instanceof Error ? error.message : "Please try again."
       );

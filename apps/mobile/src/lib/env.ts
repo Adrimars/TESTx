@@ -12,6 +12,12 @@ function inferDevApiUrl(): string {
 
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? inferDevApiUrl();
 
+/** Where the "Switch to desktop version" link (18.4, web only) goes. In production this
+ * is the same domain the mobile-web build itself was reached through - apps/evaluator's
+ * proxy.ts is what makes that transparent - so this only needs its own value in dev,
+ * where the two apps still run on separate ports. */
+export const EVALUATOR_APP_URL = process.env.EXPO_PUBLIC_EVALUATOR_APP_URL ?? "http://localhost:3000";
+
 export function resolveMediaUrl(relativeUrl: string | null | undefined): string | null {
   if (!relativeUrl) return null;
   if (relativeUrl.startsWith("http://") || relativeUrl.startsWith("https://")) return relativeUrl;

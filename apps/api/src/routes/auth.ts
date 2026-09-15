@@ -222,9 +222,13 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
   app.get("/google", async (request, reply) => {
     const { platform } = request.query as { platform?: string };
-    // The state round-trips through Google so the callback knows whether to
-    // finish in a browser (web) or hand back to the app via a deep link.
-    return reply.redirect(getGoogleOAuthUrl(platform === "mobile" ? "mobile" : undefined));
+    // The state round-trips through Google so the callback knows where to land: back into
+    // the native app via a deep link, into the mobile-web build via its own dev/prod
+    // origin (18.2 - it is a separate client from apps/evaluator, not the same one on a
+    // different device), or the plain browser flow apps/evaluator/apps/admin already use.
+    const state =
+      platform === "mobile" ? "mobile" : platform === "mobile-web" ? "mobile-web" : undefined;
+    return reply.redirect(getGoogleOAuthUrl(state));
   });
 
   /**
@@ -281,8 +285,15 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
       const payload = { sub: currentUser.id, role: currentUser.role };
       setAuthCookies(reply, signAccessToken(payload), signRefreshToken(payload));
-      const redirectUrl = process.env.EVALUATOR_APP_URL ?? "http://localhost:3000";
-      return reply.redirect(`${redirectUrl}/dashboard`);
+
+      // Mobile-web (18.2) lands back on its own origin, never evaluator's - the two are
+      // separate clients that happen to share this same cookie-based callback branch.
+      const redirectUrl =
+        state === "mobile-web"
+          ? process.env.MOBILE_WEB_URL ?? "http://localhost:8081"
+          : process.env.EVALUATOR_APP_URL ?? "http://localhost:3000";
+      const redirectPath = state === "mobile-web" ? "/" : "/dashboard";
+      return reply.redirect(`${redirectUrl}${redirectPath}`);
     } catch (error) {
       app.log.error(error);
       return reply.status(500).send({ error: "INTERNAL_SERVER_ERROR", message: "OAuth failed" });
