@@ -11,8 +11,13 @@
  * the OLD in-memory implementation (preserved here for exactly this comparison, not used
  * anywhere else) against the same data, and deep-compares the two outputs field by field.
  *
+ * MANDATORY pre-deploy: run this before every production deploy that touches
+ * results.service.ts. The SQL rewrite has no automated test coverage — this script
+ * is the only guard against silent aggregation regressions.
+ *
  * Usage (needs a real Postgres reachable via DATABASE_URL — this creates and then
  * deletes real rows):
+ *   pnpm --filter @testx/api preflight          # typecheck + this script together
  *   pnpm --filter @testx/api verify:results
  *   VERIFY_RESPONSE_COUNT=10000 pnpm --filter @testx/api verify:results   # perf exit criterion
  *   SKIP_CLEANUP=1 pnpm --filter @testx/api verify:results                # inspect the seeded test after

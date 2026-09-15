@@ -7,6 +7,7 @@ import {
   evaluatorProfileSchema,
 } from "@testx/shared";
 import { authenticateUser } from "../middleware/authenticate";
+import { matchesDemographics } from "../lib/demographics";
 import { requireRole } from "../middleware/requireRole";
 import { qualityService } from "../services/quality.service";
 import {
@@ -250,29 +251,6 @@ function serializeQuestion(question: {
   };
 }
 
-function matchesDemographics(
-  profile: { age: number; gender: string; country: string; city: string | null },
-  filters: unknown
-): boolean {
-  if (!filters || typeof filters !== "object" || Array.isArray(filters)) return true;
-  const f = filters as Record<string, unknown>;
-
-  if (typeof f.ageMin === "number" && profile.age < f.ageMin) return false;
-  if (typeof f.ageMax === "number" && profile.age > f.ageMax) return false;
-
-  if (Array.isArray(f.genders) && f.genders.length > 0) {
-    if (!f.genders.includes(profile.gender)) return false;
-  }
-  if (Array.isArray(f.countries) && f.countries.length > 0) {
-    if (!f.countries.includes(profile.country)) return false;
-  }
-  if (Array.isArray(f.cities) && f.cities.length > 0) {
-    if (!profile.city || !f.cities.includes(profile.city)) return false;
-  }
-
-  return true;
-}
-
 /**
  * Most evaluators won't need hundreds of active tests scanned to find one eligible
  * match; FIFO order (oldest-first, same as before) means this only changes behavior for
@@ -428,7 +406,9 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
     if (test.responseCap !== null && test._count.responses >= test.responseCap) {
       return reply.status(403).send({ error: "CAPACITY_REACHED", message: "This test has reached its response cap" });
     }
-    if (!matchesDemographics(profile, test.demographicFilters)) {
+    if (!matchesDemographics(profile, test.demographicFilters, (bad) => {
+      request.log.warn({ testId: test.id, bad }, "malformed demographicFilters — treating as match-all");
+    })) {
       return reply.status(403).send({ error: "NOT_ELIGIBLE", message: "You are not eligible for this test" });
     }
 
@@ -583,12 +563,16 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
           },
         });
 
-        if (!isFlagged && pointsEarned > 0) {
-          await tx.evaluatorProfile.update({
-            where: { userId },
-            data: { balance: { increment: pointsEarned } },
-          });
-        }
+        // lastActivityAt always moves, flagged or not - 21.1's re-engagement reminder
+        // reads it to find evaluators who have gone quiet, and a flagged submission is
+        // still an evaluator who showed up.
+        await tx.evaluatorProfile.update({
+          where: { userId },
+          data: {
+            lastActivityAt: completedAt,
+            ...(!isFlagged && pointsEarned > 0 ? { balance: { increment: pointsEarned } } : {}),
+          },
+        });
       });
     } catch (error) {
       if (error instanceof ResponseCapReachedError) {

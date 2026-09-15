@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Platform } from "react-native";
 import type { CurrentUser } from "@testx/shared";
 import { apiFetch, setSessionExpiredHandler } from "./api";
+import { unregisterPushNotifications } from "./pushNotifications";
 import { clearInProgressTest, clearPendingSubmission } from "./submissionQueue";
 import { clearTokens, getAccessToken, saveTokens, type TokenPair } from "./tokens";
 
@@ -130,6 +131,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (user) {
       await Promise.all([clearInProgressTest(user.id), clearPendingSubmission(user.id)]);
     }
+    // 21.5's exit criterion: this must run before /auth/logout below drops the access
+    // token, since removing the server-side PushSubscription is itself an authenticated call.
+    await unregisterPushNotifications();
     try {
       // On web this is what actually ends the session - the cookie is httpOnly, so
       // nothing client-side can clear it; the API has to. An already-expired session
