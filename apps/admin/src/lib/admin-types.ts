@@ -1,9 +1,20 @@
 import type { Gender, MediaType, QuestionType, TestStatus } from "@testx/shared";
 
+export type AdminMediaFolder = {
+  id: string;
+  name: string;
+  parentId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  children?: AdminMediaFolder[];
+  mediaCount?: number;
+};
+
 export type AdminMedia = {
   id: string;
   fileName: string;
-  fileType: Exclude<MediaType, "TEXT">;
+  /** TEXT is now a valid fileType for media stored as text content. */
+  fileType: MediaType;
   mimeType: string;
   fileSize: number;
   sourceType: "UPLOAD" | "GOOGLE_DRIVE";
@@ -11,6 +22,9 @@ export type AdminMedia = {
   thumbnailUrl: string | null;
   tags: string[];
   uploadedAt: string;
+  folderId: string | null;
+  /** Populated only when fileType === "TEXT". */
+  textContent: string | null;
   url?: string;
 };
 
@@ -129,6 +143,13 @@ export type RankingAggregation = {
   }>;
 };
 
+export type TimingAggregation = {
+  averageSeconds: number | null;
+  medianSeconds: number | null;
+  minSeconds: number | null;
+  maxSeconds: number | null;
+};
+
 export type QuestionResult = {
   questionId: string;
   prompt: string;
@@ -138,6 +159,7 @@ export type QuestionResult = {
   mediaId: string | null;
   mediaUrl: string | null;
   answeredCount: number;
+  timing: TimingAggregation;
   options?: OptionAggregation[];
   rating?: RatingAggregation;
   ranking?: RankingAggregation;
@@ -182,4 +204,57 @@ export type UploadResult = {
     media?: AdminMedia;
     error?: string;
   }>;
+};
+
+export type FolderUploadResult = {
+  foldersCreated: number;
+  results: Array<{
+    path: string;
+    media?: AdminMedia;
+    error?: string;
+  }>;
+};
+
+export type ImportTestOption = {
+  label?: string;
+  mediaId?: string | null;
+  order?: number;
+};
+
+export type ImportTestQuestion = {
+  type: "SINGLE_SELECT" | "MULTI_SELECT" | "RATING" | "ORDERING";
+  prompt: string;
+  mediaType?: "TEXT" | "IMAGE" | "VIDEO" | "AUDIO";
+  mediaId?: string | null;
+  order?: number;
+  isAttentionCheck?: boolean;
+  isTrapDuplicate?: boolean;
+  config?: {
+    minSelections?: number;
+    maxSelections?: number;
+    minValue?: number;
+    maxValue?: number;
+    minLabel?: string;
+    maxLabel?: string;
+    topLabel?: string;
+    bottomLabel?: string;
+  };
+  options?: ImportTestOption[];
+};
+
+export type ImportTest = {
+  title: string;
+  description?: string;
+  responseCap?: number;
+  advisoryTimeMin?: number;
+  minTimePerQuestion?: number;
+  rewardPoints?: number;
+  demographicFilters?: {
+    ageMin?: number;
+    ageMax?: number;
+    genders?: Array<"MALE" | "FEMALE" | "OTHER" | "UNDISCLOSED">;
+    countries?: string[];
+    cities?: string[];
+  };
+  questions: ImportTestQuestion[];
 };

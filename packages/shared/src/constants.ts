@@ -2,7 +2,7 @@ export const USER_ROLES = ["EVALUATOR", "ADMIN"] as const;
 export const GENDERS = ["MALE", "FEMALE", "OTHER", "UNDISCLOSED"] as const;
 export const TEST_STATUSES = ["DRAFT", "ACTIVE", "PAUSED", "CLOSED"] as const;
 export const QUESTION_TYPES = ["SINGLE_SELECT", "MULTI_SELECT", "RATING", "RANKING"] as const;
-export const MEDIA_TYPES = ["IMAGE", "VIDEO", "AUDIO", "TEXT"] as const;
+export const MEDIA_TYPES = ["IMAGE", "VIDEO", "AUDIO", "TEXT", "JSON"] as const;
 export const FILE_MEDIA_TYPES = ["IMAGE", "VIDEO", "AUDIO"] as const;
 export const MEDIA_SOURCE_TYPES = ["UPLOAD", "GOOGLE_DRIVE"] as const;
 
@@ -29,6 +29,18 @@ export const AVATAR_COUNT = 10;
  * floor without a new build.
  */
 export const DEFAULT_MIN_APP_VERSION = "1.0.0";
+
+export const TEXT_MIME_TYPES = ["text/plain"] as const;
+/** Maximum characters stored in textContent for TEXT media. */
+export const TEXT_MAX_CHARS = 50_000;
+/** Maximum raw file size for .txt uploads (50 KB). */
+export const TEXT_MAX_FILE_BYTES = 50 * 1024;
+/** Maximum raw file size for .json uploads (5 MB). */
+export const JSON_MAX_FILE_BYTES = 5 * 1024 * 1024;
+/** Maximum characters stored in textContent for JSON media. */
+export const JSON_MAX_CHARS = 1_000_000;
+/** Maximum number of levels in a folder path (root = 0). */
+export const FOLDER_MAX_DEPTH = 10;
 
 export const EDUCATION_LEVELS = [
   { value: "PRIMARY_MIDDLE", label: "Primary School / Middle School" },
