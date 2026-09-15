@@ -42,9 +42,12 @@ export async function ensureThumbnail(media: Media): Promise<string> {
   const existing = inFlightThumbnails.get(media.id);
   if (existing) return existing;
 
-  const task = generateThumbnail(media, thumbPath).finally(() => {
-    inFlightThumbnails.delete(media.id);
-  });
+  // Wrap so a failed generation always removes itself from the map before settling,
+  // preventing a rejected promise from blocking future callers.
+  const task = generateThumbnail(media, thumbPath).then(
+    (result) => { inFlightThumbnails.delete(media.id); return result; },
+    (err: unknown) => { inFlightThumbnails.delete(media.id); throw err; }
+  );
   inFlightThumbnails.set(media.id, task);
   return task;
 }

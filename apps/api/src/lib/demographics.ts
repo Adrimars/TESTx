@@ -5,9 +5,17 @@
  */
 export function matchesDemographics(
   profile: { age: number; gender: string; country: string; city: string | null },
-  filters: unknown
+  filters: unknown,
+  onMalformed?: (filters: unknown) => void
 ): boolean {
-  if (!filters || typeof filters !== "object" || Array.isArray(filters)) return true;
+  if (!filters || typeof filters !== "object" || Array.isArray(filters)) {
+    // null/undefined means "no filter" — anything else is unexpected and could cause
+    // silent over-broad matching (every evaluator qualifies), so surface it to callers.
+    if (filters !== null && filters !== undefined) {
+      onMalformed?.(filters);
+    }
+    return true;
+  }
   const f = filters as Record<string, unknown>;
 
   if (typeof f.ageMin === "number" && profile.age < f.ageMin) return false;

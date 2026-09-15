@@ -21,6 +21,9 @@ export const rateLimitPlugin = fp(async (app) => {
       // through rather than 500ing the whole API because the rate-limit store is down.
       maxRetriesPerRequest: 1,
       connectTimeout: 2_000,
+      // Reconnect with capped exponential backoff so a transient Redis restart doesn't
+      // permanently break the limiter for the lifetime of this process.
+      retryStrategy: (times: number) => Math.min(times * 500, 30_000),
     });
     redis.on("error", (err) => {
       app.log.error({ err }, "rate-limit Redis connection error");

@@ -406,7 +406,9 @@ export const evaluatorRoutes: FastifyPluginAsync = async (app) => {
     if (test.responseCap !== null && test._count.responses >= test.responseCap) {
       return reply.status(403).send({ error: "CAPACITY_REACHED", message: "This test has reached its response cap" });
     }
-    if (!matchesDemographics(profile, test.demographicFilters)) {
+    if (!matchesDemographics(profile, test.demographicFilters, (bad) => {
+      request.log.warn({ testId: test.id, bad }, "malformed demographicFilters — treating as match-all");
+    })) {
       return reply.status(403).send({ error: "NOT_ELIGIBLE", message: "You are not eligible for this test" });
     }
 

@@ -36,7 +36,9 @@ async function findMatchingEvaluatorUserIds(
     if (page.length === 0) break;
 
     for (const profile of page) {
-      if (matchesDemographics(profile, demographicFilters)) {
+      if (matchesDemographics(profile, demographicFilters, (bad) => {
+        app.log.warn({ bad }, "malformed demographicFilters — treating as match-all");
+      })) {
         matched.push(profile.userId);
       }
     }
@@ -83,8 +85,15 @@ export async function enqueueTestActivationNotifications(
   const respondedIds = new Set(responded.map((r) => r.userId));
 
   const matchingUserIds = await findMatchingEvaluatorUserIds(app, test.demographicFilters);
-  const targetUserIds = matchingUserIds.filter((userId) => !respondedIds.has(userId));
-  if (targetUserIds.length === 0) return 0;
+  const unresponded = matchingUserIds.filter((userId) => !respondedIds.has(userId));
+  if (unresponded.length === 0) return 0;
+
+  // Trim to the remaining cap so we don't send notifications to evaluators who
+  // would find a full test. A concurrent submission between here and the createMany
+  // can still race, but this keeps over-notification proportional to that window.
+  const remaining = test.responseCap !== null ? test.responseCap - responded.length : Infinity;
+  if (remaining <= 0) return 0;
+  const targetUserIds = unresponded.slice(0, remaining);
 
   const dedupeKey = `${test.id}:${test.activatedAt.toISOString()}`;
   const result = await app.prisma.notificationLog.createMany({
